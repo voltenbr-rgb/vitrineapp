@@ -508,33 +508,82 @@ function extractShopeeIds(text) {
   return null;
 }
 
-// Segue links curtos (s.shopee.com.br/...) até achar o produto.
-async function resolveShopeeIds(rawUrl) {
-  let current = rawUrl;
-  for (let hop = 0; hop < 6; hop++) {
-    const ids = extractShopeeIds(current);
-    if (ids) return ids;
-    let res;
-    try {
-      res = await fetch(current, {
-        redirect: 'manual',
-        headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36', Accept: 'text/html' },
-      });
-    } catch {
-      return null;
+const UA_BROWSER = 'Mozilla/5.0 (Linux; Android 13; SM-A546E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36';
+const UA_CRAWLERS = [
+  'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+  'WhatsApp/2.24.6.77 A',
+];
+
+function decodeEntities(v) {
+  return String(v || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+}
+
+// Lê título, imagem, URL e preço das etiquetas de prévia (Open Graph) da página.
+function readMeta(html) {
+  const get = (prop) => {
+    const re1 = new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]*content=["']([^"']*)`, 'i');
+    const re2 = new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["']${prop}["']`, 'i');
+    const m = html.match(re1) || html.match(re2);
+    return m ? decodeEntities(m[1]).trim() : '';
+  };
+  const canonical = (html.match(/<link[^>]+rel=["']canonical["'][^>]*href=["']([^"']+)/i) || [])[1] || '';
+  const price = get('product:price:amount') || get('og:price:amount');
+  return {
+    title: get('og:title') || decodeEntities((html.match(/<title>([^<]{3,200})<\/title>/i) || [])[1] || ''),
+    image: get('og:image'),
+    url: get('og:url') || decodeEntities(canonical),
+    price: price && Number(price.replace(',', '.')) > 0 ? Number(price.replace(',', '.')) : null,
+  };
+}
+
+async function saveDebug(env, key, data) {
+  try { await setConfig(env, key, JSON.stringify({ at: nowIso(), ...data }).slice(0, 4000)); } catch { /* diagnóstico é opcional */ }
+}
+
+// Segue links curtos (s.shopee.com.br/...) até achar o produto. Tenta como navegador e como
+// robô de prévia (WhatsApp/Facebook), que costuma receber a página com os dados do produto.
+async function resolveShopee(env, rawUrl) {
+  const trace = [];
+  let fallbackMeta = null;
+  for (const ua of [UA_BROWSER, ...UA_CRAWLERS]) {
+    let current = rawUrl;
+    for (let hop = 0; hop < 7; hop++) {
+      const ids = extractShopeeIds(current);
+      if (ids) return { ids, meta: fallbackMeta, trace };
+      let res;
+      try {
+        res = await fetch(current, {
+          redirect: 'manual',
+          headers: { 'User-Agent': ua, Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'pt-BR,pt;q=0.9' },
+        });
+      } catch (err) {
+        trace.push({ ua: ua.slice(0, 18), url: current.slice(0, 160), error: String(err && err.message).slice(0, 80) });
+        break;
+      }
+      const location = res.headers.get('Location');
+      trace.push({ ua: ua.slice(0, 18), url: current.slice(0, 160), status: res.status, location: location ? location.slice(0, 300) : null });
+      if (location && res.status >= 300 && res.status < 400) {
+        current = new URL(location, current).toString();
+        continue;
+      }
+      if (res.ok) {
+        const html = (await res.text()).slice(0, 400_000);
+        const meta = readMeta(html);
+        const refresh = (html.match(/http-equiv=["']refresh["'][^>]*content=["'][^"']*url=([^"']+)/i) || [])[1]
+          || (html.match(/(?:window\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/i) || [])[1];
+        const found = extractShopeeIds(meta.url) || extractShopeeIds(refresh ? decodeEntities(refresh) : '') || extractShopeeIds(html);
+        trace[trace.length - 1].meta = { title: meta.title.slice(0, 60), url: meta.url.slice(0, 160), refresh: refresh ? refresh.slice(0, 160) : null };
+        if (meta.title && meta.image && !fallbackMeta) fallbackMeta = meta;
+        if (found) return { ids: found, meta: fallbackMeta, trace };
+        if (refresh && hop < 6) {
+          current = new URL(decodeEntities(refresh), current).toString();
+          continue;
+        }
+      }
+      break;
     }
-    const location = res.headers.get('Location');
-    if (location && res.status >= 300 && res.status < 400) {
-      current = new URL(location, current).toString();
-      continue;
-    }
-    if (res.ok) {
-      const html = (await res.text()).slice(0, 300_000);
-      return extractShopeeIds(html);
-    }
-    return null;
   }
-  return extractShopeeIds(current);
+  return { ids: null, meta: fallbackMeta, trace };
 }
 
 async function shopeeGraphql(creds, query) {
@@ -571,13 +620,25 @@ async function shopeeGraphql(creds, query) {
 }
 
 async function lookupShopee(env, creds, url) {
-  const ids = await resolveShopeeIds(url);
-  if (!ids) throw new HttpError(422, 'Não encontrei o produto neste link da Shopee. Confira se é o link de um produto.');
+  const { ids, meta, trace } = await resolveShopee(env, url);
+  if (!ids) {
+    await saveDebug(env, 'debug_shopee', { input: url, trace });
+    if (meta && meta.title) {
+      // Sem o código do produto, usa a prévia pública da página (nome e foto).
+      return { platform: 'shopee', title: meta.title.replace(/\s*\|\s*Shopee.*$/i, '').slice(0, 120), price: meta.price, image_url: /^https:\/\//.test(meta.image) ? meta.image : null, shop_name: null, source: 'preview' };
+    }
+    throw new HttpError(422, 'Não consegui abrir este link da Shopee. Tente o link completo do produto (abra o link no navegador e copie o endereço).');
+  }
   const query = `{ productOfferV2(shopId: ${ids.shopId}, itemId: ${ids.itemId}, page: 1, limit: 1) {
     nodes { itemId shopId productName price priceMin priceMax imageUrl shopName ratingStar sales priceDiscountRate } } }`;
   const data = await shopeeGraphql(creds, query);
   const node = (((data.productOfferV2 || {}).nodes) || [])[0];
-  if (!node) throw new HttpError(404, 'A Shopee não retornou este produto. Ele pode não participar do programa de afiliados.');
+  if (!node) {
+    if (meta && meta.title) {
+      return { platform: 'shopee', title: meta.title.replace(/\s*\|\s*Shopee.*$/i, '').slice(0, 120), price: meta.price, image_url: /^https:\/\//.test(meta.image) ? meta.image : null, shop_name: null, source: 'preview' };
+    }
+    throw new HttpError(404, 'A Shopee não retornou este produto. Ele pode não participar do programa de afiliados.');
+  }
   const priceValue = Number(node.priceMin || node.price);
   return {
     platform: 'shopee',
@@ -814,10 +875,6 @@ async function lookupProduct(env, rawUrl, { useCache = true, tenantId = null } =
     if (quota.remaining <= 0) {
       throw new HttpError(429, `Você usou as ${quota.limit} buscas automáticas desta hora. Libera de novo em ${quota.reset_minutes} min — enquanto isso, preencha manualmente.`, { code: 'quota', quota });
     }
-    await env.DB.batch([
-      env.DB.prepare('INSERT INTO lookup_usage (tenant_id, at) VALUES (?, ?)').bind(tenantId, nowIso()),
-      env.DB.prepare('DELETE FROM lookup_usage WHERE at < ?').bind(new Date(Date.now() - 2 * 3_600_000).toISOString()),
-    ]);
   }
   const cfg = await getConfig(env);
   let result;
@@ -834,6 +891,13 @@ async function lookupProduct(env, rawUrl, { useCache = true, tenantId = null } =
     `INSERT INTO product_cache (key, data, fetched_at) VALUES (?, ?, ?)
      ON CONFLICT (key) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at`,
   ).bind(cacheKey, JSON.stringify(result), nowIso()).run();
+  // A cota só é gasta quando a busca dá certo.
+  if (tenantId) {
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO lookup_usage (tenant_id, at) VALUES (?, ?)').bind(tenantId, nowIso()),
+      env.DB.prepare('DELETE FROM lookup_usage WHERE at < ?').bind(new Date(Date.now() - 2 * 3_600_000).toISOString()),
+    ]);
+  }
   return result;
 }
 
