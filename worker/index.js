@@ -26,7 +26,7 @@
  * Rotas do lojista (Authorization: Bearer <token>)
  *   GET    /api/me
  *   POST   /api/me/ping                    presença (online no Master)
- *   POST   /api/me/lookup                  { url } → nome, preço e foto (cota: 5 buscas/hora por lojista)
+ *   POST   /api/me/lookup                  { url } → nome, preço e foto (cota: 15 buscas/hora por lojista)
  *   PUT    /api/me/profile
  *   PUT    /api/me/settings
  *   PUT    /api/me/password
@@ -730,9 +730,9 @@ async function handleMlCallback(request, env) {
   }
 }
 
-// Cota do plano básico: buscas automáticas por lojista a cada hora (padrão 5).
+// Cota do plano básico: buscas automáticas por lojista a cada hora (padrão 15).
 // Conta no banco, então vale para todos os servidores. Resultados do cache não gastam cota.
-const lookupLimit = (env) => clampInt(env.LOOKUP_LIMIT_PER_HOUR, 1, 1000, 5);
+const lookupLimit = (env) => clampInt(env.LOOKUP_LIMIT_PER_HOUR, 1, 1000, 15);
 
 async function lookupQuota(env, tenantId) {
   const since = new Date(Date.now() - 3_600_000).toISOString();

@@ -19,7 +19,7 @@ database_id = "f53ffb6a-1978-40fb-917b-5d897b6dc169"
 [vars]
 TRIAL_DAYS = "7"
 PLAN_PRICE = "19,90"
-LOOKUP_LIMIT_PER_HOUR = "5" # buscas automáticas (Shopee) por lojista a cada hora
+LOOKUP_LIMIT_PER_HOUR = "15" # buscas automáticas (Shopee) por lojista a cada hora
 SUPPORT_WHATSAPP = ""      # seu WhatsApp para receber assinaturas, ex.: 5567999999999
 ALLOWED_ORIGIN = "*"
 PUBLIC_BASE_URL = ""       # vazio = domínio atual (ex.: https://vitrineapp.pages.dev)
