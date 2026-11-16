@@ -26,6 +26,7 @@
  * Rotas do lojista (Authorization: Bearer <token>)
  *   GET    /api/me
  *   POST   /api/me/ping                    presença (online no Master)
+ *   POST   /api/me/lookup                  { url } → nome, preço e foto do produto (API de afiliados)
  *   PUT    /api/me/profile
  *   PUT    /api/me/settings
  *   PUT    /api/me/password
@@ -41,7 +42,8 @@
  *   PATCH  /api/admin/tenants/:id          { action: activate|extend_trial|expire|reset_password|update, ... }
  *   DELETE /api/admin/tenants/:id
  *   GET    /api/admin/config
- *   PUT    /api/admin/config               vídeo da página inicial, WhatsApp de suporte, senha Master
+ *   PUT    /api/admin/config               vídeo, WhatsApp de suporte, senha Master, chaves da Shopee
+ *   POST   /api/admin/integrations/test    { url } testa a busca automática de produto
  */
 
 const DAY_MS = 86_400_000;
@@ -318,6 +320,9 @@ function ensureSchema(env) {
       await env.DB.prepare(
         'CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT)',
       ).run();
+      await env.DB.prepare(
+        'CREATE TABLE IF NOT EXISTS product_cache (key TEXT PRIMARY KEY, data TEXT NOT NULL, fetched_at TEXT NOT NULL)',
+      ).run();
       const columns = async (table) => {
         const { results } = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
         return new Set((results || []).map((r) => r.name));
@@ -377,6 +382,187 @@ function videoEmbed(raw) {
   }
   if (/\.(mp4|webm)$/i.test(url.pathname)) return { type: 'video', src: url.toString() };
   return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Integrações: busca automática de produtos (API de afiliados)       */
+/* ------------------------------------------------------------------ */
+
+// Chaves de integração ficam cifradas (AES-GCM) no D1 e nunca voltam para o navegador.
+async function configKey(env) {
+  const raw = await crypto.subtle.digest('SHA-256', enc.encode('vitrine-config:' + (await sessionSecret(env))));
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+async function encryptValue(env, value) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await configKey(env), enc.encode(String(value)));
+  return `${b64u(iv)}.${b64u(ct)}`;
+}
+
+async function decryptValue(env, stored) {
+  if (!stored) return '';
+  try {
+    const [iv, ct] = String(stored).split('.');
+    return dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64u(iv) }, await configKey(env), unb64u(ct)));
+  } catch {
+    return '';
+  }
+}
+
+async function shopeeCredentials(env, cfg) {
+  const appId = String(env.SHOPEE_APP_ID || cfg.shopee_app_id || '').trim();
+  const secret = String(env.SHOPEE_SECRET || (await decryptValue(env, cfg.shopee_secret)) || '').trim();
+  return appId && secret ? { appId, secret } : null;
+}
+
+const SHOPEE_HOST = /(^|\.)(shopee\.com\.br|shope\.ee|shp\.ee)$/i;
+const ML_HOST = /(^|\.)(mercadolivre\.com(\.br)?|mercadolibre\.com|meli\.la)$/i;
+
+function detectPlatform(url) {
+  const host = url.hostname.toLowerCase();
+  if (SHOPEE_HOST.test(host)) return 'shopee';
+  if (ML_HOST.test(host)) return 'mercadolivre';
+  return null;
+}
+
+// Procura shopId/itemId em qualquer formato de link da Shopee (inclusive links aninhados/codificados).
+function extractShopeeIds(text) {
+  let s = String(text || '');
+  for (let i = 0; i < 3; i++) {
+    try { const d = decodeURIComponent(s); if (d === s) break; s = d; } catch { break; }
+  }
+  const patterns = [
+    /-i\.(\d{3,})\.(\d{3,})/,
+    /\/product\/(\d{3,})\/(\d{3,})/,
+    /\/(?:[^/?#]+\/)?(\d{5,})\/(\d{5,})(?:[/?#]|$)/,
+  ];
+  for (const re of patterns) {
+    const m = s.match(re);
+    if (m) return { shopId: m[1], itemId: m[2] };
+  }
+  const shop = s.match(/shop_?id["=:\s]+(\d{3,})/i);
+  const item = s.match(/item_?id["=:\s]+(\d{3,})/i);
+  if (shop && item) return { shopId: shop[1], itemId: item[1] };
+  return null;
+}
+
+// Segue links curtos (s.shopee.com.br/...) até achar o produto.
+async function resolveShopeeIds(rawUrl) {
+  let current = rawUrl;
+  for (let hop = 0; hop < 6; hop++) {
+    const ids = extractShopeeIds(current);
+    if (ids) return ids;
+    let res;
+    try {
+      res = await fetch(current, {
+        redirect: 'manual',
+        headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36', Accept: 'text/html' },
+      });
+    } catch {
+      return null;
+    }
+    const location = res.headers.get('Location');
+    if (location && res.status >= 300 && res.status < 400) {
+      current = new URL(location, current).toString();
+      continue;
+    }
+    if (res.ok) {
+      const html = (await res.text()).slice(0, 300_000);
+      return extractShopeeIds(html);
+    }
+    return null;
+  }
+  return extractShopeeIds(current);
+}
+
+async function shopeeGraphql(creds, query) {
+  const payload = JSON.stringify({ query });
+  const timestamp = Math.floor(Date.now() / 1000);
+  const digest = await crypto.subtle.digest('SHA-256', enc.encode(`${creds.appId}${timestamp}${payload}${creds.secret}`));
+  const signature = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  let res;
+  try {
+    res = await fetch('https://open-api.affiliate.shopee.com.br/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `SHA256 Credential=${creds.appId}, Timestamp=${timestamp}, Signature=${signature}`,
+      },
+      body: payload,
+    });
+  } catch {
+    throw new HttpError(502, 'Não foi possível falar com a Shopee agora. Tente de novo.');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (data.errors && data.errors.length) {
+    const e = data.errors[0];
+    const code = e.extensions && e.extensions.code;
+    console.error('Shopee API:', JSON.stringify(data.errors).slice(0, 500));
+    if (code === 10020 || /signature|auth|credential/i.test(e.message || '')) {
+      throw new HttpError(502, 'A Shopee recusou as chaves da API. Confira o App ID e o Secret no Master.', { code: 'shopee_auth' });
+    }
+    if (code === 10030) throw new HttpError(429, 'Limite de consultas da Shopee atingido. Tente em alguns minutos.');
+    throw new HttpError(502, `Shopee: ${String(e.message || 'erro na consulta').slice(0, 160)}`);
+  }
+  if (!res.ok) throw new HttpError(502, `A Shopee respondeu com erro ${res.status}.`);
+  return data.data || {};
+}
+
+async function lookupShopee(env, creds, url) {
+  const ids = await resolveShopeeIds(url);
+  if (!ids) throw new HttpError(422, 'Não encontrei o produto neste link da Shopee. Confira se é o link de um produto.');
+  const query = `{ productOfferV2(shopId: ${ids.shopId}, itemId: ${ids.itemId}, page: 1, limit: 1) {
+    nodes { itemId shopId productName price priceMin priceMax imageUrl shopName ratingStar sales priceDiscountRate } } }`;
+  const data = await shopeeGraphql(creds, query);
+  const node = (((data.productOfferV2 || {}).nodes) || [])[0];
+  if (!node) throw new HttpError(404, 'A Shopee não retornou este produto. Ele pode não participar do programa de afiliados.');
+  const priceValue = Number(node.priceMin || node.price);
+  return {
+    platform: 'shopee',
+    title: String(node.productName || '').slice(0, 120),
+    price: Number.isFinite(priceValue) && priceValue > 0 ? Math.round(priceValue * 100) / 100 : null,
+    price_max: Number(node.priceMax) || null,
+    image_url: /^https?:\/\//.test(node.imageUrl || '') ? node.imageUrl : null,
+    shop_name: node.shopName || null,
+    rating: node.ratingStar ? Number(node.ratingStar) : null,
+    sales: node.sales ? Number(node.sales) : null,
+  };
+}
+
+const lookupHits = new Map(); // limite simples por lojista (por instância)
+function lookupRateLimit(key, max = 60) {
+  const now = Date.now();
+  const hits = (lookupHits.get(key) || []).filter((t) => now - t < 3_600_000);
+  if (hits.length >= max) throw new HttpError(429, 'Muitas buscas em pouco tempo. Aguarde alguns minutos.');
+  hits.push(now);
+  lookupHits.set(key, hits);
+}
+
+async function lookupProduct(env, rawUrl, { useCache = true } = {}) {
+  const link = httpUrl(rawUrl, 'Link', { required: true });
+  const url = new URL(link);
+  const platform = detectPlatform(url);
+  if (!platform) throw new HttpError(422, 'A busca automática funciona com links da Shopee.');
+  const cacheKey = `${platform}:${url.toString()}`;
+  if (useCache) {
+    const hit = await env.DB.prepare('SELECT data, fetched_at FROM product_cache WHERE key = ?').bind(cacheKey).first();
+    if (hit && Date.now() - Date.parse(hit.fetched_at) < 6 * 3_600_000) return { ...JSON.parse(hit.data), cached: true };
+  }
+  const cfg = await getConfig(env);
+  let result;
+  if (platform === 'shopee') {
+    const creds = await shopeeCredentials(env, cfg);
+    if (!creds) throw new HttpError(501, 'A busca automática da Shopee ainda não foi ativada pelo administrador.', { code: 'not_configured' });
+    result = await lookupShopee(env, creds, link);
+  } else {
+    throw new HttpError(501, 'A busca automática do Mercado Livre chega em breve. Preencha os dados manualmente.', { code: 'not_configured' });
+  }
+  await env.DB.prepare(
+    `INSERT INTO product_cache (key, data, fetched_at) VALUES (?, ?, ?)
+     ON CONFLICT (key) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at`,
+  ).bind(cacheKey, JSON.stringify(result), nowIso()).run();
+  return result;
 }
 
 let cachedSecret = null;
@@ -595,6 +781,7 @@ async function handleConfig(request, env) {
     plan_price: env.PLAN_PRICE || '19,90',
     support_whatsapp: String(cfg.support_whatsapp || env.SUPPORT_WHATSAPP || '').replace(/\D/g, ''),
     video: videoEmbed(cfg.landing_video_url),
+    lookup: { shopee: !!(await shopeeCredentials(env, cfg)), mercadolivre: false },
     uploads: !!env.IMAGES,
     public_base_url: publicBase(request, env),
   });
@@ -684,6 +871,13 @@ async function handleRegister(request, env) {
 /* ------------------------------------------------------------------ */
 /* Handlers do lojista                                                 */
 /* ------------------------------------------------------------------ */
+
+async function handleLookup(request, env, tenant) {
+  assertCanEdit(tenant);
+  lookupRateLimit(tenant.id);
+  const body = await readJson(request);
+  return json({ product: await lookupProduct(env, body.url) });
+}
 
 async function handlePing(env, tenant) {
   await touchPresence(env, tenant.id);
@@ -873,6 +1067,9 @@ async function handleAdminConfigGet(env) {
     landing_video_url: cfg.landing_video_url || '',
     support_whatsapp: cfg.support_whatsapp || env.SUPPORT_WHATSAPP || '',
     master_password_source: env.MASTER_PASSWORD ? 'secret' : cfg.master_hash ? 'custom' : 'default',
+    shopee_app_id: env.SHOPEE_APP_ID || cfg.shopee_app_id || '',
+    shopee_secret_set: !!(env.SHOPEE_SECRET || cfg.shopee_secret),
+    shopee_fixed: !!env.SHOPEE_APP_ID,
   });
 }
 
@@ -885,6 +1082,19 @@ async function handleAdminConfigPut(request, env) {
   }
   if (body.support_whatsapp !== undefined) {
     await setConfig(env, 'support_whatsapp', whatsapp(body.support_whatsapp));
+  }
+  if (body.shopee_app_id !== undefined) {
+    const appId = String(body.shopee_app_id || '').trim();
+    if (appId && !/^\d{3,20}$/.test(appId)) throw new HttpError(400, 'O App ID da Shopee deve conter só números.');
+    await setConfig(env, 'shopee_app_id', appId);
+  }
+  if (body.shopee_secret !== undefined && String(body.shopee_secret).trim() !== '') {
+    const secret = String(body.shopee_secret).trim();
+    if (secret.length < 8 || secret.length > 200) throw new HttpError(400, 'Secret da Shopee inválido.');
+    await setConfig(env, 'shopee_secret', await encryptValue(env, secret));
+  }
+  if (body.clear_shopee === true) {
+    await env.DB.prepare("DELETE FROM app_config WHERE key IN ('shopee_app_id', 'shopee_secret')").run();
   }
   if (body.new_master_password !== undefined && String(body.new_master_password) !== '') {
     if (env.MASTER_PASSWORD) {
@@ -1036,6 +1246,7 @@ async function routeApi(request, env, path) {
     const tenant = await requireTenant(request, env);
     if (path === '/api/me' && method === 'GET') return handleMe(request, env, tenant);
     if (path === '/api/me/ping' && method === 'POST') return handlePing(env, tenant);
+    if (path === '/api/me/lookup' && method === 'POST') return handleLookup(request, env, tenant);
     if (path === '/api/me/profile' && method === 'PUT') return handleProfile(request, env, tenant);
     if (path === '/api/me/settings' && method === 'PUT') return handleSettings(request, env, tenant);
     if (path === '/api/me/password' && method === 'PUT') return handlePassword(request, env, tenant);
@@ -1057,6 +1268,10 @@ async function routeApi(request, env, path) {
     if (path === '/api/admin/tenants' && method === 'POST') return handleAdminCreate(request, env);
     if (path === '/api/admin/config' && method === 'GET') return handleAdminConfigGet(env);
     if (path === '/api/admin/config' && method === 'PUT') return handleAdminConfigPut(request, env);
+    if (path === '/api/admin/integrations/test' && method === 'POST') {
+      const body = await readJson(request);
+      return json({ product: await lookupProduct(env, body.url, { useCache: false }) });
+    }
     if ((m = path.match(/^\/api\/admin\/tenants\/([^/]+)$/))) {
       if (method === 'PATCH') return handleAdminPatch(request, env, decodeURIComponent(m[1]));
       if (method === 'DELETE') return handleAdminDelete(env, decodeURIComponent(m[1]));

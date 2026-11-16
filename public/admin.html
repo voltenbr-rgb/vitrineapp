@@ -661,6 +661,18 @@
             <input class="input" name="landing_video_url" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=..." value="${esc(cfg.landing_video_url)}"></label>
           <label class="field"><span>Seu WhatsApp de suporte e vendas</span>
             <input class="input" name="support_whatsapp" inputmode="tel" placeholder="(67) 99999-9999" value="${esc(fmtPhone(cfg.support_whatsapp) === '—' ? '' : fmtPhone(cfg.support_whatsapp))}"></label>
+          <div class="field" style="background:#fff7f3;border-radius:16px;padding:14px;margin-bottom:14px">
+            <span>🛍️ API de afiliados da Shopee <small>${cfg.shopee_secret_set ? '✅ ativa' : 'desativada'}</small></span>
+            <small style="color:var(--muted);font-size:12px">Preenche nome, preço e foto quando o lojista cola um link da Shopee. O link de afiliado continua sendo o do lojista.</small>
+            ${cfg.shopee_fixed ? '<small>Chaves fixadas no Cloudflare (SHOPEE_APP_ID / SHOPEE_SECRET).</small>' : `
+            <input class="input" name="shopee_app_id" inputmode="numeric" placeholder="App ID (só números)" value="${esc(cfg.shopee_app_id)}" autocomplete="off">
+            <input class="input" name="shopee_secret" type="password" placeholder="${cfg.shopee_secret_set ? 'Secret salvo — deixe vazio para manter' : 'Secret (chave da API)'}" autocomplete="new-password" spellcheck="false">`}
+            <div class="input-group" style="margin-top:4px">
+              <input class="input" id="testUrl" type="url" inputmode="url" placeholder="Cole um link da Shopee para testar">
+              <button type="button" class="btn btn-ghost" id="testBtn">Testar</button>
+            </div>
+            <div id="testResult" style="font-size:13px"></div>
+          </div>
           <div class="field"><span>Senha Master</span>
             ${fixed
               ? '<small>A senha está fixada no Cloudflare (secret MASTER_PASSWORD). Para trocar, altere o secret.</small>'
@@ -669,11 +681,35 @@
           </div>
           <button type="submit" class="btn btn-dark btn-block" id="cfgBtn">Salvar configurações</button>
         </form>`);
+      $('#testBtn').addEventListener('click', async () => {
+        const f = $('#cfgForm');
+        const url = $('#testUrl').value.trim();
+        const out = $('#testResult');
+        if (!url) return toast('Cole um link de produto da Shopee.', true);
+        const btn = $('#testBtn');
+        setBusy(btn, true, '...');
+        try {
+          // salva as chaves digitadas antes de testar
+          const keys = {};
+          if (f.shopee_app_id) keys.shopee_app_id = f.shopee_app_id.value.trim();
+          if (f.shopee_secret && f.shopee_secret.value.trim()) keys.shopee_secret = f.shopee_secret.value.trim();
+          if (Object.keys(keys).length) await api('/api/admin/config', { method: 'PUT', body: keys });
+          const { product } = await api('/api/admin/integrations/test', { method: 'POST', body: { url } });
+          out.innerHTML = `<div style="display:flex;gap:10px;align-items:center;background:#fff;border-radius:12px;padding:10px;margin-top:6px">
+            ${product.image_url ? `<img src="${esc(product.image_url)}" alt="" style="width:52px;height:52px;border-radius:10px;object-fit:cover">` : ''}
+            <div><b style="color:#15803d">✅ Funcionou!</b><br>${esc(product.title)}<br><b>${product.price ? brl(product.price) : 'sem preço'}</b></div></div>`;
+        } catch (err) {
+          out.innerHTML = `<div style="color:#be123c;font-weight:700;margin-top:6px">❌ ${esc(err.message)}</div>`;
+        } finally { setBusy(btn, false); }
+      });
+
       $('#cfgForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const f = e.target;
         const body = { landing_video_url: f.landing_video_url.value.trim(), support_whatsapp: f.support_whatsapp.value.trim() };
         if (!body.support_whatsapp) delete body.support_whatsapp;
+        if (f.shopee_app_id) body.shopee_app_id = f.shopee_app_id.value.trim();
+        if (f.shopee_secret && f.shopee_secret.value.trim()) body.shopee_secret = f.shopee_secret.value.trim();
         const np = f.new_master_password ? f.new_master_password.value : '';
         if (np) {
           if (np.length < 6) return toast('A nova senha Master precisa de 6 caracteres ou mais.', true);

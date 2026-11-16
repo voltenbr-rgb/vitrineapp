@@ -792,6 +792,7 @@
                 <input class="input" name="affiliate_link" type="url" inputmode="url" placeholder="https://..." value="${esc(p.affiliate_link || '')}">
                 <small id="linkHint"></small></label>
             </div>
+            <button type="button" class="btn btn-soft btn-block" data-act="autofill" id="autofillBtn" hidden style="white-space:normal;height:auto;min-height:48px;padding:10px 14px">✨ Preencher automaticamente</button>
           </div>
 
           <div class="card">
@@ -825,8 +826,10 @@
       const affiliate = platform !== 'proprio';
       $('#linkLabel').textContent = affiliate ? 'Link de afiliado *' : 'Link de compra (opcional)';
       $('#linkHint').textContent = affiliate
-        ? `Cole seu link de afiliado do ${PLATFORM[platform].label}.`
+        ? `Cole seu link de afiliado ${platform === 'shopee' ? 'da' : 'do'} ${PLATFORM[platform].label}.${(state.config.lookup || {})[platform] ? ' Nome, preço e foto são preenchidos sozinhos ✨' : ''}`
         : 'Sem link, o botão "Pedir" abre o seu WhatsApp.';
+      const canFill = !!(state.config.lookup && state.config.lookup[platform]);
+      $('#autofillBtn').hidden = !canFill;
       $('#priceHint').textContent = affiliate
         ? 'Opcional: o preço muda no site parceiro.'
         : 'Deixe vazio para "Preço sob consulta".';
@@ -1033,6 +1036,41 @@
       busy.remove();
     }
 
+    // Busca nome, preço e foto pelo link (API de afiliados configurada no Master).
+    let lastFilled = '';
+    async function autoFill(manual) {
+      const form = $('#productForm');
+      if (!form) return;
+      const platform = form.platform.value;
+      if (!(state.config.lookup && state.config.lookup[platform])) return;
+      let link = String(form.affiliate_link.value || '').trim();
+      if (!link) { if (manual) { toast('Cole primeiro o link do produto.', true); form.affiliate_link.focus(); } return; }
+      if (!/^https?:\/\//i.test(link)) { link = 'https://' + link; form.affiliate_link.value = link; }
+      if (!manual && link === lastFilled) return;
+      lastFilled = link;
+      const btn = $('#autofillBtn');
+      setBusy(btn, true, 'Buscando dados do produto...');
+      try {
+        const { product } = await api('/api/me/lookup', { method: 'POST', body: { url: link } });
+        if (product.title && (manual || !form.title.value.trim())) {
+          form.title.value = product.title;
+          $('#titleCount').textContent = `${product.title.length}/120`;
+        }
+        if (product.price && (manual || !form.price.value.trim())) form.price.value = priceInput(product.price);
+        if (product.image_url && (manual || !$('#imageValue').value)) setProductImage(product.image_url);
+        if (!form.description.value.trim() && product.shop_name) {
+          const extras = [product.shop_name ? `Loja: ${product.shop_name}` : '', product.rating ? `⭐ ${Number(product.rating).toFixed(1)}` : ''].filter(Boolean).join(' · ');
+          form.description.value = extras;
+          $('#descCount').textContent = `${extras.length}/1500`;
+        }
+        toast('✨ Dados do produto preenchidos! Confira e publique.');
+      } catch (err) {
+        if (manual || err.status !== 501) toast(err.message, true);
+      } finally {
+        setBusy(btn, false);
+      }
+    }
+
     function setProductImage(url) {
       $('#imageValue').value = url || '';
       $('#imgPreview').innerHTML = url
@@ -1078,6 +1116,7 @@
       }
       if (act === 'delete') return deleteProduct(Number(t.dataset.id));
       if (act === 'clear-img') return setProductImage('');
+      if (act === 'autofill') return autoFill(true);
       if (act === 'clear-avatar') return setAvatar('');
     });
 
@@ -1090,6 +1129,7 @@
     document.addEventListener('change', async (e) => {
       const el = e.target;
       if (el.name === 'platform') updatePlatformHints();
+      if (el.name === 'affiliate_link' && !state.editing) autoFill(false);
       if (el.id === 'isPhysical') $('#citiesField').hidden = !el.checked;
       if (el.dataset && el.dataset.setting) saveSettings();
       if (el.id === 'imgFile' && el.files[0]) { await handleProductImage(el.files[0]); el.value = ''; }

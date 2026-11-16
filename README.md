@@ -34,6 +34,11 @@ As tabelas do banco já foram criadas. Para recriar em outro banco: `npm run db:
 ### Fotos no R2 (opcional, recomendado)
 Crie o bucket `vitrine-imagens` no painel R2 e descomente o bloco `[[r2_buckets]]` do `wrangler.toml`. O painel detecta sozinho.
 
+## Busca automática de produtos (Shopee)
+No Master → ⚙️ Configurações → **API de afiliados da Shopee**, informe o App ID e o Secret (painel de afiliado da Shopee → Open API) e use **Testar** com um link de produto.
+Com isso, quando o lojista cola um link da Shopee, nome, preço e foto são preenchidos sozinhos. O link de afiliado salvo continua sendo o do lojista.
+O Secret fica cifrado no banco e nunca volta para o navegador. Alternativa: secrets `SHOPEE_APP_ID` e `SHOPEE_SECRET` no Cloudflare.
+
 ## Fluxo de uso
 1. O lojista se cadastra na **página inicial** ("Começar grátis") e já cai no painel com 7 dias de teste. O Master também pode criar lojas manualmente.
 2. O **lojista** entra em `/dashboard.html`, cadastra os produtos e configura a vitrine.
