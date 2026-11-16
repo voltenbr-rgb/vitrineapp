@@ -458,6 +458,17 @@ function ensureSchema(env) {
         )`,
       ).run();
       await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_payments_account ON payments (account_id, created_at)').run();
+      // Métricas por dia de cada loja (gráfico do painel): visitas, cliques em comprar/adicionar e pedidos no WhatsApp.
+      await env.DB.prepare(
+        `CREATE TABLE IF NOT EXISTS store_daily (
+          tenant_id TEXT NOT NULL,
+          day TEXT NOT NULL,
+          views INTEGER NOT NULL DEFAULT 0,
+          clicks INTEGER NOT NULL DEFAULT 0,
+          orders INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (tenant_id, day)
+        )`,
+      ).run();
       await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_legacy ON accounts (legacy_tenant_id) WHERE legacy_tenant_id IS NOT NULL').run();
       await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_tenants_account ON tenants (account_id)').run();
       // Migração: cada loja antiga vira "conta + 1 loja" (sem mudar link, senha ou produtos).
@@ -1498,9 +1509,15 @@ async function loadAccountStores(env, accountId) {
 
 async function loadAccountStoresFor(env, account) {
   const max = PLANS[effectivePlan(account)].stores;
-  return (await loadAccountStores(env, account.id)).map((r, i) => ({
-    ...r, views: Number(r.views || 0), product_count: Number(r.product_count || 0), paused: i >= max,
-  }));
+  const stores = await loadAccountStores(env, account.id);
+  const { list, byStore } = await loadSeries(env, stores.map((r) => r.id), 7).catch(() => ({ list: lastDays(7), byStore: new Map() }));
+  return stores.map((r, i) => {
+    const week = seriesFor(list, byStore.get(r.id));
+    return {
+      ...r, views: Number(r.views || 0), product_count: Number(r.product_count || 0), paused: i >= max,
+      week, week_views: sumOf(week, 'views'), week_clicks: sumOf(week, 'clicks'), week_orders: sumOf(week, 'orders'),
+    };
+  });
 }
 
 // Loja pública com o status da conta dona.
@@ -1718,7 +1735,13 @@ async function handleStore(request, env, rawId) {
   ]);
   if (tenant.status !== 'expired') {
     try {
-      await env.DB.prepare('UPDATE tenants SET views = views + 1 WHERE id = ?').bind(id).run();
+      await env.DB.batch([
+        env.DB.prepare('UPDATE tenants SET views = views + 1 WHERE id = ?').bind(id),
+        env.DB.prepare(
+          `INSERT INTO store_daily (tenant_id, day, views) VALUES (?, ?, 1)
+           ON CONFLICT (tenant_id, day) DO UPDATE SET views = views + 1`,
+        ).bind(id, dayKey()),
+      ]);
     } catch { /* contador não é crítico */ }
   }
   delete settings.share_message;
@@ -2366,6 +2389,85 @@ async function handleAdminDelete(env, rawId) {
 }
 
 
+
+/* ------------------------------------------------------------------ */
+/* Métricas por dia (gráfico do painel)                               */
+/* ------------------------------------------------------------------ */
+
+// Dia no horário de Brasília (UTC-3), no formato AAAA-MM-DD.
+const dayKey = (ms = Date.now()) => new Date(ms - 3 * 3_600_000).toISOString().slice(0, 10);
+const lastDays = (n) => Array.from({ length: n }, (_, i) => dayKey(Date.now() - (n - 1 - i) * DAY_MS));
+
+const hitWindow = { minute: 0, ips: new Map() };
+
+// Clique na vitrine (comprar/adicionar ou pedido no WhatsApp). Chamado sem esperar resposta.
+async function handleStoreHit(request, env, rawId) {
+  const id = String(rawId || '').toLowerCase();
+  if (!SLUG_RE.test(id)) return json({ ok: true });
+  const body = await readJson(request).catch(() => ({}));
+  const col = body.type === 'order' ? 'orders' : 'clicks';
+  const exists = await env.DB.prepare('SELECT 1 FROM tenants WHERE id = ?').bind(id).first();
+  if (!exists) return json({ ok: true });
+  // Limite simples contra abuso: no máximo 60 registros por IP por minuto (em memória, sem gravar no banco).
+  const minute = Math.floor(Date.now() / 60_000);
+  if (hitWindow.minute !== minute) { hitWindow.minute = minute; hitWindow.ips.clear(); }
+  const ip = clientIp(request);
+  const n = (hitWindow.ips.get(ip) || 0) + 1;
+  hitWindow.ips.set(ip, n);
+  if (n > 60) return json({ ok: true });
+  await env.DB.prepare(
+    `INSERT INTO store_daily (tenant_id, day, ${col}) VALUES (?, ?, 1)
+     ON CONFLICT (tenant_id, day) DO UPDATE SET ${col} = ${col} + 1`,
+  ).bind(id, dayKey()).run();
+  return json({ ok: true });
+}
+
+async function loadSeries(env, ids, days) {
+  const list = lastDays(days);
+  if (!ids.length) return { list, byStore: new Map() };
+  const marks = ids.map(() => '?').join(',');
+  const { results } = await env.DB.prepare(
+    `SELECT tenant_id, day, views, clicks, orders FROM store_daily WHERE tenant_id IN (${marks}) AND day >= ?`,
+  ).bind(...ids, list[0]).all();
+  const byStore = new Map();
+  for (const r of results || []) {
+    if (!byStore.has(r.tenant_id)) byStore.set(r.tenant_id, new Map());
+    byStore.get(r.tenant_id).set(r.day, r);
+  }
+  return { list, byStore };
+}
+
+function seriesFor(list, map) {
+  return list.map((day) => {
+    const r = (map && map.get(day)) || {};
+    return { day, views: Number(r.views || 0), clicks: Number(r.clicks || 0), orders: Number(r.orders || 0) };
+  });
+}
+
+const sumOf = (series, k) => series.reduce((a, r) => a + r[k], 0);
+
+// Números da loja aberta: série do período + comparação com o período anterior.
+async function handleStats(request, env, tenant) {
+  const days = Number(new URL(request.url).searchParams.get('days')) === 30 ? 30 : 7;
+  const { list, byStore } = await loadSeries(env, [tenant.id], days * 2);
+  const all = seriesFor(list, byStore.get(tenant.id));
+  const prev = all.slice(0, days);
+  const series = all.slice(days);
+  const counts = await env.DB.prepare(
+    'SELECT COUNT(*) AS total, SUM(CASE WHEN is_visible = 1 THEN 1 ELSE 0 END) AS visible FROM products WHERE tenant_id = ?',
+  ).bind(tenant.id).first();
+  const totals = { views: sumOf(series, 'views'), clicks: sumOf(series, 'clicks'), orders: sumOf(series, 'orders') };
+  const before = { views: sumOf(prev, 'views'), clicks: sumOf(prev, 'clicks'), orders: sumOf(prev, 'orders') };
+  return json({
+    days,
+    series,
+    totals,
+    previous: before,
+    products: { total: Number(counts.total || 0), visible: Number(counts.visible || 0) },
+    views_all_time: Number(tenant.views || 0),
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /* Pagamentos: Mercado Pago (Pix no painel ou cartão no checkout)     */
 /* ------------------------------------------------------------------ */
@@ -2568,6 +2670,7 @@ async function routeApi(request, env, path) {
   await ensureSchema(env);
   if (path === '/api/config' && method === 'GET') return handleConfig(request, env);
   if ((m = path.match(/^\/api\/store\/([^/]+)$/)) && method === 'GET') return handleStore(request, env, decodeURIComponent(m[1]));
+  if ((m = path.match(/^\/api\/store\/([^/]+)\/hit$/)) && method === 'POST') return handleStoreHit(request, env, decodeURIComponent(m[1]));
   if ((m = path.match(/^\/api\/photo\/([psc])\/([^/]+)$/)) && method === 'GET') return handlePhoto(env, m[1], decodeURIComponent(m[2]).toLowerCase());
   if ((m = path.match(/^\/api\/images\/(.+)$/)) && method === 'GET') return handleImage(env, decodeURIComponent(m[1]));
   if (path === '/api/auth/login' && method === 'POST') return handleLogin(request, env);
@@ -2587,6 +2690,7 @@ async function routeApi(request, env, path) {
     }
     const tenant = await requireStore(request, env, account);
     if (path === '/api/me' && method === 'GET') return handleMe(request, env, tenant);
+    if (path === '/api/me/stats' && method === 'GET') return handleStats(request, env, tenant);
     if (path === '/api/me/lookup' && method === 'POST') return handleLookup(request, env, tenant);
     if (path === '/api/me/profile' && method === 'PUT') return handleProfile(request, env, tenant);
     if (path === '/api/me/settings' && method === 'PUT') return handleSettings(request, env, tenant);

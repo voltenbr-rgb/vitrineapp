@@ -63,6 +63,41 @@
     .mode-pick small { color: #7d8494; font-size: 12.5px; }
     .mode-pick input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
     .mode-pick input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+    /* Desempenho (gráfico) */
+    .perf { --neon: #39ff88; --neon-2: #00e676; --sky: #38bdf8; position: relative; overflow: hidden; border-radius: 22px; padding: 16px 16px 12px; margin: 0 0 14px; color: #e8eefc;
+      background: radial-gradient(120% 90% at 100% 0%, rgba(56, 189, 248, .18), transparent 55%), radial-gradient(90% 80% at 0% 100%, rgba(57, 255, 136, .14), transparent 60%), #0b1020;
+      box-shadow: 0 14px 34px rgba(11, 16, 32, .28); }
+    .perf-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+    .perf-head strong { font-size: 15px; letter-spacing: .01em; }
+    .perf-head small { display: block; font-size: 11.5px; color: #8a96b3; font-weight: 600; }
+    .perf-range { display: flex; background: rgba(255,255,255,.07); border-radius: 999px; padding: 3px; }
+    .perf-range button { border: 0; background: none; color: #9aa6c3; font: inherit; font-size: 12px; font-weight: 800; padding: 5px 11px; border-radius: 999px; cursor: pointer; }
+    .perf-range button[aria-pressed="true"] { background: var(--neon); color: #05140b; box-shadow: 0 0 14px rgba(57,255,136,.55); }
+    .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+    .kpi { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.07); border-radius: 14px; padding: 9px 7px 8px; min-width: 0; }
+    .kpi span { display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: #9aa6c3; white-space: nowrap; }
+    .kpi span i { width: 6px; height: 6px; border-radius: 2px; flex-shrink: 0; }
+    .kpi b { display: block; font-size: 20px; font-weight: 900; margin-top: 3px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .kpi em { font-style: normal; font-size: 10.5px; font-weight: 800; }
+    .kpi em.up { color: var(--neon); } .kpi em.down { color: #fb7185; } .kpi em.flat { color: #8a96b3; }
+    .chart-wrap { position: relative; }
+    .chart-wrap svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .chart-wrap .bar { transition: opacity .2s; cursor: pointer; }
+    .chart-legend { display: flex; gap: 14px; justify-content: center; font-size: 11px; font-weight: 700; color: #9aa6c3; margin-top: 4px; }
+    .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .chart-legend i { width: 10px; height: 10px; border-radius: 3px; }
+    .chart-tip { position: absolute; top: -6px; transform: translate(-50%, -100%); background: #fff; color: #0b1020; font-size: 11.5px; font-weight: 700; padding: 6px 9px; border-radius: 10px; white-space: nowrap; pointer-events: none; box-shadow: 0 8px 20px rgba(0,0,0,.35); }
+    .chart-tip b { color: #059669; } .chart-tip u { text-decoration: none; color: #0284c7; }
+    .perf-empty { position: absolute; inset: 22% 8% auto; text-align: center; font-size: 12.5px; font-weight: 700; color: #c7d2ee; background: rgba(11,16,32,.75); border-radius: 12px; padding: 8px 10px; }
+    .perf-skel { height: 230px; border-radius: 14px; background: linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,.09), rgba(255,255,255,.04)); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+    @media (max-width: 380px) { .kpi b { font-size: 17px; } .kpis { gap: 6px; } .kpi span { font-size: 10.5px; } .kpi span i { display: none; } }
+    /* Mini resumo em Minhas lojas */
+    .mini-perf { display: flex; align-items: flex-end; gap: 3px; height: 30px; padding: 0 2px; }
+    .mini-perf i { width: 6px; border-radius: 2px 2px 1px 1px; background: linear-gradient(180deg, #39ff88, #00c853); box-shadow: 0 0 6px rgba(57,255,136,.45); min-height: 3px; }
+    .mini-perf i.zero { background: #e5e7eb; box-shadow: none; }
+    .store-pick .wk { display: block; font-size: 11.5px; font-weight: 700; color: #059669; margin-top: 1px; }
+    .store-pick .wk u { text-decoration: none; color: #0284c7; }
     /* Editor da capa */
     .crop-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: #111; touch-action: none; cursor: grab; user-select: none; }
     .crop-frame:active { cursor: grabbing; }
@@ -1167,7 +1202,9 @@
         const img = safeImg(st.avatar_url);
         return `<button type="button" class="store-pick" data-act="open-store" data-id="${esc(st.id)}">
           <span class="sav" style="background:${colors(st.theme_color)}">${img ? `<img src="${esc(img)}" alt="">` : esc(initials(st.store_name))}</span>
-          <span class="sinfo"><strong>${esc(st.store_name)}${st.paused ? ' <span class="plan-tag gold">⏸ Pausada</span>' : ''}</strong><small>/s/${esc(st.id)} · ${st.product_count} ${st.product_count === 1 ? 'produto' : 'produtos'} · ${st.views} visitas</small></span>
+          <span class="sinfo"><strong>${esc(st.store_name)}${st.paused ? ' <span class="plan-tag gold">⏸ Pausada</span>' : ''}</strong><small>/s/${esc(st.id)} · ${st.product_count} ${st.product_count === 1 ? 'produto' : 'produtos'}</small>
+            <span class="wk">7 dias: ${nfmt(st.week_views)} visitas · <u>${nfmt(st.week_clicks)} cliques</u>${st.week_orders ? ` · ${nfmt(st.week_orders)} pedidos` : ''}</span></span>
+          ${miniPerf(st.week)}
           <span class="go">Abrir ›</span></button>`;
       }).join('');
       const upsell = !canAdd && p.id === 'basic' && !isExpired()
@@ -1341,7 +1378,127 @@
         ${payBtns || '<br>Fale com o administrador da Vitrine para assinar.'}</div></div>`;
     }
 
-    function header() {
+
+    /* ---------------- Desempenho: gráfico da loja ---------------- */
+    // Barras = visitas (verde neon); linha = cliques em comprar/adicionar (azul).
+    state.perfDays = Number(ls.get('vitrine:perf-days')) === 30 ? 30 : 7;
+    const fmtDay = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+    const nfmt = (n) => Number(n || 0).toLocaleString('pt-BR');
+    function trend(now, before) {
+      if (!before && !now) return '<em class="flat">—</em>';
+      if (!before) return '<em class="up">novo</em>';
+      const pct = Math.round(((now - before) / before) * 100);
+      if (pct === 0) return '<em class="flat">= 0%</em>';
+      return `<em class="${pct > 0 ? 'up' : 'down'}">${pct > 0 ? '▲' : '▼'} ${Math.abs(pct)}%</em>`;
+    }
+
+    function perfCard() {
+      return `<section class="perf" aria-label="Desempenho da loja" id="perfCard">${perfInner()}</section>`;
+    }
+
+    function perfInner() {
+      const st = state.stats && state.stats.store === state.tenant.id && state.stats.days === state.perfDays ? state.stats.data : null;
+      const head = `<div class="perf-head"><div><strong>📊 Desempenho</strong><small>últimos ${state.perfDays} dias</small></div>
+        <div class="perf-range" role="group" aria-label="Período">
+          <button type="button" data-perf="7" aria-pressed="${state.perfDays === 7}">7 dias</button>
+          <button type="button" data-perf="30" aria-pressed="${state.perfDays === 30}">30 dias</button></div></div>`;
+      if (!st) return `${head}<div class="perf-skel"></div>`;
+      const t = st.totals, b = st.previous;
+      const kpis = `<div class="kpis">
+        <div class="kpi"><span><i style="background:#39ff88"></i>Visitas</span><b>${nfmt(t.views)}</b>${trend(t.views, b.views)}</div>
+        <div class="kpi"><span><i style="background:#38bdf8"></i>Cliques</span><b>${nfmt(t.clicks)}</b>${trend(t.clicks, b.clicks)}</div>
+        <div class="kpi"><span><i style="background:#25d366"></i>Pedidos</span><b>${nfmt(t.orders)}</b>${trend(t.orders, b.orders)}</div>
+        <div class="kpi"><span><i style="background:#a78bfa"></i>Produtos</span><b>${nfmt(st.products.visible)}</b><em class="flat">de ${nfmt(st.products.total)}</em></div>
+      </div>`;
+      return `${head}${kpis}<div class="chart-wrap" id="chartWrap">${chartSvg(st.series)}
+        ${t.views + t.clicks === 0 ? '<div class="perf-empty">Ainda sem visitas neste período.<br>Compartilhe seu link para começar 🚀</div>' : ''}</div>
+        <div class="chart-legend"><span><i style="background:#39ff88"></i>Visitas</span><span><i style="background:#38bdf8;border-radius:50%"></i>Cliques</span></div>`;
+    }
+
+    function chartSvg(series) {
+      const W = 340, H = 190, L = 26, R = 6, T = 14, B = 24;
+      const n = series.length;
+      const max = Math.max(4, ...series.map((r) => Math.max(r.views, r.clicks)));
+      const step = max <= 10 ? 2 : Math.ceil(max / 5 / 5) * 5;
+      const top = Math.ceil(max / step) * step;
+      const cw = (W - L - R) / n;
+      const bw = Math.max(3, Math.min(30, cw * (n > 10 ? 0.62 : 0.58)));
+      const y = (v) => T + (H - T - B) * (1 - v / top);
+      const peak = series.reduce((m, r, i) => (r.views > series[m].views ? i : m), 0);
+      let grid = '';
+      for (let v = 0; v <= top; v += step) {
+        grid += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(255,255,255,${v === 0 ? 0.25 : 0.07})" stroke-dasharray="${v === 0 ? '' : '3 4'}"/>
+          <text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end" font-size="9" fill="#6f7a96" font-weight="700">${v}</text>`;
+      }
+      const labelEvery = n > 10 ? 5 : 1;
+      let bars = '', labels = '';
+      series.forEach((r, i) => {
+        const cx = L + cw * i + cw / 2;
+        const h = Math.max(r.views ? 3 : 0, H - B - y(r.views));
+        const isPeak = i === peak && r.views > 0;
+        bars += `<rect class="bar" data-i="${i}" x="${cx - bw / 2}" y="${H - B - h}" width="${bw}" height="${h}" rx="${Math.min(5, bw / 3)}"
+          fill="${isPeak ? 'url(#gPeak)' : 'url(#gBar)'}" ${isPeak ? 'filter="url(#glow)"' : ''}/>
+          <rect class="bar" data-i="${i}" x="${L + cw * i}" y="${T}" width="${cw}" height="${H - B - T}" fill="transparent"/>`;
+        if (i % labelEvery === 0 || i === n - 1) {
+          labels += `<text x="${cx}" y="${H - 7}" text-anchor="middle" font-size="9" font-weight="800" fill="${isPeak ? '#39ff88' : '#7d88a6'}">${fmtDay(r.day)}</text>`;
+        }
+      });
+      const pts = series.map((r, i) => [L + cw * i + cw / 2, y(r.clicks)]);
+      const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+      const dots = n <= 10 ? pts.map(([px, py]) => `<rect x="${px - 3.5}" y="${py - 3.5}" width="7" height="7" rx="1.5" fill="#0b1020" stroke="#38bdf8" stroke-width="2"/>`).join('') : '';
+      return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de visitas e cliques por dia">
+        <defs>
+          <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="rgba(57,255,136,.22)"/><line x1="0" y1="0" x2="0" y2="6" stroke="rgba(57,255,136,.55)" stroke-width="2.2"/></pattern>
+          <linearGradient id="gBar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#39ff88" stop-opacity=".95"/><stop offset="1" stop-color="#00c853" stop-opacity=".35"/></linearGradient>
+          <linearGradient id="gPeak" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b6ffd3"/><stop offset=".35" stop-color="#39ff88"/><stop offset="1" stop-color="#00e676"/></linearGradient>
+          <linearGradient id="gLine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#16a6e0"/></linearGradient>
+          <filter id="glow" x="-60%" y="-30%" width="220%" height="160%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="glowLine" x="-10%" y="-30%" width="120%" height="160%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        ${grid}${bars}
+        <path d="${line}" fill="none" stroke="url(#gLine)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" filter="url(#glowLine)"/>
+        ${dots}${labels}
+      </svg>`;
+    }
+
+    async function loadStats() {
+      const id = state.tenant && state.tenant.id;
+      const days = state.perfDays;
+      if (!id) return;
+      try {
+        const data = await api(`/api/me/stats?days=${days}`);
+        if (!state.tenant || state.tenant.id !== id) return;
+        state.stats = { store: id, days, data };
+        const card = $('#perfCard');
+        if (card) card.innerHTML = perfInner();
+      } catch { /* o resto do painel continua */ }
+    }
+
+    function showChartTip(i) {
+      const st = state.stats && state.stats.data;
+      const wrap = $('#chartWrap');
+      if (!st || !wrap) return;
+      const r = st.series[i];
+      const svg = wrap.querySelector('svg');
+      const rect = svg.getBoundingClientRect();
+      const n = st.series.length;
+      const cx = (26 + ((340 - 32) / n) * i + ((340 - 32) / n) / 2) * (rect.width / 340);
+      let tip = wrap.querySelector('.chart-tip');
+      if (!tip) { tip = document.createElement('div'); tip.className = 'chart-tip'; wrap.appendChild(tip); }
+      tip.innerHTML = `${fmtDay(r.day)} · <b>${nfmt(r.views)} visitas</b> · <u>${nfmt(r.clicks)} cliques</u>${r.orders ? ` · ${nfmt(r.orders)} pedidos` : ''}`;
+      tip.style.left = `${Math.min(Math.max(cx, 90), rect.width - 90)}px`;
+      wrap.querySelectorAll('rect.bar[fill^="url"]').forEach((b) => { b.style.opacity = Number(b.dataset.i) === i ? '1' : '.45'; });
+      clearTimeout(showChartTip.t);
+      showChartTip.t = setTimeout(() => { tip.remove(); wrap.querySelectorAll('rect.bar').forEach((b) => { b.style.opacity = ''; }); }, 2600);
+    }
+
+    function miniPerf(week) {
+      const w = week || [];
+      const max = Math.max(1, ...w.map((r) => r.views));
+      return `<span class="mini-perf" aria-hidden="true">${w.map((r) => `<i class="${r.views ? '' : 'zero'}" style="height:${Math.max(3, Math.round((r.views / max) * 30))}px"></i>`).join('')}</span>`;
+    }
+
+    function header(withPerf = false) {
       const t = state.tenant;
       const avatar = safeImg(t.avatar_url);
       const statusLabel = { trial: 'Teste grátis', active: 'Ativo', expired: 'Expirado' }[t.status] || t.status;
@@ -1353,6 +1510,7 @@
           <div class="who"><small>Olá, ${esc(String((state.account && state.account.owner_name) || t.owner_name || '').split(' ')[0] || 'lojista')} 👋</small><strong>${esc(t.store_name)}</strong></div>
           <span class="pill ${esc(t.status)}"><span class="dot"></span>${esc(statusLabel)}</span>
         </header>
+        ${withPerf ? perfCard() : ''}
         <section class="share" aria-label="Compartilhar meu link">
           <div class="share-head"><strong>📣 Compartilhar meu link</strong>
             <a href="${esc(state.storeUrl)}" target="_blank" rel="noopener">${I.eye}Ver vitrine</a></div>
@@ -1389,13 +1547,7 @@
     function renderProductsTab() {
       const q = state.query.trim().toLowerCase();
       const list = state.products.filter((p) => !q || `${p.title} ${p.description}`.toLowerCase().includes(q));
-      const count = (k) => state.products.filter((p) => p.platform === k).length;
-      return `${header()}
-        <div class="stats">
-          <div class="stat"><b>${state.products.filter((p) => Number(p.is_visible) !== 0).length}</b><span>Na vitrine</span></div>
-          <div class="stat"><b>${count('mercadolivre') + count('shopee')}</b><span>Afiliados</span></div>
-          <div class="stat"><b>${count('proprio')}</b><span>Próprios</span></div>
-        </div>
+      return `${header(true)}
         ${offerCard()}
         <div class="section-title"><h2>Seus produtos</h2>
           <button type="button" class="btn btn-sm btn-primary" data-tab="new" ${isExpired() ? 'disabled' : ''}>+ Novo</button></div>
@@ -1640,7 +1792,11 @@
         const current = b.dataset.tab === state.tab || (b.dataset.tab === 'new' && state.tab === 'form');
         b.setAttribute('aria-current', current ? 'page' : 'false');
       });
-      if (state.tab === 'products') main.innerHTML = renderProductsTab();
+      if (state.tab === 'products') {
+        main.innerHTML = renderProductsTab();
+        const fresh = state.stats && state.stats.store === state.tenant.id && state.stats.days === state.perfDays && Date.now() - (state.stats.at || 0) < 60_000;
+        if (!fresh) loadStats().then(() => { if (state.stats) state.stats.at = Date.now(); });
+      }
       else if (state.tab === 'form') { main.innerHTML = renderForm(); updatePlatformHints(); }
       else if (state.tab === 'settings') main.innerHTML = renderSettings();
       else if (state.tab === 'account') main.innerHTML = renderAccount();
@@ -1987,6 +2143,15 @@
 
     /* ---------------- Eventos ---------------- */
     document.addEventListener('click', async (e) => {
+      const perf = e.target.closest('[data-perf]');
+      if (perf) {
+        state.perfDays = Number(perf.dataset.perf) === 30 ? 30 : 7;
+        ls.set('vitrine:perf-days', String(state.perfDays));
+        $('#perfCard').innerHTML = perfInner();
+        return loadStats();
+      }
+      const bar = e.target.closest('#chartWrap rect.bar');
+      if (bar) return showChartTip(Number(bar.dataset.i));
       const cat = e.target.closest('[data-cat]');
       if (cat) {
         const input = $('[name="category"]');

@@ -718,11 +718,22 @@
     }
 
     function checkout() {
+      hit('order');
       const name = ($('#buyerName') || {}).value || '';
       const note = ($('#buyerNote') || {}).value || '';
       storage.set('vitrine:buyer', { name });
       window.open(waLink(state.store.whatsapp, orderMessage(cartLines(), { name, note })), '_blank', 'noopener');
       toast('Pedido montado! É só enviar no WhatsApp ✅');
+    }
+
+    // Métrica do painel: clique em comprar/adicionar ou pedido no WhatsApp (não atrasa nada para o cliente).
+    function hit(type) {
+      try {
+        const url = `${API}/api/store/${encodeURIComponent(state.slug)}/hit`;
+        const body = JSON.stringify({ type });
+        if (navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+        else fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true });
+      } catch { /* métrica não é crítica */ }
     }
 
     function buyButton(p, extraClass = '') {
@@ -993,8 +1004,10 @@
         return;
       }
       if (t.matches('[data-close]')) return closeSheet();
+      if (t.matches('a.btn-buy')) hit(t.classList.contains('wa') ? 'order' : 'click');
       if (t.dataset.open) return openProduct(Number(t.dataset.open));
       if (t.dataset.add) {
+        hit('click');
         const id = Number(t.dataset.add);
         addToCart(id, 1);
         toast('Adicionado ao carrinho 🛒');
@@ -1002,6 +1015,7 @@
         if (overlay.classList.contains('open')) openProduct(id);
         return;
       }
+      if (t.dataset.order) hit('order');
       if (t.dataset.order) return orderNow(state.products.find((p) => p.id === Number(t.dataset.order)));
       if (t.dataset.qty) { addToCart(Number(t.dataset.qty), Number(t.dataset.d)); renderProducts(); return openCart(); }
       if (t.dataset.cart === 'open') return openCart();
