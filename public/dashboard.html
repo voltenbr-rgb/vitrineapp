@@ -1241,6 +1241,7 @@
       return `<div class="stores-head"><div><h1>Minhas lojas</h1>
           <p>${esc(planName(a))} · ${Math.min(state.stores.length, p.stores)} de ${p.stores} ${p.stores === 1 ? 'loja' : 'lojas'}${state.stores.length > p.stores ? ` · ${state.stores.length - p.stores} pausada${state.stores.length - p.stores > 1 ? 's' : ''}` : ''}</p></div>
           <div style="display:flex;gap:8px;align-items:center;margin-left:auto">${installBtn()}<button type="button" class="btn btn-sm btn-ghost" data-act="logout">${I.out}Sair</button></div></div>
+        ${tempPassNotice()}
         ${planBanner()}
         ${learnBlock()}
         <div style="margin-top:14px">${cards}</div>
@@ -1360,6 +1361,12 @@
     });
 
     /* ---------------- Renderização ---------------- */
+    function tempPassNotice() {
+      if (!state.account || !state.account.temp_password) return '';
+      return `<div class="trial-mini" style="background:#eef8fe;border-color:#cfeafb;color:#0b5f86"><span>🔑 Você está com uma senha provisória do suporte. Crie a sua quando puder.</span>
+        <button type="button" class="btn btn-sm btn-primary" data-act="go-pass">Criar senha</button></div>`;
+    }
+
     function planBanner() {
       const a = state.account || state.tenant;
       if (state.view !== 'stores' && state.tenant && state.tenant.paused && a.status !== 'expired') {
@@ -1608,6 +1615,7 @@
             <button type="button" data-act="share-msg">💬<span class="lbl">Mensagem<small>pronta p/ direct</small></span></button>
           </div>
         </section>
+        ${tempPassNotice()}
         ${planBanner()}`;
     }
 
@@ -1865,7 +1873,9 @@
           ${p.id === 'basic' && t.status !== 'trial' ? `<button type="button" class="btn btn-soft btn-block" style="margin-top:10px" data-act="upgrade">⭐ Mudar para o Completo</button>` : ''}
         </div>
         <form class="card" id="passForm" novalidate>
-          <h2>Trocar senha</h2><p class="sub">Ao trocar, os outros aparelhos conectados saem da conta.</p>
+          <h2>${t.temp_password ? '🔑 Crie sua senha' : 'Trocar senha'}</h2><p class="sub">${t.temp_password
+            ? 'Você está usando a senha provisória que o suporte criou. Ela continua valendo até você criar a sua aqui. Em "Senha atual", digite a provisória.'
+            : 'Ao trocar, os outros aparelhos conectados saem da conta.'}</p>
           <label class="field"><span>Senha atual</span><input class="input" type="password" name="current_password" autocomplete="current-password" required></label>
           <label class="field"><span>Nova senha</span><input class="input" type="password" name="new_password" autocomplete="new-password" minlength="4" required placeholder="Mínimo 4 dígitos" inputmode="numeric"></label>
           <button type="submit" class="btn btn-primary btn-block" id="savePass">Atualizar senha</button>
@@ -2001,6 +2011,7 @@
         state.token = data.token;
         ls.set(TOKEN_KEY, data.token);
         form.reset();
+        if (state.account && state.account.temp_password) { state.account.temp_password = false; render(); }
         toast('Senha atualizada ✓');
       } catch (err) { handleError(err); }
       setBusy(btn, false);
@@ -2286,6 +2297,12 @@
       if (act === 'pay') return openPay(t.dataset.plan);
       if (act === 'plans') return openPay();
       if (act === 'install') return installApp();
+      if (act === 'go-pass') {
+        if (state.view === 'stores') { const first = state.stores[0]; if (first) await openStore(first.id); }
+        go('account');
+        setTimeout(() => { const f = $('#passForm'); if (f) { f.scrollIntoView({ behavior: 'smooth', block: 'center' }); f.current_password.focus(); } }, 250);
+        return;
+      }
       if (act === 'trial-hide') { ls.set(`vitrine:trial-hide:${(state.account || {}).id || ''}`, String(Date.now())); return render(); }
       if (act === 'tpl-edit') return openTemplateEditor();
     });

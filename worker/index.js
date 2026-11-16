@@ -440,6 +440,12 @@ function ensureSchema(env) {
         )`,
       ).run();
       await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_accounts_whatsapp ON accounts (whatsapp)').run();
+      // Senha provisória: criada pelo Master no suporte; vale até a pessoa criar a dela.
+      const acols = await columns('accounts');
+      if (!acols.has('temp_password')) {
+        try { await env.DB.prepare('ALTER TABLE accounts ADD COLUMN temp_password INTEGER NOT NULL DEFAULT 0').run(); }
+        catch (err) { if (!/duplicate column/i.test(String(err && err.message))) throw err; }
+      }
       // Pagamentos do Mercado Pago (Pix ou cartão). "applied" garante que cada pagamento ativa o plano uma vez só.
       await env.DB.prepare(
         `CREATE TABLE IF NOT EXISTS payments (
@@ -1442,6 +1448,7 @@ function accountPrivate(env, a) {
     last_seen_at: a.last_seen_at || null,
     last_login_at: a.last_login_at || null,
     online: !!a.last_seen_at && Date.now() - Date.parse(a.last_seen_at) < ONLINE_WINDOW_MS,
+    temp_password: Number(a.temp_password || 0) === 1,
     plan_info: planInfo(env, a),
   };
 }
@@ -2025,7 +2032,7 @@ async function handlePassword(request, env, tenant) {
   const hash = await hashPassword(password(body.new_password, 'Nova senha'));
   const ts = nowIso();
   await env.DB.batch([
-    env.DB.prepare('UPDATE accounts SET password_hash = ?, updated_at = ? WHERE id = ?').bind(hash, ts, account.id),
+    env.DB.prepare('UPDATE accounts SET password_hash = ?, temp_password = 0, updated_at = ? WHERE id = ?').bind(hash, ts, account.id),
     env.DB.prepare('UPDATE tenants SET password_hash = ?, updated_at = ? WHERE account_id = ?').bind(hash, ts, account.id),
   ]);
   return json({ ok: true, token: await signToken(env, { ...account, password_hash: hash }) });
@@ -2380,7 +2387,7 @@ async function handleAdminPatch(request, env, rawId) {
     case 'reset_password': {
       const hash = await hashPassword(password(body.password, 'Nova senha'));
       await env.DB.batch([
-        env.DB.prepare('UPDATE accounts SET password_hash = ?, updated_at = ? WHERE id = ?').bind(hash, ts, id),
+        env.DB.prepare('UPDATE accounts SET password_hash = ?, temp_password = 1, updated_at = ? WHERE id = ?').bind(hash, ts, id),
         env.DB.prepare('UPDATE tenants SET password_hash = ? WHERE account_id = ?').bind(hash, id),
         env.DB.prepare('DELETE FROM login_attempts WHERE key = ? OR key LIKE ?').bind(`a:${id}`, `a:${id}:%`),
       ]);
