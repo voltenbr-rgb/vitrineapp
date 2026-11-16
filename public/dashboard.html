@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#16a6e0">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Vitrine App">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Painel da Loja | Vitrine App</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2316a6e0'/%3E%3Cpath d='M18 24h28l-3 22H21z' fill='white'/%3E%3Cpath d='M25 24a7 7 0 0 1 14 0' stroke='white' stroke-width='4' fill='none'/%3E%3C/svg%3E">
   <script src="/config.js"></script>
@@ -63,35 +69,42 @@
     .mode-pick small { color: #7d8494; font-size: 12.5px; }
     .mode-pick input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
     .mode-pick input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); }
-    /* Desempenho (gráfico) */
-    .perf { --neon: #39ff88; --neon-2: #00e676; --sky: #38bdf8; position: relative; overflow: hidden; border-radius: 22px; padding: 16px 16px 12px; margin: 0 0 14px; color: #e8eefc;
-      background: radial-gradient(120% 90% at 100% 0%, rgba(56, 189, 248, .18), transparent 55%), radial-gradient(90% 80% at 0% 100%, rgba(57, 255, 136, .14), transparent 60%), #0b1020;
-      box-shadow: 0 14px 34px rgba(11, 16, 32, .28); }
+    /* Desempenho (gráfico) — tom claro, combinando com a página */
+    .perf { position: relative; overflow: hidden; border-radius: 22px; padding: 16px 16px 12px; margin: 0 0 14px; color: #0f172a;
+      background: linear-gradient(160deg, #eef8fe 0%, #e4f4fd 55%, #ecfdf3 100%); border: 1px solid #cfeafb;
+      box-shadow: 0 6px 20px rgba(22, 166, 224, .10); }
     .perf-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
-    .perf-head strong { font-size: 15px; letter-spacing: .01em; }
-    .perf-head small { display: block; font-size: 11.5px; color: #8a96b3; font-weight: 600; }
-    .perf-range { display: flex; background: rgba(255,255,255,.07); border-radius: 999px; padding: 3px; }
-    .perf-range button { border: 0; background: none; color: #9aa6c3; font: inherit; font-size: 12px; font-weight: 800; padding: 5px 11px; border-radius: 999px; cursor: pointer; }
-    .perf-range button[aria-pressed="true"] { background: var(--neon); color: #05140b; box-shadow: 0 0 14px rgba(57,255,136,.55); }
+    .perf-head strong { font-size: 15px; color: #0f172a; }
+    .perf-head small { display: block; font-size: 11.5px; color: #5b6b82; font-weight: 600; }
+    .perf-range { display: flex; background: #fff; border: 1px solid #d6ebf7; border-radius: 999px; padding: 3px; }
+    .perf-range button { border: 0; background: none; color: #5b6b82; font: inherit; font-size: 12px; font-weight: 800; padding: 5px 11px; border-radius: 999px; cursor: pointer; }
+    .perf-range button[aria-pressed="true"] { background: #16a34a; color: #fff; box-shadow: 0 4px 12px rgba(22, 163, 74, .35); }
     .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
-    .kpi { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.07); border-radius: 14px; padding: 9px 7px 8px; min-width: 0; }
-    .kpi span { display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: #9aa6c3; white-space: nowrap; }
+    .kpi { background: #fff; border: 1px solid #e2eef6; border-radius: 14px; padding: 9px 7px 8px; min-width: 0; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+    .kpi span { display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: #5b6b82; white-space: nowrap; }
     .kpi span i { width: 6px; height: 6px; border-radius: 2px; flex-shrink: 0; }
-    .kpi b { display: block; font-size: 20px; font-weight: 900; margin-top: 3px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .kpi b { display: block; font-size: 20px; font-weight: 900; margin-top: 3px; line-height: 1.1; color: #0f172a; font-variant-numeric: tabular-nums; }
     .kpi em { font-style: normal; font-size: 10.5px; font-weight: 800; }
-    .kpi em.up { color: var(--neon); } .kpi em.down { color: #fb7185; } .kpi em.flat { color: #8a96b3; }
-    .chart-wrap { position: relative; }
+    .kpi em.up { color: #16a34a; } .kpi em.down { color: #e11d48; } .kpi em.flat { color: #94a3b8; }
+    .chart-wrap { position: relative; background: #fff; border: 1px solid #e2eef6; border-radius: 16px; padding: 10px 8px 4px; }
     .chart-wrap svg { display: block; width: 100%; height: auto; overflow: visible; }
     .chart-wrap .bar { transition: opacity .2s; cursor: pointer; }
-    .chart-legend { display: flex; gap: 14px; justify-content: center; font-size: 11px; font-weight: 700; color: #9aa6c3; margin-top: 4px; }
+    .chart-legend { display: flex; gap: 14px; justify-content: center; font-size: 11px; font-weight: 700; color: #5b6b82; margin-top: 8px; }
     .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
     .chart-legend i { width: 10px; height: 10px; border-radius: 3px; }
-    .chart-tip { position: absolute; top: -6px; transform: translate(-50%, -100%); background: #fff; color: #0b1020; font-size: 11.5px; font-weight: 700; padding: 6px 9px; border-radius: 10px; white-space: nowrap; pointer-events: none; box-shadow: 0 8px 20px rgba(0,0,0,.35); }
-    .chart-tip b { color: #059669; } .chart-tip u { text-decoration: none; color: #0284c7; }
-    .perf-empty { position: absolute; inset: 22% 8% auto; text-align: center; font-size: 12.5px; font-weight: 700; color: #c7d2ee; background: rgba(11,16,32,.75); border-radius: 12px; padding: 8px 10px; }
-    .perf-skel { height: 230px; border-radius: 14px; background: linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,.09), rgba(255,255,255,.04)); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+    .chart-tip { position: absolute; top: 4px; transform: translate(-50%, -100%); background: #0f172a; color: #fff; font-size: 11.5px; font-weight: 700; padding: 6px 9px; border-radius: 10px; white-space: nowrap; pointer-events: none; box-shadow: 0 8px 20px rgba(15,23,42,.25); }
+    .chart-tip b { color: #4ade80; } .chart-tip u { text-decoration: none; color: #7dd3fc; }
+    .perf-empty { position: absolute; inset: 24% 8% auto; text-align: center; font-size: 12.5px; font-weight: 700; color: #334155; background: rgba(255,255,255,.92); border: 1px solid #e2eef6; border-radius: 12px; padding: 8px 10px; }
+    .perf-skel { height: 230px; border-radius: 14px; background: linear-gradient(90deg, #fff, #eef6fb, #fff); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
     @keyframes shimmer { to { background-position: -200% 0; } }
     @media (max-width: 380px) { .kpi b { font-size: 17px; } .kpis { gap: 6px; } .kpi span { font-size: 10.5px; } .kpi span i { display: none; } }
+    /* Instalar app */
+    .install-btn { display: inline-flex; align-items: center; gap: 6px; border: 0; cursor: pointer; font: inherit; font-weight: 800; font-size: 12.5px; color: #fff; background: linear-gradient(135deg, #16a6e0, #6d5dfc); border-radius: 999px; padding: 7px 13px 7px 10px; box-shadow: 0 6px 16px rgba(22, 166, 224, .35); }
+    .top-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; }
+    .top-row .back-stores { margin: 0; }
+    .ios-steps { display: grid; gap: 10px; margin: 6px 0 14px; padding: 0; list-style: none; counter-reset: s; }
+    .ios-steps li { counter-increment: s; display: flex; gap: 10px; align-items: flex-start; font-size: 14px; }
+    .ios-steps li::before { content: counter(s); flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-deep); font-weight: 800; display: grid; place-items: center; font-size: 13px; }
     /* Mini resumo em Minhas lojas */
     .mini-perf { display: flex; align-items: flex-end; gap: 3px; height: 30px; padding: 0 2px; }
     .mini-perf i { width: 6px; border-radius: 2px 2px 1px 1px; background: linear-gradient(180deg, #39ff88, #00c853); box-shadow: 0 0 6px rgba(57,255,136,.45); min-height: 3px; }
@@ -134,10 +147,10 @@
     .pay-ok { text-align: center; padding: 10px 0; }
     .pay-ok .big { font-size: 46px; }
     /* Minhas lojas */
-    .stores-head { display: flex; align-items: center; gap: 12px; margin: 6px 2px 14px; }
+    .stores-head { display: flex; align-items: flex-start; gap: 12px; margin: 6px 2px 14px; flex-wrap: wrap; }
     .stores-head h1 { margin: 0; font-size: 22px; }
     .stores-head p { margin: 2px 0 0; color: var(--muted, #6b7280); font-size: 13.5px; }
-    .stores-head .btn { margin-left: auto; }
+    .stores-head .btn { margin-left: 0; }
     .store-pick { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 2px solid transparent; background: var(--card, #fff); border-radius: 18px; padding: 14px; box-shadow: var(--shadow); cursor: pointer; font: inherit; color: inherit; }
     .store-pick + .store-pick { margin-top: 10px; }
     .store-pick:hover { border-color: var(--accent); }
@@ -1212,7 +1225,7 @@
             <button type="button" class="btn btn-sm btn-primary" data-act="upgrade">Quero o Completo</button></div>` : '';
       return `<div class="stores-head"><div><h1>Minhas lojas</h1>
           <p>${esc(planName(a))} · ${Math.min(state.stores.length, p.stores)} de ${p.stores} ${p.stores === 1 ? 'loja' : 'lojas'}${state.stores.length > p.stores ? ` · ${state.stores.length - p.stores} pausada${state.stores.length - p.stores > 1 ? 's' : ''}` : ''}</p></div>
-          <button type="button" class="btn btn-sm btn-ghost" data-act="logout">${I.out}Sair</button></div>
+          <div style="display:flex;gap:8px;align-items:center;margin-left:auto">${installBtn()}<button type="button" class="btn btn-sm btn-ghost" data-act="logout">${I.out}Sair</button></div></div>
         ${planBanner()}
         <div style="margin-top:14px">${cards}</div>
         ${canAdd ? `<button type="button" class="store-new" data-act="new-store">+ Nova loja</button>` : ''}
@@ -1379,6 +1392,49 @@
     }
 
 
+
+    /* ---------------- Instalar o painel como aplicativo (PWA) ---------------- */
+    let installEvent = null;
+    const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvent = e; refreshInstallButtons(); });
+    window.addEventListener('appinstalled', () => { installEvent = null; refreshInstallButtons(); toast('App instalado! Procure o ícone Vitrine App na sua tela inicial 🎉'); });
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js', { scope: '/dashboard' }).catch(() => {}); });
+    }
+    const installBtn = () => (isStandalone() ? '' : `<button type="button" class="install-btn" data-act="install">📲 Instalar app</button>`);
+    function refreshInstallButtons() {
+      document.querySelectorAll('[data-act="install"]').forEach((b) => { b.hidden = isStandalone(); });
+    }
+    async function installApp() {
+      if (installEvent) {
+        installEvent.prompt();
+        const { outcome } = await installEvent.userChoice.catch(() => ({}));
+        installEvent = null;
+        if (outcome === 'accepted') toast('Instalando... o ícone aparece na sua tela inicial 📲');
+        return;
+      }
+      const dlg = $('#dialog');
+      const ov = $('#dialogOverlay');
+      dlg.innerHTML = isIOS()
+        ? `<h3 id="dlgTitle">📲 Instalar no iPhone</h3>
+          <ol class="ios-steps">
+            <li><span>Abra este painel no <b>Safari</b>.</span></li>
+            <li><span>Toque no botão <b>Compartilhar</b> (o quadrado com a seta para cima ⬆️).</span></li>
+            <li><span>Escolha <b>Adicionar à Tela de Início</b> e toque em <b>Adicionar</b>.</span></li>
+          </ol>
+          <button type="button" class="btn btn-primary btn-block" data-i="ok">Entendi</button>`
+        : `<h3 id="dlgTitle">📲 Instalar o app</h3>
+          <ol class="ios-steps">
+            <li><span>Toque no menu do navegador <b>⋮</b> (canto de cima).</span></li>
+            <li><span>Escolha <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>.</span></li>
+            <li><span>Confirme. O ícone <b>Vitrine App</b> aparece junto dos seus apps.</span></li>
+          </ol>
+          <button type="button" class="btn btn-primary btn-block" data-i="ok">Entendi</button>`;
+      ov.classList.add('open');
+      dlg.querySelector('[data-i="ok"]').onclick = () => ov.classList.remove('open');
+    }
+
     /* ---------------- Desempenho: gráfico da loja ---------------- */
     // Barras = visitas (verde neon); linha = cliques em comprar/adicionar (azul).
     state.perfDays = Number(ls.get('vitrine:perf-days')) === 30 ? 30 : 7;
@@ -1405,14 +1461,14 @@
       if (!st) return `${head}<div class="perf-skel"></div>`;
       const t = st.totals, b = st.previous;
       const kpis = `<div class="kpis">
-        <div class="kpi"><span><i style="background:#39ff88"></i>Visitas</span><b>${nfmt(t.views)}</b>${trend(t.views, b.views)}</div>
-        <div class="kpi"><span><i style="background:#38bdf8"></i>Cliques</span><b>${nfmt(t.clicks)}</b>${trend(t.clicks, b.clicks)}</div>
+        <div class="kpi"><span><i style="background:#22c55e"></i>Visitas</span><b>${nfmt(t.views)}</b>${trend(t.views, b.views)}</div>
+        <div class="kpi"><span><i style="background:#0ea5e9"></i>Cliques</span><b>${nfmt(t.clicks)}</b>${trend(t.clicks, b.clicks)}</div>
         <div class="kpi"><span><i style="background:#25d366"></i>Pedidos</span><b>${nfmt(t.orders)}</b>${trend(t.orders, b.orders)}</div>
         <div class="kpi"><span><i style="background:#a78bfa"></i>Produtos</span><b>${nfmt(st.products.visible)}</b><em class="flat">de ${nfmt(st.products.total)}</em></div>
       </div>`;
       return `${head}${kpis}<div class="chart-wrap" id="chartWrap">${chartSvg(st.series)}
         ${t.views + t.clicks === 0 ? '<div class="perf-empty">Ainda sem visitas neste período.<br>Compartilhe seu link para começar 🚀</div>' : ''}</div>
-        <div class="chart-legend"><span><i style="background:#39ff88"></i>Visitas</span><span><i style="background:#38bdf8;border-radius:50%"></i>Cliques</span></div>`;
+        <div class="chart-legend"><span><i style="background:#22c55e"></i>Visitas</span><span><i style="background:#0ea5e9;border-radius:50%"></i>Cliques</span></div>`;
     }
 
     function chartSvg(series) {
@@ -1427,8 +1483,8 @@
       const peak = series.reduce((m, r, i) => (r.views > series[m].views ? i : m), 0);
       let grid = '';
       for (let v = 0; v <= top; v += step) {
-        grid += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(255,255,255,${v === 0 ? 0.25 : 0.07})" stroke-dasharray="${v === 0 ? '' : '3 4'}"/>
-          <text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end" font-size="9" fill="#6f7a96" font-weight="700">${v}</text>`;
+        grid += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(15,23,42,${v === 0 ? 0.22 : 0.07})" stroke-dasharray="${v === 0 ? '' : '3 4'}"/>
+          <text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end" font-size="9" fill="#64748b" font-weight="700">${v}</text>`;
       }
       const labelEvery = n > 10 ? 5 : 1;
       let bars = '', labels = '';
@@ -1440,23 +1496,23 @@
           fill="${isPeak ? 'url(#gPeak)' : 'url(#gBar)'}" ${isPeak ? 'filter="url(#glow)"' : ''}/>
           <rect class="bar" data-i="${i}" x="${L + cw * i}" y="${T}" width="${cw}" height="${H - B - T}" fill="transparent"/>`;
         if (i % labelEvery === 0 || i === n - 1) {
-          labels += `<text x="${cx}" y="${H - 7}" text-anchor="middle" font-size="9" font-weight="800" fill="${isPeak ? '#39ff88' : '#7d88a6'}">${fmtDay(r.day)}</text>`;
+          labels += `<text x="${cx}" y="${H - 7}" text-anchor="middle" font-size="9" font-weight="800" fill="${isPeak ? '#15803d' : '#64748b'}">${fmtDay(r.day)}</text>`;
         }
       });
       const pts = series.map((r, i) => [L + cw * i + cw / 2, y(r.clicks)]);
       const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
-      const dots = n <= 10 ? pts.map(([px, py]) => `<rect x="${px - 3.5}" y="${py - 3.5}" width="7" height="7" rx="1.5" fill="#0b1020" stroke="#38bdf8" stroke-width="2"/>`).join('') : '';
+      const dots = n <= 10 ? pts.map(([px, py]) => `<rect x="${px - 3.5}" y="${py - 3.5}" width="7" height="7" rx="1.5" fill="#fff" stroke="#0ea5e9" stroke-width="2"/>`).join('') : '';
       return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de visitas e cliques por dia">
         <defs>
           <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="rgba(57,255,136,.22)"/><line x1="0" y1="0" x2="0" y2="6" stroke="rgba(57,255,136,.55)" stroke-width="2.2"/></pattern>
-          <linearGradient id="gBar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#39ff88" stop-opacity=".95"/><stop offset="1" stop-color="#00c853" stop-opacity=".35"/></linearGradient>
-          <linearGradient id="gPeak" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b6ffd3"/><stop offset=".35" stop-color="#39ff88"/><stop offset="1" stop-color="#00e676"/></linearGradient>
-          <linearGradient id="gLine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#16a6e0"/></linearGradient>
-          <filter id="glow" x="-60%" y="-30%" width="220%" height="160%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <linearGradient id="gBar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34d77b"/><stop offset="1" stop-color="#a7f3c4"/></linearGradient>
+          <linearGradient id="gPeak" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00e676"/><stop offset="1" stop-color="#16a34a"/></linearGradient>
+          <linearGradient id="gLine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0ea5e9"/><stop offset="1" stop-color="#16a6e0"/></linearGradient>
+          <filter id="glow" x="-60%" y="-30%" width="220%" height="160%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
           <filter id="glowLine" x="-10%" y="-30%" width="120%" height="160%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
         </defs>
         ${grid}${bars}
-        <path d="${line}" fill="none" stroke="url(#gLine)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" filter="url(#glowLine)"/>
+        <path d="${line}" fill="none" stroke="url(#gLine)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
         ${dots}${labels}
       </svg>`;
     }
@@ -1485,7 +1541,7 @@
       const cx = (26 + ((340 - 32) / n) * i + ((340 - 32) / n) / 2) * (rect.width / 340);
       let tip = wrap.querySelector('.chart-tip');
       if (!tip) { tip = document.createElement('div'); tip.className = 'chart-tip'; wrap.appendChild(tip); }
-      tip.innerHTML = `${fmtDay(r.day)} · <b>${nfmt(r.views)} visitas</b> · <u>${nfmt(r.clicks)} cliques</u>${r.orders ? ` · ${nfmt(r.orders)} pedidos` : ''}`;
+      tip.innerHTML = `${fmtDay(r.day)} · <b>${nfmt(r.views)} visitas</b> · <u>${nfmt(r.clicks)} cliques</u>${r.orders ? ` · ${nfmt(r.orders)} ${r.orders === 1 ? 'pedido' : 'pedidos'}` : ''}`;
       tip.style.left = `${Math.min(Math.max(cx, 90), rect.width - 90)}px`;
       wrap.querySelectorAll('rect.bar[fill^="url"]').forEach((b) => { b.style.opacity = Number(b.dataset.i) === i ? '1' : '.45'; });
       clearTimeout(showChartTip.t);
@@ -1504,7 +1560,7 @@
       const statusLabel = { trial: 'Teste grátis', active: 'Ativo', expired: 'Expirado' }[t.status] || t.status;
       const showBack = plan().stores > 1 || state.stores.length > 1;
       return `
-        ${showBack ? `<button type="button" class="back-stores" data-act="stores">${I.back}Minhas lojas${state.stores.length > 1 ? ` (${state.stores.length})` : ''}</button>` : ''}
+        ${showBack || installBtn() ? `<div class="top-row">${showBack ? `<button type="button" class="back-stores" data-act="stores">${I.back}Minhas lojas${state.stores.length > 1 ? ` (${state.stores.length})` : ''}</button>` : '<span></span>'}${installBtn()}</div>` : ''}
         <header class="top">
           ${avatar ? `<img class="avatar" src="${esc(avatar)}" alt="">` : `<div class="avatar">${esc(initials(t.store_name))}</div>`}
           <div class="who"><small>Olá, ${esc(String((state.account && state.account.owner_name) || t.owner_name || '').split(' ')[0] || 'lojista')} 👋</small><strong>${esc(t.store_name)}</strong></div>
@@ -2196,6 +2252,7 @@
       if (act === 'upgrade') return openPay('complete');
       if (act === 'pay') return openPay(t.dataset.plan);
       if (act === 'plans') return openPay();
+      if (act === 'install') return installApp();
       if (act === 'trial-hide') { ls.set(`vitrine:trial-hide:${(state.account || {}).id || ''}`, String(Date.now())); return render(); }
       if (act === 'tpl-edit') return openTemplateEditor();
     });

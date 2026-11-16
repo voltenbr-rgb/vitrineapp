@@ -10,3 +10,14 @@
 /dashboard.html
   X-Frame-Options: DENY
   X-Robots-Tag: noindex
+
+/sw.js
+  Cache-Control: no-cache
+  Content-Type: application/javascript; charset=utf-8
+
+/manifest.webmanifest
+  Content-Type: application/manifest+json; charset=utf-8
+  Cache-Control: public, max-age=3600
+
+/icons/*
+  Cache-Control: public, max-age=604800
