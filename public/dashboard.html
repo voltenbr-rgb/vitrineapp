@@ -63,6 +63,20 @@
     .mode-pick small { color: #7d8494; font-size: 12.5px; }
     .mode-pick input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
     .mode-pick input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+    /* Editor da capa */
+    .crop-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: #111; touch-action: none; cursor: grab; user-select: none; }
+    .crop-frame:active { cursor: grabbing; }
+    .crop-frame img { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; pointer-events: none; }
+    .crop-frame::after { content: ""; position: absolute; inset: 0; border: 2px solid rgba(255,255,255,.85); border-radius: 16px; pointer-events: none; box-shadow: inset 0 -60px 60px -30px rgba(0,0,0,.45); }
+    .crop-hint { font-size: 12.5px; color: var(--muted); text-align: center; margin: 8px 0 4px; }
+    .crop-zoom { display: flex; align-items: center; gap: 10px; margin: 6px 0 14px; font-size: 18px; }
+    .crop-zoom input { flex: 1; accent-color: var(--accent); }
+    /* Aviso do teste recolhido */
+    .trial-mini { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 14px; border-radius: 16px; background: #fff7e6; border: 1px solid #f6d58f; color: #6b4e00; font-size: 13.5px; font-weight: 700; margin-top: 14px; }
+    .trial-mini span { flex: 1; }
+    .trial-mini .btn { margin: 0; }
+    .plan { position: relative; }
+    .plan .plan-x { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(0,0,0,.06); color: inherit; font-size: 16px; font-weight: 800; cursor: pointer; display: grid; place-items: center; }
     /* Pagamento */
     .pay-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0 12px; }
     .pay-plans label { cursor: pointer; }
@@ -675,22 +689,21 @@
     function stopPayPoll() { clearInterval(payPoll); payPoll = null; }
 
     function openPay(planId) {
-      if (!state.config.payments) return upgradeDialogWa(planId);
       stopPayPoll();
       const ov = $('#dialogOverlay');
       const dlg = $('#dialog');
       const chosen = planId || ((state.account && state.account.plan) || 'complete');
       const email = ls.get('vitrine:email') || '';
-      dlg.innerHTML = `<h3 id="dlgTitle">💳 Assinar o Vitrine App</h3>
-        <p>30 dias de acesso. Ativa na hora que o pagamento é aprovado.</p>
+      dlg.innerHTML = `<h3 id="dlgTitle">💳 Planos do Vitrine App</h3>
+        <p>${state.config.payments ? '30 dias de acesso. Ativa na hora que o pagamento é aprovado.' : 'Escolha o plano e fale com a gente para assinar.'}</p>
         <div class="pay-plans">
           ${['basic', 'complete'].map((id) => `<label><input type="radio" name="payPlan" value="${id}" ${id === chosen ? 'checked' : ''}><span><b>${id === 'complete' ? '⭐ Completo' : 'Básico'}</b>R$ ${esc(priceOf(id))}<br><small>${id === 'complete' ? 'até 3 lojas · 3 modelos' : '1 loja'}</small></span></label>`).join('')}
         </div>
-        <label class="field"><span>Seu e-mail <small>o comprovante chega nele</small></span><input class="input" id="payEmail" type="email" inputmode="email" autocomplete="email" value="${esc(email)}" placeholder="voce@email.com"></label>
+        ${state.config.payments ? `<label class="field"><span>Seu e-mail <small>o comprovante chega nele</small></span><input class="input" id="payEmail" type="email" inputmode="email" autocomplete="email" value="${esc(email)}" placeholder="voce@email.com"></label>
         <div class="grid-2">
           <button type="button" class="btn btn-primary" data-p="pix">⚡ Pagar com Pix</button>
           <button type="button" class="btn btn-soft" data-p="card">💳 Cartão</button>
-        </div>
+        </div>` : `<button type="button" class="btn btn-wa btn-block" data-p="wa">${I.wa}Assinar pelo WhatsApp</button>`}
         <button type="button" class="btn btn-ghost btn-block" data-p="close" style="margin-top:8px">Agora não</button>`;
       ov.classList.add('open');
       const close = () => { stopPayPoll(); ov.classList.remove('open'); ov.onclick = null; };
@@ -701,6 +714,7 @@
         if (b.dataset.p === 'close') return close();
         if (b.dataset.p === 'copy') return copy(b.dataset.code, 'Código Pix copiado! Cole no app do seu banco 💸');
         const plan = (dlg.querySelector('[name="payPlan"]:checked') || {}).value || 'basic';
+        if (b.dataset.p === 'wa') { close(); return upgradeDialogWa(plan); }
         const mail = ($('#payEmail') || {}).value ? $('#payEmail').value.trim() : '';
         if (b.dataset.p === 'pix' && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) { toast('Informe seu e-mail para gerar o Pix.', true); return $('#payEmail').focus(); }
         if (mail) ls.set('vitrine:email', mail);
@@ -1264,11 +1278,23 @@
       if (a.status === 'trial') {
         const total = Number(state.config.trial_days) || 7;
         const left = a.trial_days_left;
+        const lastDay = left <= 1;
+        const leftTxt = left <= 0 ? 'último dia' : left === 1 ? 'último dia' : `${left} dias restantes`;
+        const plansBtn = `<button type="button" class="btn btn-sm btn-primary" data-act="plans">Ver planos</button>`;
+        // Fechado pela pessoa: fica recolhido por 24 h (no último dia não dá para fechar).
+        const closedAt = Number(ls.get(`vitrine:trial-hide:${a.id || ''}`) || 0);
+        if (!lastDay && closedAt && Date.now() - closedAt < 24 * 3_600_000) {
+          return `<div class="trial-mini"><span>🎁 Teste grátis · ${leftTxt}</span>${plansBtn}</div>`;
+        }
         const pct = Math.max(4, Math.min(100, Math.round((left / total) * 100)));
-        return `<div class="plan trial"><div class="plan-icon">${I.clock}</div><div class="plan-body">
-          <strong>🎁 Você está no teste grátis · ${left === 0 ? 'último dia' : `faltam ${left} ${left === 1 ? 'dia' : 'dias'}`}</strong>
-          Está tudo liberado do plano <b>Completo</b> (até 3 lojas, 3 modelos editáveis, 30 buscas/h) até ${fmtDate(a.trial_ends_at)}. Depois, escolha seu plano.
-          <div class="progress" aria-hidden="true"><i style="width:${pct}%"></i></div>${payBtns}</div></div>`;
+        return `<div class="plan trial">${lastDay ? '' : '<button type="button" class="plan-x" data-act="trial-hide" aria-label="Fechar aviso">✕</button>'}
+          <div class="plan-icon">${I.clock}</div><div class="plan-body">
+          <strong>🎁 Você está no teste grátis · ${leftTxt}</strong>
+          ${lastDay
+            ? `Hoje é o último dia com tudo do plano <b>Completo</b> liberado. Escolha seu plano para sua vitrine continuar no ar sem parar.`
+            : `Está tudo liberado do plano <b>Completo</b> (até 3 lojas, 3 modelos editáveis, 30 buscas/h) até ${fmtDate(a.trial_ends_at)}. Depois, escolha seu plano.`}
+          <div class="progress" aria-hidden="true"><i style="width:${pct}%"></i></div>
+          <div class="pay-row">${lastDay ? plansBtn.replace('Ver planos', 'Conhecer os planos') : plansBtn}</div></div></div>`;
       }
       if (a.status === 'active') {
         return `<div class="plan active"><div class="plan-icon">${I.check}</div><div class="plan-body">
@@ -1797,6 +1823,113 @@
       $('#imgUrl').value = isExternal ? url : '';
     }
 
+
+    /* ---------------- Editor da capa: arrastar e zoom ---------------- */
+    const COVER_W = 1400, COVER_H = 788; // 16:9, o formato do topo da vitrine
+    async function openCoverCrop(file) {
+      if (!/^image\//.test(file.type)) return toast('Escolha um arquivo de imagem.', true);
+      const img = await loadImage(file);
+      const ov = $('#dialogOverlay');
+      const dlg = $('#dialog');
+      dlg.innerHTML = `<h3 id="dlgTitle">🖼️ Ajustar capa</h3>
+        <div class="crop-frame" id="cropFrame"><img id="cropImg" alt=""></div>
+        <p class="crop-hint">Arraste a foto para posicionar. Use o controle para dar zoom.</p>
+        <div class="crop-zoom"><span>➖</span><input type="range" id="cropZoom" min="1" max="3" step="0.01" value="1" aria-label="Zoom"><span>➕</span></div>
+        <div class="grid-2">
+          <button type="button" class="btn btn-ghost" data-c="cancel">Cancelar</button>
+          <button type="button" class="btn btn-primary" data-c="ok">Usar esta capa</button>
+        </div>`;
+      ov.classList.add('open');
+      const frame = $('#cropFrame');
+      const el = $('#cropImg');
+      const previewUrl = URL.createObjectURL(file);
+      el.src = previewUrl;
+      const W = () => frame.clientWidth, H = () => frame.clientHeight;
+      // base = escala mínima para cobrir o quadro; zoom multiplica
+      let zoom = 1, x = 0, y = 0;
+      const base = () => Math.max(W() / img.naturalWidth, H() / img.naturalHeight);
+      const clamp = () => {
+        const sc = base() * zoom;
+        const iw = img.naturalWidth * sc, ih = img.naturalHeight * sc;
+        x = Math.min(0, Math.max(W() - iw, x));
+        y = Math.min(0, Math.max(H() - ih, y));
+      };
+      const draw = () => { clamp(); el.style.transform = `translate(${x}px, ${y}px) scale(${base() * zoom})`; };
+      // começa centralizada
+      requestAnimationFrame(() => {
+        const sc = base();
+        x = (W() - img.naturalWidth * sc) / 2;
+        y = (H() - img.naturalHeight * sc) / 2;
+        draw();
+      });
+      const pointers = new Map();
+      let last = null, pinch = null;
+      frame.onpointerdown = (e) => { frame.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); last = { x: e.clientX, y: e.clientY }; };
+      frame.onpointermove = (e) => {
+        if (!pointers.has(e.pointerId)) return;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size === 2) {
+          // pinça com dois dedos = zoom
+          const [a, b] = [...pointers.values()];
+          const d = Math.hypot(a.x - b.x, a.y - b.y);
+          if (pinch) setZoom(zoom * (d / pinch));
+          pinch = d;
+          return;
+        }
+        x += e.clientX - last.x; y += e.clientY - last.y; last = { x: e.clientX, y: e.clientY };
+        draw();
+      };
+      const up = (e) => { pointers.delete(e.pointerId); pinch = null; const rest = [...pointers.values()][0]; last = rest || null; };
+      frame.onpointerup = up; frame.onpointercancel = up;
+      frame.onwheel = (e) => { e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.08 : 0.93)); };
+      function setZoom(z) {
+        const nz = Math.min(3, Math.max(1, z));
+        // mantém o centro do quadro no mesmo ponto da foto
+        const cx = W() / 2, cy = H() / 2;
+        const k = nz / zoom;
+        x = cx - (cx - x) * k; y = cy - (cy - y) * k;
+        zoom = nz; $('#cropZoom').value = String(nz);
+        draw();
+      }
+      $('#cropZoom').oninput = (e) => setZoom(Number(e.target.value));
+      const close = () => { ov.classList.remove('open'); ov.onclick = null; URL.revokeObjectURL(previewUrl); };
+      ov.onclick = async (e) => {
+        if (e.target === ov) return close();
+        const b = e.target.closest('[data-c]');
+        if (!b) return;
+        if (b.dataset.c === 'cancel') return close();
+        setBusy(b, true, 'Preparando...');
+        try {
+          // recorta exatamente o que está no quadro, em 1400x788
+          const sc = base() * zoom;
+          const sx = -x / sc, sy = -y / sc, sw = W() / sc, sh = H() / sc;
+          const canvas = document.createElement('canvas');
+          canvas.width = COVER_W; canvas.height = COVER_H;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, sx, sy, sw, sh, 0, 0, COVER_W, COVER_H);
+          const webp = canvas.toDataURL('image/webp').startsWith('data:image/webp');
+          const type = webp ? 'image/webp' : 'image/jpeg';
+          let url = '';
+          if (state.config.uploads) {
+            const blob = await new Promise((r) => canvas.toBlob(r, type, 0.8));
+            try { url = (await api('/api/me/upload', { method: 'POST', raw: blob, contentType: type })).url; } catch { url = ''; }
+          }
+          if (!url) {
+            for (const [w, q] of [[1400, 0.74], [1200, 0.68], [1000, 0.62], [800, 0.56]]) {
+              let c = canvas;
+              if (w < COVER_W) { c = document.createElement('canvas'); c.width = w; c.height = Math.round(w * 9 / 16); c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height); }
+              const d = c.toDataURL(type, q);
+              if (d.length < 440000) { url = d; break; }
+            }
+          }
+          if (!url) throw new Error('Não consegui reduzir esta imagem. Tente outra.');
+          close();
+          setCover(url);
+          toast('Capa pronta. Toque em "Salvar perfil".');
+        } catch (err) { toast(err.message, true); setBusy(b, false); }
+      };
+    }
+
     function setCover(url) {
       $('#coverValue').value = url || '';
       const box = $('#coverPrev');
@@ -1864,6 +1997,8 @@
       if (act === 'new-store') return openNewStore();
       if (act === 'upgrade') return state.config.payments ? openPay('complete') : upgradeDialog('Libere mais lojas e todos os modelos de mensagem.');
       if (act === 'pay') return openPay(t.dataset.plan);
+      if (act === 'plans') return openPay();
+      if (act === 'trial-hide') { ls.set(`vitrine:trial-hide:${(state.account || {}).id || ''}`, String(Date.now())); return render(); }
       if (act === 'tpl-edit') return openTemplateEditor();
     });
 
@@ -1888,8 +2023,7 @@
         setProductImage(v);
       }
       if (el.id === 'coverFile' && el.files[0]) {
-        try { setCover(await processImage(el.files[0], { maxSide: 1600, cover: true })); toast('Capa pronta. Toque em "Salvar perfil".'); }
-        catch (err) { toast(err.message, true); }
+        try { await openCoverCrop(el.files[0]); } catch (err) { toast(err.message || 'Não consegui abrir esta imagem.', true); }
         el.value = '';
       }
       if (el.id === 'avatarFile' && el.files[0]) {
