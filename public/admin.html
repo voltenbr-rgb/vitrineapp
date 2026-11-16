@@ -776,10 +776,16 @@
     /* ---------------- Buscador de links do Mercado Livre ---------------- */
     const PRESETS = {
       airsoft: {
-        label: '🎯 Airsoft, arma de gel e brinquedos',
-        query: 'airsoft, lançador de gel, arma de gel, pistola de brinquedo, arminha de brinquedo, acessórios airsoft, bbs airsoft 6mm',
-        include: 'airsoft, gel, brinquedo, orbeez, 6mm, bbs, lançador, nerf',
-        exclude: 'pressão, chumbinho, airgun, air gun, carabina, 4,5mm, 5,5mm, espingarda, faca, canivete, punhal, adaga, soco inglês, garrucha, munição, cartucho, pólvora',
+        label: '🎯 Airsoft e arma de gel (só as armas)',
+        query: 'rifle airsoft, pistola airsoft, airsoft elétrico, lançador de gel, arma de gel, pistola de gel, arminha de brinquedo, pistola de brinquedo',
+        include: 'airsoft, gel, brinquedo, orbeez, nerf, lançador',
+        exclude: 'pressão, chumbinho, airgun, air gun, carabina, 4,5mm, 5,5mm, espingarda, faca, canivete, punhal, adaga, soco inglês, garrucha, munição, cartucho, pólvora, colete, coldre, capa, case, bolsa, mochila, mira, luneta, red dot, óculos, máscara, luva, bateria, carregador, alvo, bolinhas, refil, bbs, gás, green gas, kit limpeza, bandoleira, magazine, lanterna, silenciador, peça, reposição',
+      },
+      acessorios: {
+        label: '🧰 Acessórios de airsoft e gel',
+        query: 'acessórios airsoft, bbs airsoft 6mm, colete airsoft, óculos airsoft, máscara airsoft, bolinhas de gel orbeez, alvo airsoft, coldre airsoft',
+        include: 'airsoft, gel, orbeez, 6mm, bbs, tático',
+        exclude: 'pressão, chumbinho, airgun, carabina, 4,5mm, 5,5mm, espingarda, faca, canivete, punhal, adaga, soco inglês, garrucha, munição real, cartucho, pólvora',
       },
       custom: { label: '✏️ Personalizado', query: '', include: '', exclude: '' },
     };
@@ -846,6 +852,8 @@
             <label class="field" style="align-self:end"><span style="justify-content:flex-start;gap:10px;align-items:center;height:48px">
               <input type="checkbox" name="only_discount" ${prefs.only_discount ? 'checked' : ''} style="width:22px;height:22px"> Só com desconto</span></label>
           </div>
+          <label class="field"><span style="justify-content:flex-start;gap:10px;align-items:center">
+            <input type="checkbox" name="free_shipping" ${prefs.free_shipping ? 'checked' : ''} style="width:22px;height:22px"> Só com frete grátis</span></label>
           <button type="submit" class="btn btn-primary btn-block" id="srchBtn" ${aff.connected ? '' : 'disabled'}>🔎 Buscar links</button>
         </form>
         <div id="srchOut"></div>`);
@@ -879,30 +887,35 @@
         } catch (err) { toast(err.message, true); setBusy(btn, false); }
       });
 
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
+      let round = 0;
+      let seen = [];
+      const runSearch = async (more) => {
         const body = {
           query: form.query.value, include: form.include.value, exclude: form.exclude.value,
-          limit, sort: form.sort.value, only_discount: form.only_discount.checked,
+          limit, sort: form.sort.value, only_discount: form.only_discount.checked, free_shipping: form.free_shipping.checked,
         };
         saveSearchPrefs({ preset: form.preset.value, ...body });
-        const btn = $('#srchBtn');
-        setBusy(btn, true, 'Buscando no Mercado Livre...');
+        if (more) { round += 1; } else { round = 0; seen = []; }
+        const btn = more ? $('#moreBtn') : $('#srchBtn');
+        setBusy(btn, true, more ? 'Buscando outros...' : 'Buscando no Mercado Livre...');
         try {
-          const data = await api('/api/admin/ml/search', { method: 'POST', body });
+          const data = await api('/api/admin/ml/search', { method: 'POST', body: { ...body, round, skip_ids: seen } });
           lastResults = data.items || [];
-          renderResults(data);
+          seen = [...seen, ...lastResults.map((it) => it.id)];
+          renderResults(data, () => runSearch(true));
         } catch (err) {
           $('#srchOut').innerHTML = `<div class="aff-box aff-warn" style="margin-top:14px">❌ ${esc(err.message)}</div>`;
-        } finally { setBusy(btn, false); }
-      });
+        } finally { if (btn && btn.isConnected) setBusy(btn, false); }
+      };
+      form.addEventListener('submit', (e) => { e.preventDefault(); runSearch(false); });
     }
 
-    function renderResults(data) {
+    function renderResults(data, onMore) {
       const out = $('#srchOut');
       const items = data.items || [];
+      const info = `<div style="font-size:12px;color:var(--muted);margin-top:10px">Fonte: ${data.source === 'catalog' ? 'catálogo do Mercado Livre' : 'anúncios do Mercado Livre'} · ${data.analyzed || 0} analisados · ${data.rejected || 0} descartados pelos filtros${data.round ? ` · rodada ${data.round + 1}` : ''}</div>`;
       if (!items.length) {
-        out.innerHTML = '<div class="aff-box aff-warn" style="margin-top:14px">Nenhum produto encontrado com esses filtros. Tente outros termos ou remova "Só com desconto".</div>';
+        out.innerHTML = `<div class="aff-box aff-warn" style="margin-top:14px">Nenhum produto ${data.round ? 'novo ' : ''}encontrado com esses filtros. Tente outros termos ou desmarque "Só com desconto" / "Só com frete grátis".</div>${info}`;
         return;
       }
       out.innerHTML = `
@@ -922,7 +935,10 @@
               <span>${it.price ? `<span class="pr">${brl(it.price)}</span>` : 'sem preço'} ${it.original_price ? `<s>${brl(it.original_price)}</s>` : ''} ${it.discount ? `<span class="off">-${it.discount}%</span>` : ''} ${it.free_shipping ? '· frete grátis' : ''}</span></div>
             <a class="icon-btn" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer" title="Abrir">↗</a>
             <button type="button" class="icon-btn" data-copy="${i}" title="Copiar link">📋</button>
-          </div>`).join('')}</div>`;
+          </div>`).join('')}</div>
+        <button type="button" class="btn btn-ghost btn-block" id="moreBtn" style="margin-top:12px">🔄 Mostrar outros produtos</button>
+        ${info}`;
+      $('#moreBtn').addEventListener('click', () => onMore && onMore());
       out.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', () => copy(lastResults[Number(b.dataset.copy)].link, 'Link copiado!')));
       out.querySelector('.res-tools').addEventListener('click', (e) => {
         const b = e.target.closest('[data-out]');

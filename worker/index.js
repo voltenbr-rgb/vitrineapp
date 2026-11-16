@@ -1038,8 +1038,12 @@ async function handleMlSearch(request, env) {
   const sortKey = SEARCH_SORTS[body.sort] ? body.sort : 'relevance';
   const include = splitTerms(body.include).map((t) => normalizeWords(t).join(' ')).filter(Boolean);
   const exclude = splitTerms(body.exclude).map((t) => normalizeWords(t).join(' ')).filter(Boolean);
-  const onlyDiscount = bool01(body.only_discount) === 1 || sortKey === 'discount';
+  const onlyDiscount = bool01(body.only_discount) === 1;
+  const freeOnly = bool01(body.free_shipping) === 1;
+  const round = clampInt(body.round, 0, 30, 0);               // "Mostrar outros": avança as páginas
+  const skip = new Set((Array.isArray(body.skip_ids) ? body.skip_ids : []).slice(0, 500).map(String));
   const aff = JSON.parse(cfg.ml_affiliate_params || '{}');
+  const debug = { at: nowIso(), queries, round, source: null, calls: 0, errors: [], raw: 0, rejected: 0 };
 
   const accepts = (title) => {
     const norm = ` ${normalizeWords(title).join(' ')} `;
@@ -1047,92 +1051,101 @@ async function handleMlSearch(request, env) {
     if (include.length && !include.some((w) => norm.includes(w))) return false;
     return true;
   };
+  const passesFilters = (it) => (!onlyDiscount || it.discount) && (!freeOnly || it.free_shipping);
+  const mkItem = (id, title, price, original, image, permalink, free, q) => {
+    const p = Number(price) > 0 ? Number(price) : null;
+    const o = p && Number(original) > p ? Number(original) : null;
+    return {
+      id, title: String(title || '').slice(0, 160), price: p, original_price: o,
+      discount: o ? Math.round((1 - p / o) * 100) : null,
+      image: httpsImage(image), permalink, link: withAffiliate(permalink, aff), free_shipping: !!free, query: q,
+    };
+  };
 
+  // 1) Busca de anúncios (tem preço, desconto e frete na listagem).
   const found = new Map();
-  const exhausted = new Set();
-  let calls = 0;
   let searchError = null;
-  // Percorre os termos em rodízio, página por página, até juntar o suficiente (máx. 14 consultas).
-  for (let page = 0; page < 4 && found.size < limit * 3 && calls < 14; page++) {
+  const exhausted = new Set();
+  for (let page = round; page < round + 4 && found.size < limit * 2 && debug.calls < 14; page++) {
     for (const q of queries) {
-      if (calls >= 14 || found.size >= limit * 3) break;
+      if (debug.calls >= 14 || found.size >= limit * 2) break;
       if (exhausted.has(q)) continue;
-      calls++;
+      debug.calls++;
       let data;
       try {
-        data = await mlGet(token, `/sites/MLB/search?q=${encodeURIComponent(q)}&limit=50&offset=${page * 50}&sort=${SEARCH_SORTS[sortKey]}`);
+        data = await mlGet(token, `/sites/MLB/search?q=${encodeURIComponent(q)}&limit=50&offset=${page * 50}&sort=${SEARCH_SORTS[sortKey]}${freeOnly ? '&shipping_cost=free' : ''}`);
       } catch (err) {
         searchError = err;
+        debug.errors.push(`search: ${err.message}`);
         break;
       }
       const results = (data && data.results) || [];
+      debug.raw += results.length;
       for (const r of results) {
-        if (!r || !r.id || found.has(r.id) || !accepts(r.title)) continue;
-        const price = Number(r.price) || null;
-        const original = Number(r.original_price) > Number(r.price) ? Number(r.original_price) : null;
-        if (onlyDiscount && !original) continue;
-        found.set(r.id, {
-          id: r.id,
-          title: String(r.title || '').slice(0, 160),
-          price,
-          original_price: original,
-          discount: original ? Math.round((1 - price / original) * 100) : null,
-          image: httpsImage(r.thumbnail ? String(r.thumbnail).replace(/-I\.(jpg|webp)$/i, '-O.$1') : null),
-          permalink: r.permalink,
-          link: withAffiliate(r.permalink, aff),
-          free_shipping: !!(r.shipping && r.shipping.free_shipping),
-          query: q,
-        });
+        if (!r || !r.id || found.has(r.id) || skip.has(r.id)) continue;
+        if (!accepts(r.title)) { debug.rejected++; continue; }
+        const it = mkItem(r.id, r.title, r.price, r.original_price,
+          r.thumbnail ? String(r.thumbnail).replace(/-I\.(jpg|webp)$/i, '-O.$1') : null,
+          r.permalink, r.shipping && r.shipping.free_shipping, q);
+        if (passesFilters(it)) found.set(r.id, it);
       }
       if (results.length < 50) exhausted.add(q);
     }
-    if (exhausted.size === queries.length) break;
-    if (searchError) break;
+    if (searchError || exhausted.size === queries.length) break;
   }
+  debug.source = 'items';
 
-  // Busca de anúncios bloqueada: tenta o catálogo de produtos.
-  let source = 'items';
+  // 2) Busca de anúncios bloqueada: usa o catálogo e busca preço/frete de cada produto.
   if (!found.size && searchError) {
-    source = 'catalog';
-    try {
-      for (const q of queries) {
-        if (found.size >= limit * 2) break;
-        const data = await mlGet(token, `/products/search?status=active&site_id=MLB&q=${encodeURIComponent(q)}&limit=50`);
-        for (const r of (data && data.results) || []) {
-          if (!r || !r.id || found.has(r.id) || !accepts(r.name)) continue;
-          const permalink = `https://www.mercadolivre.com.br/p/${r.id}`;
-          found.set(r.id, {
-            id: r.id, title: String(r.name || '').slice(0, 160), price: null, original_price: null, discount: null,
-            image: httpsImage(r.pictures && r.pictures[0] && (r.pictures[0].url || r.pictures[0].secure_url)),
-            permalink, link: withAffiliate(permalink, aff), free_shipping: false, query: q,
-          });
-        }
+    debug.source = 'catalog';
+    const candidates = new Map();
+    for (const q of queries) {
+      if (candidates.size >= 60 || debug.calls >= 14) break;
+      debug.calls++;
+      let data;
+      try {
+        data = await mlGet(token, `/products/search?status=active&site_id=MLB&q=${encodeURIComponent(q)}&limit=50&offset=${round * 50}`);
+      } catch (err) {
+        debug.errors.push(`catalog: ${err.message}`);
+        await saveDebug(env, 'debug_ml_search', debug);
+        throw searchError.extra && searchError.extra.code === 'ml_permission'
+          ? new HttpError(502, 'O Mercado Livre não liberou a busca para o seu aplicativo. Confira as permissões no DevCenter e reconecte.', { code: 'ml_permission' })
+          : searchError;
       }
-      // Preço do "vencedor" do catálogo para os primeiros itens.
-      for (const item of [...found.values()].slice(0, limit)) {
-        try {
-          const prod = await mlGet(token, `/products/${item.id}`);
-          const w = prod && prod.buy_box_winner;
-          if (w && Number(w.price) > 0) {
-            item.price = Number(w.price);
-            if (Number(w.original_price) > item.price) {
-              item.original_price = Number(w.original_price);
-              item.discount = Math.round((1 - item.price / item.original_price) * 100);
-            }
-          }
-        } catch { /* sem preço */ }
+      const results = (data && data.results) || [];
+      debug.raw += results.length;
+      for (const r of results) {
+        if (!r || !r.id || candidates.has(r.id) || skip.has(r.id)) continue;
+        if (!accepts(r.name)) { debug.rejected++; continue; }
+        candidates.set(r.id, { r, q });
       }
-    } catch (err) {
-      throw searchError.extra && searchError.extra.code === 'ml_permission'
-        ? new HttpError(502, 'O Mercado Livre não liberou a busca para o seu aplicativo. Confira as permissões no DevCenter e reconecte.', { code: 'ml_permission' })
-        : searchError;
+    }
+    // Detalhes (preço do vendedor da vez, preço antigo, frete) em lotes paralelos.
+    const list = [...candidates.values()].slice(0, Math.min(45, limit * 3));
+    for (let i = 0; i < list.length; i += 8) {
+      const batch = list.slice(i, i + 8);
+      const details = await Promise.all(batch.map(({ r }) => mlGet(token, `/products/${r.id}`).catch(() => null)));
+      batch.forEach(({ r, q }, k) => {
+        const d = details[k] || {};
+        const w = d.buy_box_winner || {};
+        const pics = (d.pictures && d.pictures.length ? d.pictures : r.pictures) || [];
+        const it = mkItem(r.id, d.name || r.name, w.price, w.original_price,
+          pics[0] && (pics[0].secure_url || pics[0].url), `https://www.mercadolivre.com.br/p/${r.id}`,
+          w.shipping && w.shipping.free_shipping, q);
+        if (passesFilters(it)) found.set(r.id, it);
+      });
+      debug.calls += batch.length;
     }
   }
 
   let items = [...found.values()];
   if (sortKey === 'discount') items.sort((a, b) => (b.discount || 0) - (a.discount || 0));
+  if (sortKey === 'price_asc') items.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+  if (sortKey === 'price_desc') items.sort((a, b) => (b.price ?? -1) - (a.price ?? -1));
   items = items.slice(0, limit);
-  return json({ items, source, affiliate: aff, affiliate_ok: Object.keys(aff).length > 0, calls });
+  debug.returned = items.length;
+  await saveDebug(env, 'debug_ml_search', debug);
+  return json({ items, source: debug.source, affiliate: aff, affiliate_ok: Object.keys(aff).length > 0, calls: debug.calls, round, analyzed: debug.raw, rejected: debug.rejected });
 }
 
 async function handleMlCallback(request, env) {
