@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#14161b">
+  <title>Master | Vitrine</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2314161b'/%3E%3Cpath d='M18 24h28l-3 22H21z' fill='white'/%3E%3Cpath d='M25 24a7 7 0 0 1 14 0' stroke='white' stroke-width='4' fill='none'/%3E%3C/svg%3E">
+  <script src="/config.js"></script>
+  <style>
+    :root {
+      --accent: #16a6e0;
+      --accent-soft: color-mix(in srgb, var(--accent) 13%, #ffffff);
+      --accent-deep: color-mix(in srgb, var(--accent) 75%, #000000);
+      --dark: #14161b;
+      --bg: #eef0f4;
+      --card: #ffffff;
+      --ink: #14161b;
+      --ink-2: #3b4150;
+      --muted: #8a90a0;
+      --line: #e6e8ee;
+      --field: #f5f6f8;
+      --ok: #16a34a;
+      --danger: #e11d48;
+      --wa-deep: #128c4b;
+      --radius: 20px;
+      --shadow: 0 1px 2px rgba(20, 22, 27, .04), 0 8px 24px rgba(20, 22, 27, .06);
+      --shadow-lg: 0 20px 60px rgba(20, 22, 27, .2);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { margin: 0; min-height: 100vh; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: var(--bg); color: var(--ink); line-height: 1.4; -webkit-font-smoothing: antialiased; }
+    button, input { font: inherit; color: inherit; }
+    button { cursor: pointer; border: 0; background: none; padding: 0; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    a { color: inherit; text-decoration: none; }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; border-radius: 12px; }
+    svg { flex-shrink: 0; }
+
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 16px 16px calc(40px + var(--safe-bottom)); }
+    @media (min-width: 720px) { .wrap { padding: 28px 28px 48px; } }
+
+    .btn { height: 46px; padding: 0 16px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; font-size: 14px; white-space: nowrap; transition: transform .12s, filter .15s; }
+    .btn:active:not(:disabled) { transform: scale(.97); }
+    .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 30%, transparent); }
+    .btn-dark { background: var(--dark); color: #fff; }
+    .btn-soft { background: var(--accent-soft); color: var(--accent-deep); }
+    .btn-ghost { background: var(--field); color: var(--ink-2); }
+    .btn-ok { background: #dcfce7; color: #166534; }
+    .btn-danger { background: #ffe4e6; color: #9f1239; }
+    .btn-wa { background: var(--wa-deep); color: #fff; }
+    .btn-sm { height: 36px; padding: 0 11px; border-radius: 11px; font-size: 12.5px; }
+    .btn-block { width: 100%; }
+    .icon-btn { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--field); color: var(--ink-2); }
+
+    .field { display: grid; gap: 6px; margin-bottom: 14px; }
+    .field > span { font-size: 13px; font-weight: 700; color: var(--ink-2); display: flex; justify-content: space-between; }
+    .field small { color: var(--muted); font-size: 12px; font-weight: 500; }
+    .input { width: 100%; height: 48px; border: 1.5px solid transparent; background: var(--field); border-radius: 14px; padding: 0 14px; font-size: 15px; outline: none; transition: border-color .15s, background .15s; }
+    .input:focus { border-color: var(--accent); background: #fff; }
+    .input-group { display: flex; align-items: center; gap: 6px; }
+    .input-group .input { flex: 1; min-width: 0; }
+    .row { display: grid; gap: 0 12px; }
+    @media (min-width: 560px) { .row.two { grid-template-columns: 1fr 1fr; } }
+
+    .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 800; padding: 4px 9px; border-radius: 99px; }
+    .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .pill.trial { background: #fff4db; color: #92600a; }
+    .pill.active { background: #dcfce7; color: #166534; }
+    .pill.expired { background: #ffe4e6; color: #9f1239; }
+
+    /* ---------- Login ---------- */
+    .login { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: radial-gradient(120% 80% at 50% 0%, #2a2f3a 0%, #14161b 60%); }
+    .login-card { width: 100%; max-width: 400px; background: var(--card); border-radius: 30px; padding: 30px 24px; box-shadow: var(--shadow-lg); }
+    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+    .brand-logo { width: 48px; height: 48px; border-radius: 16px; display: grid; place-items: center; background: var(--dark); color: #fff; }
+    .brand h1 { margin: 0; font-size: 21px; }
+    .brand p { margin: 0; color: var(--muted); font-size: 13px; }
+    .error-box { background: #fff1f2; color: #9f1239; border-radius: 12px; padding: 10px 12px; font-size: 13px; font-weight: 600; margin-bottom: 14px; }
+
+    /* ---------- Painel ---------- */
+    .top { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .top .brand-logo { width: 46px; height: 46px; }
+    .top .title { flex: 1; min-width: 0; }
+    .top .title small { color: var(--muted); font-size: 12px; font-weight: 600; }
+    .top .title strong { display: block; font-size: 20px; letter-spacing: -.02em; }
+
+    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
+    @media (min-width: 720px) { .stats { grid-template-columns: repeat(5, 1fr); gap: 14px; } }
+    .stat { background: var(--card); border-radius: 18px; box-shadow: var(--shadow); padding: 14px 16px; position: relative; overflow: hidden; }
+    .stat span { font-size: 12px; color: var(--muted); font-weight: 700; }
+    .stat b { display: block; font-size: 26px; letter-spacing: -.02em; margin-top: 2px; }
+    .stat i { position: absolute; right: 12px; top: 12px; width: 10px; height: 10px; border-radius: 50%; }
+    .stat.revenue { grid-column: 1 / -1; background: linear-gradient(135deg, #14161b, #2b313d); color: #fff; }
+    .stat.revenue span { color: rgba(255, 255, 255, .7); }
+    @media (min-width: 720px) { .stat.revenue { grid-column: auto; } }
+
+    .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+    .search { flex: 1 1 260px; display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; background: var(--card); border-radius: 999px; box-shadow: var(--shadow); color: var(--muted); }
+    .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 15px; color: var(--ink); }
+    .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; margin-bottom: 14px; }
+    .chips::-webkit-scrollbar { display: none; }
+    .chip { flex-shrink: 0; height: 38px; padding: 0 14px; border-radius: 12px; background: var(--card); box-shadow: var(--shadow); font-size: 13px; font-weight: 700; color: var(--ink-2); }
+    .chip[aria-pressed="true"] { background: var(--dark); color: #fff; }
+    .chip b { opacity: .6; margin-left: 4px; }
+
+    .list { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 860px) { .list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; } }
+    .tcard { min-width: 0; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; display: flex; flex-direction: column; gap: 12px; animation: fade .25s ease both; }
+    @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .thead { display: flex; gap: 12px; align-items: center; }
+    .tavatar { width: 50px; height: 50px; border-radius: 16px; display: grid; place-items: center; font-weight: 800; color: #fff; overflow: hidden; flex-shrink: 0; }
+    .tavatar img { width: 100%; height: 100%; object-fit: cover; }
+    .tname { flex: 1; min-width: 0; }
+    .tname strong { display: block; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tname a { font-size: 12.5px; color: var(--accent-deep); font-weight: 600; }
+    .tinfo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tinfo div { background: var(--field); border-radius: 12px; padding: 9px 11px; min-width: 0; }
+    .tinfo small { display: block; font-size: 11px; color: var(--muted); font-weight: 700; }
+    .tinfo span { display: block; font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tinfo .warn { color: #b45309; }
+    .tinfo .bad { color: #be123c; }
+    .tinfo .good { color: #15803d; }
+    .tacts { display: flex; flex-wrap: wrap; gap: 8px; }
+    .tacts .btn { flex: 1 1 auto; }
+    .empty { grid-column: 1 / -1; text-align: center; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 40px 20px; color: var(--muted); }
+    .empty strong { display: block; color: var(--ink); font-size: 16px; margin-bottom: 4px; }
+
+    /* ---------- Modal ---------- */
+    .overlay { position: fixed; inset: 0; z-index: 70; background: rgba(12, 14, 20, .5); display: flex; align-items: flex-end; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
+    .overlay.open { opacity: 1; pointer-events: auto; }
+    .modal { width: 100%; max-width: 520px; max-height: 94vh; overflow-y: auto; background: var(--card); border-radius: 26px 26px 0 0; padding: 20px 20px calc(20px + var(--safe-bottom)); transform: translateY(24px); transition: transform .22s; overscroll-behavior: contain; }
+    .overlay.open .modal { transform: none; }
+    @media (min-width: 640px) { .overlay { align-items: center; } .modal { border-radius: 26px; padding: 24px; } }
+    .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+    .modal-head h3 { margin: 0; font-size: 19px; }
+    .modal p.sub { margin: -8px 0 16px; color: var(--muted); font-size: 13px; }
+    .modal .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+    .menu { display: grid; gap: 8px; }
+    .menu button { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; background: var(--field); font-weight: 700; text-align: left; }
+    .menu button.danger { color: var(--danger); background: #fff1f2; }
+    .colors { display: flex; flex-wrap: wrap; gap: 10px; }
+    .colors button { width: 34px; height: 34px; border-radius: 50%; }
+    .colors button[aria-pressed="true"] { box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--ink); }
+    .cred { background: var(--field); border-radius: 16px; padding: 14px; font-size: 14px; display: grid; gap: 8px; margin-bottom: 14px; word-break: break-all; }
+    .cred b { color: var(--muted); font-size: 12px; display: block; }
+    .success-icon { width: 60px; height: 60px; border-radius: 20px; display: grid; place-items: center; background: #dcfce7; color: #166534; margin: 0 auto 12px; }
+
+    .toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); z-index: 90; transform: translate(-50%, 20px); opacity: 0; background: #14161b; color: #fff; font-size: 13px; font-weight: 600; padding: 11px 16px; border-radius: 999px; box-shadow: var(--shadow-lg); transition: opacity .2s, transform .2s; pointer-events: none; max-width: 92vw; text-align: center; }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast.err { background: #9f1239; }
+    .spinner { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .skeleton { background: linear-gradient(90deg, #e3e6ec 0%, #f2f3f6 50%, #e3e6ec 100%); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: var(--radius); height: 190px; }
+    @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <section class="login" id="loginView" hidden>
+    <form class="login-card" id="loginForm" novalidate>
+      <div class="brand">
+        <div class="brand-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+        <div><h1>Vitrine Master</h1><p>Área restrita de administração</p></div>
+      </div>
+      <div class="error-box" id="loginError" hidden></div>
+      <label class="field"><span>Senha Master</span>
+        <input class="input" id="masterPass" type="password" autocomplete="current-password" required autofocus>
+      </label>
+      <button class="btn btn-dark btn-block" id="loginBtn" type="submit">Entrar</button>
+    </form>
+  </section>
+
+  <div id="appView" hidden>
+    <main class="wrap">
+      <header class="top">
+        <div class="brand-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg></div>
+        <div class="title"><small>Painel Master</small><strong>Lojas da Vitrine</strong></div>
+        <button type="button" class="icon-btn" data-act="refresh" aria-label="Atualizar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
+        <button type="button" class="icon-btn" data-act="logout" aria-label="Sair"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/></svg></button>
+      </header>
+
+      <section class="stats" id="stats" aria-label="Resumo"></section>
+
+      <div class="toolbar">
+        <label class="search"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="search" type="search" placeholder="Buscar loja, dono, WhatsApp..." autocomplete="off"></label>
+        <button type="button" class="btn btn-primary" data-act="new">+ Nova loja</button>
+      </div>
+      <nav class="chips" id="chips" aria-label="Filtrar por status"></nav>
+      <section class="list" id="list" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <div class="overlay" id="overlay"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    const API = String(window.VITRINE_API_BASE || '').replace(/\/+$/, '');
+    const KEY = 'vitrine:master';
+    const PALETTE = ['#16a6e0', '#6366f1', '#8b5cf6', '#ec4899', '#e11d48', '#f97316', '#f59e0b', '#16a34a', '#0d9488', '#14161b'];
+    const STATUS = { trial: 'Teste grátis', active: 'Ativa', expired: 'Expirada' };
+    const FILTERS = [
+      { id: 'all', label: 'Todas' },
+      { id: 'trial', label: 'Em teste' },
+      { id: 'ending', label: 'Vencendo (≤ 2 dias)' },
+      { id: 'active', label: 'Ativas' },
+      { id: 'expired', label: 'Expiradas' },
+    ];
+    const CLOSE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+    const WA = '<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.6 11.6 0 0 0 4.4 3.9c1.6.7 2.3.8 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.2-.3-.3-.5-.4z"/></svg>';
+
+    const state = { password: '', tenants: [], stats: {}, planPrice: '19,90', trialDays: 7, filter: 'all', query: '' };
+    const $ = (s, r = document) => r.querySelector(s);
+
+    /* ---------------- Utilidades ---------------- */
+    const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
+    const initials = (n) => String(n || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+    const safeImg = (u) => { const s = String(u || ''); return /^https?:\/\//i.test(s) || /^data:image\/(png|jpe?g|webp);base64,/i.test(s) ? s : ''; };
+    const waLink = (phone, text) => `https://api.whatsapp.com/send?${phone ? `phone=${encodeURIComponent(phone)}&` : ''}text=${encodeURIComponent(text)}`;
+    const priceNumber = () => Number(String(state.planPrice).replace(/\./g, '').replace(',', '.')) || 0;
+    const brl = (n) => Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const fmtPhone = (d) => {
+      const s = String(d || '').replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
+      if (s.length === 11) return `(${s.slice(0, 2)}) ${s.slice(2, 7)}-${s.slice(7)}`;
+      if (s.length === 10) return `(${s.slice(0, 2)}) ${s.slice(2, 6)}-${s.slice(6)}`;
+      return s || '—';
+    };
+    const slugify = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+    const genPassword = () => {
+      const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+      const arr = crypto.getRandomValues(new Uint32Array(8));
+      return Array.from(arr, (n) => chars[n % chars.length]).join('');
+    };
+    const dashboardUrl = (t) => `${location.origin}/dashboard.html?loja=${encodeURIComponent(t.id)}`;
+    const ss = {
+      get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+      set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* sem storage */ } },
+      del(k) { try { sessionStorage.removeItem(k); } catch { /* sem storage */ } },
+    };
+
+    let toastTimer;
+    function toast(msg, err = false) {
+      const el = $('#toast');
+      el.textContent = msg;
+      el.classList.toggle('err', err);
+      el.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.remove('show'), err ? 4200 : 2600);
+    }
+
+    async function copy(text, msg = 'Copiado!') {
+      try { await navigator.clipboard.writeText(text); toast(msg); }
+      catch { toast('Não foi possível copiar', true); }
+    }
+
+    function setBusy(btn, busy, label = 'Salvando...') {
+      if (!btn) return;
+      if (busy) { btn.dataset.label = btn.innerHTML; btn.innerHTML = `<span class="spinner"></span>${label}`; btn.disabled = true; }
+      else { btn.innerHTML = btn.dataset.label || btn.innerHTML; btn.disabled = false; }
+    }
+
+    async function api(path, { method = 'GET', body } = {}) {
+      const headers = { Accept: 'application/json', 'X-Master-Password': state.password };
+      const opts = { method, headers };
+      if (body !== undefined) { headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+      let res;
+      try { res = await fetch(API + path, opts); }
+      catch { throw new Error('Sem conexão com o servidor.'); }
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) { logout(data.error || 'Senha Master incorreta.'); throw new Error(data.error || 'Não autorizado'); }
+      if (!res.ok) throw new Error(data.error || 'Algo deu errado.');
+      return data;
+    }
+
+    /* ---------------- Sessão ---------------- */
+    function showLogin(msg) {
+      $('#appView').hidden = true;
+      $('#loginView').hidden = false;
+      $('#loginError').hidden = !msg;
+      $('#loginError').textContent = msg || '';
+      setTimeout(() => $('#masterPass').focus(), 50);
+    }
+    function logout(msg) {
+      state.password = '';
+      ss.del(KEY);
+      closeModal();
+      showLogin(msg);
+    }
+
+    $('#loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pw = $('#masterPass').value;
+      if (!pw) return showLogin('Digite a senha Master.');
+      const btn = $('#loginBtn');
+      setBusy(btn, true, 'Entrando...');
+      state.password = pw;
+      try {
+        await load();
+        ss.set(KEY, pw);
+        $('#masterPass').value = '';
+        $('#loginView').hidden = true;
+        $('#appView').hidden = false;
+      } catch (err) {
+        if (state.password) showLogin(err.message);
+      } finally { setBusy(btn, false); }
+    });
+
+    /* ---------------- Dados ---------------- */
+    async function load() {
+      const data = await api('/api/admin/tenants');
+      state.tenants = data.tenants;
+      state.stats = data.stats;
+      state.planPrice = data.plan_price || '19,90';
+      state.trialDays = data.trial_days || 7;
+      render();
+    }
+
+    const isEnding = (t) => t.status === 'trial' && t.trial_days_left <= 2;
+
+    function filtered() {
+      const q = state.query.trim().toLowerCase();
+      const qDigits = q.replace(/\D/g, '');
+      return state.tenants.filter((t) => {
+        if (state.filter === 'ending' && !isEnding(t)) return false;
+        if (['trial', 'active', 'expired'].includes(state.filter) && t.status !== state.filter) return false;
+        if (!q) return true;
+        return `${t.id} ${t.store_name} ${t.owner_name}`.toLowerCase().includes(q) || (qDigits.length >= 3 && String(t.whatsapp).includes(qDigits));
+      });
+    }
+
+    function render() {
+      const s = state.stats;
+      const ending = state.tenants.filter(isEnding).length;
+      $('#stats').innerHTML = `
+        <div class="stat"><i style="background:#94a3b8"></i><span>Total de lojas</span><b>${s.total || 0}</b></div>
+        <div class="stat"><i style="background:#f59e0b"></i><span>Em teste</span><b>${s.trial || 0}</b></div>
+        <div class="stat"><i style="background:#16a34a"></i><span>Ativas (pagantes)</span><b>${s.active || 0}</b></div>
+        <div class="stat"><i style="background:#e11d48"></i><span>Expiradas</span><b>${s.expired || 0}</b></div>
+        <div class="stat revenue"><span>Receita mensal estimada</span><b>${brl((s.active || 0) * priceNumber())}</b></div>`;
+
+      const counts = { all: state.tenants.length, trial: s.trial || 0, ending, active: s.active || 0, expired: s.expired || 0 };
+      $('#chips').innerHTML = FILTERS.map((f) => `<button type="button" class="chip" data-filter="${f.id}" aria-pressed="${state.filter === f.id}">${esc(f.label)}<b>${counts[f.id]}</b></button>`).join('');
+
+      const list = filtered();
+      $('#list').innerHTML = list.length ? list.map(card).join('') : `<div class="empty"><strong>${state.tenants.length ? 'Nenhuma loja encontrada' : 'Nenhuma loja cadastrada ainda'}</strong>${state.tenants.length ? 'Ajuste a busca ou o filtro.' : 'Clique em "+ Nova loja" para criar a primeira com 7 dias grátis.'}</div>`;
+    }
+
+    function dueInfo(t) {
+      if (t.status === 'trial') {
+        const cls = t.trial_days_left <= 2 ? 'warn' : '';
+        return `<div><small>Teste termina</small><span class="${cls}">${fmtDate(t.trial_ends_at)} · ${t.trial_days_left}d</span></div>`;
+      }
+      if (t.status === 'active') {
+        return `<div><small>Plano pago até</small><span class="good">${t.paid_until ? `${fmtDate(t.paid_until)} · ${t.paid_days_left}d` : 'Sem vencimento'}</span></div>`;
+      }
+      return `<div><small>Venceu em</small><span class="bad">${fmtDate(t.paid_until && t.paid_until > t.trial_ends_at ? t.paid_until : t.trial_ends_at)}</span></div>`;
+    }
+
+    function card(t) {
+      const img = safeImg(t.avatar_url);
+      return `<article class="tcard">
+        <div class="thead">
+          <div class="tavatar" style="background:${esc(t.theme_color)}">${img ? `<img src="${esc(img)}" alt="">` : esc(initials(t.store_name))}</div>
+          <div class="tname"><strong>${esc(t.store_name)}</strong><a href="${esc(t.store_url)}" target="_blank" rel="noopener">/s/${esc(t.id)} ↗</a></div>
+          <span class="pill ${esc(t.status)}"><span class="dot"></span>${esc(STATUS[t.status] || t.status)}</span>
+        </div>
+        <div class="tinfo">
+          <div><small>Responsável</small><span>${esc(t.owner_name || '—')}</span></div>
+          <div><small>WhatsApp</small><span>${t.whatsapp ? `<a href="https://wa.me/${esc(t.whatsapp)}" target="_blank" rel="noopener noreferrer">${esc(fmtPhone(t.whatsapp))}</a>` : '—'}</span></div>
+          ${dueInfo(t)}
+          <div><small>Produtos · desde</small><span>${t.product_count} · ${fmtDate(t.created_at)}</span></div>
+        </div>
+        <div class="tacts">
+          <button type="button" class="btn btn-sm btn-ok" data-act="activate" data-id="${esc(t.id)}">✓ ${t.status === 'active' ? 'Renovar' : 'Ativar'} plano</button>
+          <button type="button" class="btn btn-sm btn-soft" data-act="trial" data-id="${esc(t.id)}">+7 dias teste</button>
+          <button type="button" class="btn btn-sm btn-wa" data-act="charge" data-id="${esc(t.id)}">${WA}Cobrar</button>
+          <button type="button" class="btn btn-sm btn-ghost" data-act="more" data-id="${esc(t.id)}" aria-label="Mais ações">•••</button>
+        </div>
+      </article>`;
+    }
+
+    /* ---------------- Modais ---------------- */
+    function openModal(html) {
+      $('#modal').innerHTML = html;
+      $('#overlay').classList.add('open');
+      document.body.style.overflow = 'hidden';
+      const first = $('#modal').querySelector('input, button:not([data-close])');
+      if (first) setTimeout(() => first.focus(), 60);
+    }
+    let pendingConfirm = null;
+    function closeModal() {
+      $('#overlay').classList.remove('open');
+      document.body.style.overflow = '';
+      if (pendingConfirm) { const r = pendingConfirm; pendingConfirm = null; r(false); }
+    }
+    const head = (title, sub) => `<div class="modal-head"><h3>${esc(title)}</h3><button type="button" class="icon-btn" data-close aria-label="Fechar">${CLOSE}</button></div>${sub ? `<p class="sub">${esc(sub)}</p>` : ''}`;
+
+    function confirmBox(title, text, okLabel, danger) {
+      return new Promise((resolve) => {
+        openModal(`${head(title, text)}<div class="acts"><button type="button" class="btn btn-ghost" data-r="0">Cancelar</button><button type="button" class="btn ${danger ? 'btn-danger' : 'btn-dark'}" data-r="1">${esc(okLabel)}</button></div>`);
+        const modal = $('#modal');
+        const finish = (value) => { modal.removeEventListener('click', handler); pendingConfirm = null; resolve(value); };
+        const handler = (e) => {
+          const b = e.target.closest('[data-r], [data-close]');
+          if (!b) return;
+          const value = b.dataset.r === '1';
+          finish(value);
+          closeModal();
+        };
+        modal.addEventListener('click', handler);
+        pendingConfirm = () => finish(false);
+      });
+    }
+
+    function accessMessage(t, password) {
+      return [
+        `Olá${t.owner_name ? ', ' + t.owner_name.split(' ')[0] : ''}! 🎉 Sua Vitrine *${t.store_name}* está pronta.`,
+        '',
+        `🛍️ Sua vitrine: ${t.store_url}`,
+        `⚙️ Painel: ${dashboardUrl(t)}`,
+        `🔑 Loja: ${t.id}`,
+        password ? `🔒 Senha: ${password}` : '',
+        '',
+        t.status === 'trial' ? `Você tem ${t.trial_days_left} dias grátis para testar. Depois, apenas R$ ${state.planPrice}/mês.` : '',
+        'Recomendo trocar a senha no primeiro acesso (aba Conta).',
+      ].filter((l, i, arr) => l !== '' || arr[i - 1] !== '').join('\n');
+    }
+
+    function credentialsView(t, password, title) {
+      openModal(`${head(title)}
+        <div class="success-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg></div>
+        <div class="cred">
+          <div><b>Vitrine</b>${esc(t.store_url)}</div>
+          <div><b>Painel</b>${esc(dashboardUrl(t))}</div>
+          <div><b>Loja</b>${esc(t.id)}</div>
+          <div><b>Senha</b>${esc(password)}</div>
+        </div>
+        <div class="acts">
+          <button type="button" class="btn btn-ghost" data-act="copy-cred">Copiar acesso</button>
+          <a class="btn btn-wa" href="${esc(waLink(t.whatsapp, accessMessage(t, password)))}" target="_blank" rel="noopener noreferrer">${WA}Enviar no WhatsApp</a>
+        </div>`);
+      $('#modal').querySelector('[data-act="copy-cred"]').addEventListener('click', () => copy(accessMessage(t, password), 'Acesso copiado!'));
+    }
+
+    function newStoreModal() {
+      const color = PALETTE[0];
+      openModal(`${head('Nova loja', `Começa com ${state.trialDays} dias de teste grátis automaticamente.`)}
+        <form id="newForm" novalidate>
+          <label class="field"><span>Nome da loja</span><input class="input" name="store_name" maxlength="80" required placeholder="Ex.: Achadinhos da Ana"></label>
+          <label class="field"><span>Endereço (slug) <small id="slugPreview"></small></span>
+            <input class="input" name="id" maxlength="40" required placeholder="achadinhos-da-ana" autocapitalize="none" spellcheck="false" pattern="[a-z0-9-]+"></label>
+          <div class="row two">
+            <label class="field"><span>Responsável</span><input class="input" name="owner_name" maxlength="80" placeholder="Nome do lojista"></label>
+            <label class="field"><span>WhatsApp</span><input class="input" name="whatsapp" inputmode="tel" required placeholder="(67) 99999-9999"></label>
+          </div>
+          <label class="field"><span>Senha inicial</span>
+            <div class="input-group"><input class="input" name="password" minlength="6" required value="${genPassword()}" autocomplete="off" spellcheck="false">
+            <button type="button" class="btn btn-ghost" data-act="gen">Gerar</button></div></label>
+          <div class="field"><span>Cor da vitrine</span>
+            <div class="colors">${PALETTE.map((c) => `<button type="button" data-color="${c}" style="background:${c}" aria-label="Cor ${c}" aria-pressed="${c === color}"></button>`).join('')}</div>
+            <input type="hidden" name="theme_color" value="${color}"></div>
+          <button type="submit" class="btn btn-primary btn-block" id="createBtn">Criar loja com ${state.trialDays} dias grátis</button>
+        </form>`);
+
+      const form = $('#newForm');
+      let slugTouched = false;
+      const preview = () => { $('#slugPreview').textContent = form.id.value ? `/s/${form.id.value}` : ''; };
+      form.store_name.addEventListener('input', () => { if (!slugTouched) { form.id.value = slugify(form.store_name.value); preview(); } });
+      form.id.addEventListener('input', () => { slugTouched = true; form.id.value = form.id.value.toLowerCase().replace(/[^a-z0-9-]/g, ''); preview(); });
+      form.addEventListener('click', (e) => {
+        const c = e.target.closest('[data-color]');
+        if (c) {
+          form.theme_color.value = c.dataset.color;
+          form.querySelectorAll('[data-color]').forEach((b) => b.setAttribute('aria-pressed', String(b === c)));
+        }
+        if (e.target.closest('[data-act="gen"]')) form.password.value = genPassword();
+      });
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const body = Object.fromEntries(new FormData(form));
+        if (!body.store_name.trim()) return toast('Informe o nome da loja.', true);
+        if (String(body.password).length < 6) return toast('A senha precisa de 6 caracteres ou mais.', true);
+        const btn = $('#createBtn');
+        setBusy(btn, true, 'Criando...');
+        try {
+          const { tenant } = await api('/api/admin/tenants', { method: 'POST', body });
+          state.tenants.unshift(tenant);
+          state.stats.total = (state.stats.total || 0) + 1;
+          state.stats.trial = (state.stats.trial || 0) + 1;
+          render();
+          credentialsView(tenant, body.password, 'Loja criada!');
+        } catch (err) {
+          toast(err.message, true);
+          setBusy(btn, false);
+        }
+      });
+    }
+
+    function activateModal(t) {
+      const opts = [[30, '1 mês'], [90, '3 meses'], [180, '6 meses'], [365, '12 meses']];
+      openModal(`${head(`${t.status === 'active' ? 'Renovar' : 'Ativar'} plano`, `${t.store_name} · R$ ${state.planPrice}/mês. Os dias são somados ao que ainda resta.`)}
+        <div class="menu">${opts.map(([d, l]) => `<button type="button" data-days="${d}">✓ ${l} <span style="margin-left:auto;color:var(--muted);font-weight:600">${d} dias</span></button>`).join('')}</div>`);
+      $('#modal').querySelectorAll('[data-days]').forEach((b) => b.addEventListener('click', () => patch(t.id, { action: 'activate', days: Number(b.dataset.days) }, 'Plano ativado ✓')));
+    }
+
+    function moreModal(t) {
+      openModal(`${head(t.store_name, `/s/${t.id}`)}
+        <div class="menu">
+          <button type="button" data-m="edit">✏️ Editar dados da loja</button>
+          <button type="button" data-m="password">🔑 Redefinir senha</button>
+          <button type="button" data-m="access">📤 Reenviar link de acesso</button>
+          <button type="button" data-m="expire" ${t.status === 'expired' ? 'disabled' : ''}>⏸ Expirar agora (tirar do ar)</button>
+          <button type="button" data-m="delete" class="danger">🗑 Excluir loja e produtos</button>
+        </div>`);
+      $('#modal').querySelector('.menu').addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-m]');
+        if (!b || b.disabled) return;
+        const m = b.dataset.m;
+        if (m === 'edit') return editModal(t);
+        if (m === 'password') return passwordModal(t);
+        if (m === 'access') { closeModal(); return window.open(waLink(t.whatsapp, accessMessage(t, '')), '_blank', 'noopener'); }
+        if (m === 'expire') {
+          if (await confirmBox('Expirar esta loja?', 'A vitrine sai do ar e o lojista não consegue mais editar até ser reativado.', 'Expirar', true)) {
+            patch(t.id, { action: 'expire' }, 'Loja expirada');
+          }
+        }
+        if (m === 'delete') {
+          if (await confirmBox('Excluir definitivamente?', `"${t.store_name}" e todos os seus produtos serão apagados. Não dá para desfazer.`, 'Excluir', true)) {
+            try {
+              await api(`/api/admin/tenants/${encodeURIComponent(t.id)}`, { method: 'DELETE' });
+              toast('Loja excluída');
+              await load();
+            } catch (err) { toast(err.message, true); }
+          }
+        }
+      });
+    }
+
+    function editModal(t) {
+      openModal(`${head('Editar loja', `/s/${t.id}`)}
+        <form id="editForm" novalidate>
+          <label class="field"><span>Nome da loja</span><input class="input" name="store_name" maxlength="80" required value="${esc(t.store_name)}"></label>
+          <label class="field"><span>Responsável</span><input class="input" name="owner_name" maxlength="80" value="${esc(t.owner_name)}"></label>
+          <label class="field"><span>WhatsApp</span><input class="input" name="whatsapp" inputmode="tel" required value="${esc(fmtPhone(t.whatsapp))}"></label>
+          <button type="submit" class="btn btn-dark btn-block" id="editBtn">Salvar</button>
+        </form>`);
+      $('#editForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const body = { action: 'update', ...Object.fromEntries(new FormData(e.target)) };
+        patch(t.id, body, 'Dados atualizados ✓', $('#editBtn'));
+      });
+    }
+
+    function passwordModal(t) {
+      openModal(`${head('Redefinir senha', `${t.store_name} · os aparelhos conectados serão desconectados.`)}
+        <form id="pwForm" novalidate>
+          <label class="field"><span>Nova senha</span>
+            <div class="input-group"><input class="input" name="password" minlength="6" required value="${genPassword()}" autocomplete="off" spellcheck="false">
+            <button type="button" class="btn btn-ghost" data-act="gen">Gerar</button></div></label>
+          <button type="submit" class="btn btn-dark btn-block" id="pwBtn">Redefinir senha</button>
+        </form>`);
+      const form = $('#pwForm');
+      form.addEventListener('click', (e) => { if (e.target.closest('[data-act="gen"]')) form.password.value = genPassword(); });
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const password = form.password.value;
+        if (password.length < 6) return toast('A senha precisa de 6 caracteres ou mais.', true);
+        const btn = $('#pwBtn');
+        setBusy(btn, true);
+        try {
+          const { tenant } = await api(`/api/admin/tenants/${encodeURIComponent(t.id)}`, { method: 'PATCH', body: { action: 'reset_password', password } });
+          replaceTenant(tenant);
+          credentialsView(tenant, password, 'Senha redefinida!');
+        } catch (err) { toast(err.message, true); setBusy(btn, false); }
+      });
+    }
+
+    function replaceTenant(tenant) {
+      state.tenants = state.tenants.map((x) => (x.id === tenant.id ? tenant : x));
+      state.stats = {
+        total: state.tenants.length,
+        trial: state.tenants.filter((x) => x.status === 'trial').length,
+        active: state.tenants.filter((x) => x.status === 'active').length,
+        expired: state.tenants.filter((x) => x.status === 'expired').length,
+      };
+      render();
+    }
+
+    async function patch(id, body, okMsg, btn) {
+      if (btn) setBusy(btn, true);
+      try {
+        const { tenant } = await api(`/api/admin/tenants/${encodeURIComponent(id)}`, { method: 'PATCH', body });
+        replaceTenant(tenant);
+        closeModal();
+        toast(okMsg);
+      } catch (err) {
+        toast(err.message, true);
+        if (btn) setBusy(btn, false);
+      }
+    }
+
+    function chargeMessage(t) {
+      const lines = [`Olá${t.owner_name ? ', ' + t.owner_name.split(' ')[0] : ''}! Tudo bem? 😊`];
+      if (t.status === 'trial') lines.push(`Seu teste grátis da Vitrine *${t.store_name}* termina em ${fmtDate(t.trial_ends_at)}.`);
+      else if (t.status === 'expired') lines.push(`Sua Vitrine *${t.store_name}* está fora do ar porque o período terminou.`);
+      else lines.push(`Sua assinatura da Vitrine *${t.store_name}* vence em ${fmtDate(t.paid_until)}.`);
+      lines.push(`Para manter sua vitrine no ar é só R$ ${state.planPrice}/mês. Posso te enviar o Pix?`, '', `🛍️ ${t.store_url}`);
+      return lines.join('\n');
+    }
+
+    /* ---------------- Eventos ---------------- */
+    document.addEventListener('click', async (e) => {
+      const ov = $('#overlay');
+      if (e.target === ov || e.target.closest('[data-close]')) {
+        if (!e.target.closest('[data-r]')) closeModal();
+        return;
+      }
+      const f = e.target.closest('[data-filter]');
+      if (f) { state.filter = f.dataset.filter; return render(); }
+      const b = e.target.closest('[data-act]');
+      if (!b || b.closest('#modal')) return;
+      const t = state.tenants.find((x) => x.id === b.dataset.id);
+      switch (b.dataset.act) {
+        case 'refresh': try { await load(); toast('Atualizado'); } catch (err) { toast(err.message, true); } break;
+        case 'logout': logout(); break;
+        case 'new': newStoreModal(); break;
+        case 'activate': if (t) activateModal(t); break;
+        case 'trial':
+          if (t && await confirmBox('Dar +7 dias de teste?', `${t.store_name} volta para o modo teste com 7 dias a mais.`, 'Confirmar')) {
+            patch(t.id, { action: 'extend_trial', days: 7 }, '+7 dias de teste ✓');
+          }
+          break;
+        case 'charge': if (t) window.open(waLink(t.whatsapp, chargeMessage(t)), '_blank', 'noopener'); break;
+        case 'more': if (t) moreModal(t); break;
+        default: break;
+      }
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('#overlay').classList.contains('open')) closeModal(); });
+    $('#search').addEventListener('input', (e) => { state.query = e.target.value; render(); });
+
+    /* ---------------- Início ---------------- */
+    (async () => {
+      const saved = ss.get(KEY);
+      if (!saved) return showLogin();
+      state.password = saved;
+      try {
+        await load();
+        $('#appView').hidden = false;
+      } catch (err) {
+        if (state.password) showLogin(err.message);
+      }
+    })();
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "vitrineapp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev",
+    "deploy": "wrangler pages deploy --project-name=vitrineapp",
+    "db:init": "wrangler d1 execute minhavitrine --remote --file=schema.sql",
+    "db:init:local": "wrangler d1 execute minhavitrine --local --file=schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

@@ -1,0 +1,27 @@
+# Vitrine — Cloudflare Pages (site em ./public + API em ./functions usando worker/index.js)
+# O Pages lê este arquivo sozinho: pasta publicada, banco D1 e variáveis.
+name = "vitrineapp"
+compatibility_date = "2026-11-01"
+pages_build_output_dir = "./public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "minhavitrine"
+database_id = "f53ffb6a-1978-40fb-917b-5d897b6dc169"
+
+# Opcional (recomendado): imagens enviadas pelo lojista ficam no R2.
+# Sem isso, as fotos são comprimidas no navegador e guardadas no próprio D1.
+# Para ativar: crie o bucket "vitrine-imagens" no painel R2 e descomente:
+# [[r2_buckets]]
+# binding = "IMAGES"
+# bucket_name = "vitrine-imagens"
+
+[vars]
+TRIAL_DAYS = "7"
+PLAN_PRICE = "19,90"
+SUPPORT_WHATSAPP = ""      # seu WhatsApp para receber assinaturas, ex.: 5567999999999
+ALLOWED_ORIGIN = "*"
+PUBLIC_BASE_URL = ""       # vazio = domínio atual (ex.: https://vitrineapp.pages.dev)
+
+# Segredos (Pages → Settings → Variables and Secrets → tipo "Secret"):
+#   MASTER_PASSWORD  e  SESSION_SECRET
