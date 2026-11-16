@@ -100,3 +100,12 @@ Rotas do Master (`X-Master-Password`):
 - A cota de buscas é por conta. Preços: `PLAN_PRICE` e `PLAN_PRICE_COMPLETE`.
 - Bancos antigos migram sozinhos: cada loja vira "conta + 1 loja", sem mudar link, senha ou produtos.
 - Para um plano maior no futuro, acrescente-o em `PLANS` no `worker/index.js`.
+
+## Pagamentos (Mercado Pago)
+
+- Segredo obrigatório: `MP_ACCESS_TOKEN` (Access Token de produção da conta Mercado Pago que recebe).
+- Opcional: `MP_WEBHOOK_SECRET` (assinatura secreta dos avisos, em Suas integrações → Webhooks).
+- Aviso de pagamento: `https://vitrineapp.pages.dev/api/mp/webhook` (já vai em cada cobrança; cadastrar no painel do MP é opcional).
+- Pix: QR Code e copia e cola no painel, válido por 30 min. Cartão: checkout do Mercado Pago.
+- Pagamento aprovado ativa 30 dias do plano escolhido (somando ao que resta). Cada pagamento ativa uma vez só.
+- Sem `MP_ACCESS_TOKEN`, os botões de assinar continuam indo para o WhatsApp do suporte.

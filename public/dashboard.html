@@ -63,6 +63,20 @@
     .mode-pick small { color: #7d8494; font-size: 12.5px; }
     .mode-pick input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
     .mode-pick input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+    /* Pagamento */
+    .pay-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0 12px; }
+    .pay-plans label { cursor: pointer; }
+    .pay-plans input { position: absolute; opacity: 0; pointer-events: none; }
+    .pay-plans span { display: block; padding: 12px; border-radius: 14px; border: 2px solid var(--line, #e6e8ee); text-align: center; }
+    .pay-plans b { display: block; font-size: 15px; }
+    .pay-plans small { color: var(--muted); font-size: 12px; }
+    .pay-plans input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
+    .pix-box { text-align: center; }
+    .pix-box img { width: 220px; height: 220px; border-radius: 14px; border: 1px solid var(--line, #e6e8ee); margin: 6px auto 10px; display: block; background: #fff; }
+    .pix-code { font-family: ui-monospace, monospace; font-size: 11px; word-break: break-all; background: #f5f6f8; border-radius: 12px; padding: 10px; max-height: 76px; overflow: auto; text-align: left; margin-bottom: 10px; }
+    .pay-wait { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13.5px; font-weight: 700; color: var(--muted); margin: 10px 0 4px; }
+    .pay-ok { text-align: center; padding: 10px 0; }
+    .pay-ok .big { font-size: 46px; }
     /* Minhas lojas */
     .stores-head { display: flex; align-items: center; gap: 12px; margin: 6px 2px 14px; }
     .stores-head h1 { margin: 0; font-size: 22px; }
@@ -655,6 +669,104 @@
       return `<button type="button" data-model="${m.id}" class="${locked ? 'locked' : ''}" aria-pressed="${m.id === currentModel()}">${locked ? '🔒 ' : ''}${esc(m.name)}</button>`;
     }).join('')}</div>${plan().custom_templates ? `<div class="tpl-edit"><button type="button" class="btn btn-sm btn-ghost" data-act="tpl-edit">✏️ Editar este modelo</button></div>` : ''}`;
 
+
+    /* ---------------- Assinatura: Pix ou cartão (Mercado Pago) ---------------- */
+    let payPoll = null;
+    function stopPayPoll() { clearInterval(payPoll); payPoll = null; }
+
+    function openPay(planId) {
+      if (!state.config.payments) return upgradeDialogWa(planId);
+      stopPayPoll();
+      const ov = $('#dialogOverlay');
+      const dlg = $('#dialog');
+      const chosen = planId || ((state.account && state.account.plan) || 'complete');
+      const email = ls.get('vitrine:email') || '';
+      dlg.innerHTML = `<h3 id="dlgTitle">💳 Assinar o Vitrine App</h3>
+        <p>30 dias de acesso. Ativa na hora que o pagamento é aprovado.</p>
+        <div class="pay-plans">
+          ${['basic', 'complete'].map((id) => `<label><input type="radio" name="payPlan" value="${id}" ${id === chosen ? 'checked' : ''}><span><b>${id === 'complete' ? '⭐ Completo' : 'Básico'}</b>R$ ${esc(priceOf(id))}<br><small>${id === 'complete' ? 'até 3 lojas · 3 modelos' : '1 loja'}</small></span></label>`).join('')}
+        </div>
+        <label class="field"><span>Seu e-mail <small>o comprovante chega nele</small></span><input class="input" id="payEmail" type="email" inputmode="email" autocomplete="email" value="${esc(email)}" placeholder="voce@email.com"></label>
+        <div class="grid-2">
+          <button type="button" class="btn btn-primary" data-p="pix">⚡ Pagar com Pix</button>
+          <button type="button" class="btn btn-soft" data-p="card">💳 Cartão</button>
+        </div>
+        <button type="button" class="btn btn-ghost btn-block" data-p="close" style="margin-top:8px">Agora não</button>`;
+      ov.classList.add('open');
+      const close = () => { stopPayPoll(); ov.classList.remove('open'); ov.onclick = null; };
+      ov.onclick = async (e) => {
+        if (e.target === ov) return close();
+        const b = e.target.closest('[data-p]');
+        if (!b) return;
+        if (b.dataset.p === 'close') return close();
+        if (b.dataset.p === 'copy') return copy(b.dataset.code, 'Código Pix copiado! Cole no app do seu banco 💸');
+        const plan = (dlg.querySelector('[name="payPlan"]:checked') || {}).value || 'basic';
+        const mail = ($('#payEmail') || {}).value ? $('#payEmail').value.trim() : '';
+        if (b.dataset.p === 'pix' && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) { toast('Informe seu e-mail para gerar o Pix.', true); return $('#payEmail').focus(); }
+        if (mail) ls.set('vitrine:email', mail);
+        setBusy(b, true, b.dataset.p === 'pix' ? 'Gerando Pix...' : 'Abrindo...');
+        try {
+          const data = await api('/api/me/pay', { method: 'POST', body: { plan, method: b.dataset.p, email: mail } });
+          if (b.dataset.p === 'card') { location.href = data.checkout_url; return; }
+          showPix(data);
+        } catch (err) { toast(err.message, true); setBusy(b, false); }
+      };
+    }
+
+    function showPix(data) {
+      const dlg = $('#dialog');
+      const { pix, payment } = data;
+      dlg.innerHTML = `<h3 id="dlgTitle">⚡ Pague com Pix</h3>
+        <p>Plano ${payment.plan === 'complete' ? 'Completo' : 'Básico'} · <b>${brl(payment.amount)}</b>. Abra o app do seu banco e escaneie o QR Code ou use o copia e cola.</p>
+        <div class="pix-box">
+          ${pix.qr_code_base64 ? `<img src="data:image/png;base64,${esc(pix.qr_code_base64)}" alt="QR Code do Pix">` : ''}
+          <div class="pix-code">${esc(pix.qr_code)}</div>
+          <button type="button" class="btn btn-primary btn-block" data-p="copy" data-code="${esc(pix.qr_code)}">${I.copy}Copiar código Pix</button>
+          <div class="pay-wait"><span class="spinner" style="border-color:currentColor;border-right-color:transparent"></span>Aguardando o pagamento... (vale por ${pix.expires_in_min} min)</div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-block" data-p="close">Fechar (o pagamento continua valendo)</button>`;
+      watchPayment(payment.id);
+    }
+
+    function watchPayment(id) {
+      stopPayPoll();
+      let tries = 0;
+      const check = async () => {
+        tries++;
+        if (tries > 400) return stopPayPoll();
+        try {
+          const data = await api(`/api/me/pay/${id}`);
+          if (data.payment.approved) { stopPayPoll(); paymentApproved(data); }
+        } catch { /* tenta de novo */ }
+      };
+      payPoll = setInterval(check, 4000);
+      check();
+    }
+
+    function paymentApproved(data) {
+      state.account = data.account;
+      const p = data.account.plan_info;
+      const ov = $('#dialogOverlay');
+      const dlg = $('#dialog');
+      dlg.innerHTML = `<div class="pay-ok"><div class="big">🎉</div><h3 id="dlgTitle">Pacote ativado!</h3>
+        <p>Plano <b>${esc(p.name)}</b> ativo até <b>${fmtDate(data.account.paid_until)}</b>. Obrigado por assinar o Vitrine App!</p></div>
+        <button type="button" class="btn btn-primary btn-block" data-p="close">Continuar</button>`;
+      ov.classList.add('open');
+      ov.onclick = (e) => {
+        if (e.target === ov || e.target.closest('[data-p="close"]')) {
+          ov.classList.remove('open'); ov.onclick = null;
+          (state.view === 'stores' ? showStores() : loadMe().then(render)).catch(() => {});
+        }
+      };
+    }
+
+    function upgradeDialogWa(planId) {
+      const id = planId || 'complete';
+      const msg = `Olá! Quero assinar o plano ${id === 'complete' ? 'Completo' : 'Básico'} da Vitrine (R$ ${priceOf(id)}/mês). Conta: ${state.account ? fmtPhone(state.account.whatsapp) : ''}.`;
+      if (state.config.support_whatsapp) window.open(waLink(state.config.support_whatsapp, msg), '_blank', 'noopener');
+      else toast('Fale com o suporte para assinar.', true);
+    }
+
     function upgradeDialog(feature) {
       const msg = `Olá! Quero mudar para o plano Completo da Vitrine (R$ ${priceOf('complete')}/mês). Conta: ${state.account ? fmtPhone(state.account.whatsapp) : ''}.`;
       const dlg = $('#dialog');
@@ -663,10 +775,13 @@
         <p style="font-size:13.5px">No <b>Completo (R$ ${esc(priceOf('complete'))}/mês)</b> você tem até 3 lojas, os 3 modelos de mensagem editáveis e 30 buscas automáticas por hora.</p>
         <div class="grid-2">
           <button type="button" class="btn btn-ghost" data-dlg="close">Agora não</button>
-          ${state.config.support_whatsapp ? `<a class="btn btn-wa" href="${esc(waLink(state.config.support_whatsapp, msg))}" target="_blank" rel="noopener">${I.wa}Quero o Completo</a>` : ''}
+          ${state.config.payments ? `<button type="button" class="btn btn-primary" data-dlg="pay">⭐ Quero o Completo</button>`
+            : state.config.support_whatsapp ? `<a class="btn btn-wa" href="${esc(waLink(state.config.support_whatsapp, msg))}" target="_blank" rel="noopener">${I.wa}Quero o Completo</a>` : ''}
         </div>`;
       $('#dialogOverlay').classList.add('open');
       dlg.querySelector('[data-dlg="close"]').onclick = () => $('#dialogOverlay').classList.remove('open');
+      const payBtn = dlg.querySelector('[data-dlg="pay"]');
+      if (payBtn) payBtn.onclick = () => openPay('complete');
     }
 
     function openTemplateEditor() {
@@ -1137,7 +1252,11 @@
       const who = state.tenant ? `"${state.tenant.store_name}" (${state.tenant.id})` : fmtPhone(a.whatsapp);
       const msgFor = (id) => `Olá! Quero assinar o plano ${id === 'complete' ? 'Completo' : 'Básico'} da Vitrine (R$ ${priceOf(id)}/mês). Conta: ${who}.`;
       const wa = state.config.support_whatsapp;
-      const payBtns = wa
+      const payBtns = state.config.payments
+        ? `<div class="pay-row">
+            <button type="button" class="btn btn-sm btn-primary" data-act="pay" data-plan="complete">⭐ Completo R$ ${esc(priceOf('complete'))}</button>
+            <button type="button" class="btn btn-sm btn-ghost" data-act="pay" data-plan="basic">Básico R$ ${esc(priceOf('basic'))}</button></div>`
+        : wa
         ? `<div class="pay-row">
             <a class="btn btn-sm btn-wa" href="${esc(waLink(wa, msgFor('complete')))}" target="_blank" rel="noopener noreferrer">${I.wa}Completo R$ ${esc(priceOf('complete'))}</a>
             <a class="btn btn-sm btn-ghost" href="${esc(waLink(wa, msgFor('basic')))}" target="_blank" rel="noopener noreferrer">Básico R$ ${esc(priceOf('basic'))}</a></div>`
@@ -1154,7 +1273,8 @@
       if (a.status === 'active') {
         return `<div class="plan active"><div class="plan-icon">${I.check}</div><div class="plan-body">
           <strong>Plano ${esc(p.name)} ativo · R$ ${price}/mês</strong>
-          ${a.paid_until ? `Válido até ${fmtDate(a.paid_until)} (${a.paid_days_left} ${a.paid_days_left === 1 ? 'dia' : 'dias'}).` : 'Sua vitrine está no ar.'}</div></div>`;
+          ${a.paid_until ? `Válido até ${fmtDate(a.paid_until)} (${a.paid_days_left} ${a.paid_days_left === 1 ? 'dia' : 'dias'}).` : 'Sua vitrine está no ar.'}
+          ${state.config.payments && a.paid_days_left !== null && a.paid_days_left <= 7 ? `<div class="pay-row"><button type="button" class="btn btn-sm btn-primary" data-act="pay" data-plan="${esc(contracted)}">🔄 Renovar agora</button></div>` : ''}</div></div>`;
       }
       return `<div class="plan expired"><div class="plan-icon">${I.lock}</div><div class="plan-body">
         <strong>Seu acesso terminou</strong>
@@ -1742,7 +1862,8 @@
       if (act === 'stores') return showStores();
       if (act === 'open-store') return openStore(t.dataset.id);
       if (act === 'new-store') return openNewStore();
-      if (act === 'upgrade') return upgradeDialog('Libere mais lojas e todos os modelos de mensagem.');
+      if (act === 'upgrade') return state.config.payments ? openPay('complete') : upgradeDialog('Libere mais lojas e todos os modelos de mensagem.');
+      if (act === 'pay') return openPay(t.dataset.plan);
       if (act === 'tpl-edit') return openTemplateEditor();
     });
 
@@ -1825,6 +1946,11 @@
       if (!state.token) return showLogin();
       try {
         const welcome = new URLSearchParams(location.search).get('bemvindo');
+        const paidId = new URLSearchParams(location.search).get('pago');
+        if (paidId) {
+          history.replaceState(null, '', location.pathname);
+          setTimeout(() => { toast('Confirmando seu pagamento...'); watchPayment(Number(paidId)); }, 600);
+        }
         state.storeId = ls.get(STORE_KEY);
         if (welcome) {
           await loadMe();

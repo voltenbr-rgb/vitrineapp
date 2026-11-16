@@ -440,6 +440,24 @@ function ensureSchema(env) {
         )`,
       ).run();
       await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_accounts_whatsapp ON accounts (whatsapp)').run();
+      // Pagamentos do Mercado Pago (Pix ou cartão). "applied" garante que cada pagamento ativa o plano uma vez só.
+      await env.DB.prepare(
+        `CREATE TABLE IF NOT EXISTS payments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          account_id INTEGER NOT NULL,
+          plan TEXT NOT NULL,
+          days INTEGER NOT NULL DEFAULT 30,
+          amount REAL NOT NULL,
+          method TEXT NOT NULL,
+          mp_id TEXT,
+          ref TEXT NOT NULL UNIQUE,
+          status TEXT NOT NULL DEFAULT 'pending',
+          applied INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )`,
+      ).run();
+      await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_payments_account ON payments (account_id, created_at)').run();
       await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_legacy ON accounts (legacy_tenant_id) WHERE legacy_tenant_id IS NOT NULL').run();
       await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_tenants_account ON tenants (account_id)').run();
       // Migração: cada loja antiga vira "conta + 1 loja" (sem mudar link, senha ou produtos).
@@ -1651,6 +1669,7 @@ async function handleConfig(request, env) {
     plan_price: env.PLAN_PRICE || '19,90',
     plan_price_complete: env.PLAN_PRICE_COMPLETE || '29,90',
     plans: plansCatalog(env),
+    payments: mpConfigured(env),
     support_whatsapp: String(cfg.support_whatsapp || env.SUPPORT_WHATSAPP || '').replace(/\D/g, ''),
     video: videoEmbed(cfg.landing_video_url),
     lookup: { shopee: !!(await shopeeCredentials(env, cfg)), mercadolivre: mlConfigured(env) && !!cfg.ml_tokens },
@@ -2342,6 +2361,184 @@ async function handleAdminDelete(env, rawId) {
   return json({ ok: true });
 }
 
+
+/* ------------------------------------------------------------------ */
+/* Pagamentos: Mercado Pago (Pix no painel ou cartão no checkout)     */
+/* ------------------------------------------------------------------ */
+// Segredos no Cloudflare: MP_ACCESS_TOKEN (obrigatório) e MP_WEBHOOK_SECRET (opcional, valida a assinatura do aviso).
+
+const MP_API = 'https://api.mercadopago.com';
+const mpConfigured = (env) => !!env.MP_ACCESS_TOKEN;
+const priceNumber = (v) => Math.round((Number(String(v).replace(/\./g, '').replace(',', '.')) || 0) * 100) / 100;
+
+async function mpFetch(env, path, { method = 'GET', body, idem } = {}) {
+  const headers = { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}`, Accept: 'application/json' };
+  if (body) headers['Content-Type'] = 'application/json';
+  if (idem) headers['X-Idempotency-Key'] = idem;
+  let res;
+  try {
+    res = await fetch(MP_API + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  } catch {
+    throw new HttpError(502, 'Não foi possível falar com o Mercado Pago agora. Tente de novo em instantes.');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    await saveDebug(env, 'debug_mp', { path, status: res.status, data }).catch(() => {});
+    const msg = (data && (data.message || (data.cause && data.cause[0] && data.cause[0].description))) || '';
+    throw new HttpError(502, `O Mercado Pago recusou a cobrança${msg ? `: ${msg}` : ''}.`, { code: 'mp_error' });
+  }
+  return data;
+}
+
+// Aplica o pagamento aprovado na conta (uma vez só): plano escolhido + dias somados ao que resta.
+async function applyPayment(env, pay) {
+  const claim = await env.DB.prepare(
+    "UPDATE payments SET applied = 1, status = 'approved', updated_at = ? WHERE id = ? AND applied = 0",
+  ).bind(nowIso(), pay.id).run();
+  if (!claim.meta || !claim.meta.changes) return false; // já aplicado
+  const acc = await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(pay.account_id).first();
+  if (!acc) return false;
+  const now = Date.now();
+  const current = acc.status === 'active' && acc.paid_until ? Date.parse(acc.paid_until) : 0;
+  const paidUntil = addDays(Math.max(now, current), pay.days || 30);
+  await env.DB.prepare("UPDATE accounts SET status = 'active', plan = ?, paid_until = ?, updated_at = ? WHERE id = ?")
+    .bind(PLANS[pay.plan] ? pay.plan : 'basic', paidUntil, nowIso(), acc.id).run();
+  return true;
+}
+
+// Confere no Mercado Pago (fonte da verdade) e atualiza o pagamento local.
+async function syncPayment(env, pay, mpPayment = null) {
+  let mp = mpPayment;
+  if (!mp) {
+    if (pay.mp_id && pay.method === 'pix') {
+      mp = await mpFetch(env, `/v1/payments/${encodeURIComponent(pay.mp_id)}`);
+    } else {
+      // Cartão (checkout): procura o pagamento pela referência.
+      const found = await mpFetch(env, `/v1/payments/search?external_reference=${encodeURIComponent(pay.ref)}&sort=date_created&criteria=desc`);
+      mp = (found.results || []).find((r) => r.status === 'approved') || (found.results || [])[0] || null;
+    }
+  }
+  if (!mp || mp.external_reference !== pay.ref) return pay;
+  const status = String(mp.status || 'pending');
+  if (status === 'approved' && priceNumber(mp.transaction_amount) + 0.001 >= Number(pay.amount)) {
+    await env.DB.prepare('UPDATE payments SET mp_id = ? WHERE id = ?').bind(String(mp.id), pay.id).run();
+    await applyPayment(env, pay);
+    return { ...pay, status: 'approved', applied: 1, mp_id: String(mp.id) };
+  }
+  if (status !== pay.status && !pay.applied) {
+    await env.DB.prepare('UPDATE payments SET status = ?, updated_at = ? WHERE id = ?').bind(status, nowIso(), pay.id).run();
+  }
+  return { ...pay, status };
+}
+
+function paymentPublic(p, extra = {}) {
+  return { id: p.id, plan: p.plan, amount: p.amount, method: p.method, status: p.status, approved: !!p.applied, created_at: p.created_at, ...extra };
+}
+
+async function handlePayCreate(request, env, account) {
+  if (!mpConfigured(env)) throw new HttpError(501, 'Pagamento online ainda não foi ativado. Fale com o suporte para assinar.', { code: 'not_configured' });
+  const body = await readJson(request);
+  const plan = PLANS[body.plan] ? body.plan : 'basic';
+  const method = body.method === 'card' ? 'card' : 'pix';
+  const amount = priceNumber(planPrice(env, plan));
+  if (!(amount > 0)) throw new HttpError(500, 'Preço do plano não configurado.');
+  const email = String(body.email || '').trim().toLowerCase();
+  if (method === 'pix' && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    throw new HttpError(400, 'Informe um e-mail válido para gerar o Pix (o Mercado Pago envia o comprovante para ele).');
+  }
+  const ts = nowIso();
+  const ref = `vitrine:${account.id}:${plan}:${crypto.randomUUID()}`;
+  const base = publicBase(request, env);
+  const notify = `${base}/api/mp/webhook`;
+  const title = `Vitrine App · Plano ${PLANS[plan].name} (30 dias)`;
+  const ins = await env.DB.prepare(
+    'INSERT INTO payments (account_id, plan, days, amount, method, ref, status, created_at, updated_at) VALUES (?, ?, 30, ?, ?, ?, ?, ?, ?)',
+  ).bind(account.id, plan, amount, method, ref, 'pending', ts, ts).run();
+  const payId = ins.meta && ins.meta.last_row_id;
+
+  if (method === 'pix') {
+    const mp = await mpFetch(env, '/v1/payments', {
+      method: 'POST',
+      idem: ref,
+      body: {
+        transaction_amount: amount,
+        description: title,
+        payment_method_id: 'pix',
+        external_reference: ref,
+        notification_url: notify,
+        date_of_expiration: new Date(Date.now() + 30 * 60_000).toISOString().replace('Z', '-00:00'),
+        payer: { email, first_name: String(account.owner_name || '').split(' ')[0] || undefined },
+      },
+    });
+    await env.DB.prepare('UPDATE payments SET mp_id = ? WHERE id = ?').bind(String(mp.id), payId).run();
+    const tx = (mp.point_of_interaction && mp.point_of_interaction.transaction_data) || {};
+    return json({
+      payment: paymentPublic({ id: payId, plan, amount, method, status: mp.status || 'pending', applied: 0, created_at: ts }),
+      pix: { qr_code: tx.qr_code || '', qr_code_base64: tx.qr_code_base64 || '', ticket_url: tx.ticket_url || '', expires_in_min: 30 },
+    }, 201);
+  }
+
+  const pref = await mpFetch(env, '/checkout/preferences', {
+    method: 'POST',
+    body: {
+      items: [{ id: plan, title, quantity: 1, unit_price: amount, currency_id: 'BRL' }],
+      external_reference: ref,
+      notification_url: notify,
+      back_urls: { success: `${base}/dashboard.html?pago=${payId}`, pending: `${base}/dashboard.html?pago=${payId}`, failure: `${base}/dashboard.html?pago=${payId}` },
+      auto_return: 'approved',
+      statement_descriptor: 'VITRINEAPP',
+      payment_methods: { installments: 1 },
+    },
+  });
+  return json({
+    payment: paymentPublic({ id: payId, plan, amount, method, status: 'pending', applied: 0, created_at: ts }),
+    checkout_url: pref.init_point,
+  }, 201);
+}
+
+async function handlePayStatus(env, account, rawId) {
+  const pay = await env.DB.prepare('SELECT * FROM payments WHERE id = ? AND account_id = ?').bind(Number(rawId) || 0, account.id).first();
+  if (!pay) throw new HttpError(404, 'Pagamento não encontrado.');
+  let current = pay;
+  if (!pay.applied && mpConfigured(env)) {
+    try { current = await syncPayment(env, pay); } catch { /* tenta de novo na próxima consulta */ }
+  }
+  const acc = await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(account.id).first();
+  return json({ payment: paymentPublic(current), account: accountPrivate(env, acc) });
+}
+
+// Valida a assinatura do aviso (quando MP_WEBHOOK_SECRET está configurado).
+async function mpSignatureOk(request, env, dataId) {
+  if (!env.MP_WEBHOOK_SECRET) return true;
+  const sig = request.headers.get('x-signature') || '';
+  const reqId = request.headers.get('x-request-id') || '';
+  const parts = Object.fromEntries(sig.split(',').map((kv) => kv.trim().split('=')));
+  if (!parts.ts || !parts.v1) return false;
+  const manifest = `id:${String(dataId).toLowerCase()};request-id:${reqId};ts:${parts.ts};`;
+  const key = await crypto.subtle.importKey('raw', enc.encode(env.MP_WEBHOOK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(manifest)));
+  const hex = [...mac].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return timingSafeEqual(enc.encode(hex), enc.encode(String(parts.v1)));
+}
+
+// Aviso do Mercado Pago. Nunca confia no conteúdo: sempre consulta o pagamento direto no Mercado Pago.
+async function handleMpWebhook(request, env) {
+  if (!mpConfigured(env)) return json({ ok: true });
+  const url = new URL(request.url);
+  const body = await request.json().catch(() => ({}));
+  const type = body.type || body.topic || url.searchParams.get('type') || url.searchParams.get('topic') || '';
+  const dataId = (body.data && body.data.id) || url.searchParams.get('data.id') || url.searchParams.get('id') || '';
+  if (!/payment/.test(type) || !/^\d+$/.test(String(dataId))) return json({ ok: true });
+  if (!(await mpSignatureOk(request, env, dataId))) return json({ error: 'assinatura inválida' }, 401);
+  let mp;
+  try { mp = await mpFetch(env, `/v1/payments/${dataId}`); } catch { return json({ ok: true }); } // o painel confere de novo sozinho
+  const ref = String(mp.external_reference || '');
+  if (!ref.startsWith('vitrine:')) return json({ ok: true }); // pagamento de outro sistema (ex.: Nexus)
+  const pay = await env.DB.prepare('SELECT * FROM payments WHERE ref = ?').bind(ref).first();
+  if (pay) await syncPayment(env, pay, mp);
+  return json({ ok: true });
+}
+
 /* ------------------------------------------------------------------ */
 /* Roteador                                                            */
 /* ------------------------------------------------------------------ */
@@ -2365,6 +2562,8 @@ async function routeApi(request, env, path) {
     if (path === '/api/me/ping' && method === 'POST') return handlePing(env, account);
     if (path === '/api/me/password' && method === 'PUT') return handlePassword(request, env, account);
     if (path === '/api/me/stores' && method === 'GET') return handleStores(request, env, account);
+    if (path === '/api/me/pay' && method === 'POST') return handlePayCreate(request, env, account);
+    if ((m = path.match(/^\/api\/me\/pay\/(\d+)$/)) && method === 'GET') return handlePayStatus(env, account, m[1]);
     if (path === '/api/me/stores' && method === 'POST') return handleCreateStore(request, env, account);
     if ((m = path.match(/^\/api\/me\/stores\/([^/]+)$/)) && method === 'DELETE') {
       return handleDeleteStore(env, account, decodeURIComponent(m[1]));
@@ -2387,6 +2586,7 @@ async function routeApi(request, env, path) {
   }
 
   if (path === '/api/admin/ml/callback' && method === 'GET') return handleMlCallback(request, env);
+  if (path === '/api/mp/webhook' && (method === 'POST' || method === 'GET')) return handleMpWebhook(request, env);
 
   if (path === '/api/admin' || path.startsWith('/api/admin/')) {
     await requireMaster(request, env);
