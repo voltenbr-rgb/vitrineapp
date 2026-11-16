@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS products (
   is_visible       INTEGER NOT NULL DEFAULT 1 CHECK (is_visible IN (0, 1)),  -- 0 = oculto para os clientes
   show_price       INTEGER NOT NULL DEFAULT 1 CHECK (show_price IN (0, 1)),  -- 0 = preço deste produto oculto
   original_price   REAL,                              -- preço antigo ("De"), para mostrar o desconto
+  category         TEXT NOT NULL DEFAULT '',          -- categoria livre (filtro na vitrine)
   created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );

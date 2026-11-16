@@ -254,8 +254,14 @@
     .avatar-edit label.btn { position: relative; overflow: hidden; }
     .avatar-edit label.btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
-    .sticky-actions { position: sticky; bottom: calc(92px + var(--safe-bottom)); display: flex; gap: 10px; margin-top: 8px; z-index: 5; }
-    .sticky-actions .btn { flex: 1; }
+    .form-actions { display: flex; gap: 10px; margin-top: 14px; }
+    .form-actions .btn { flex: 1; height: 54px; font-size: 15px; }
+    .top .save-top { margin-left: auto; flex-shrink: 0; }
+    body.typing .tabbar { display: none; }
+    body.typing .wrap { padding-bottom: calc(24px + var(--safe-bottom)); }
+    .cat-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+    .cat-chips button { height: 32px; padding: 0 11px; border-radius: 10px; background: var(--field); font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+    .cat-chips button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-deep); }
 
     /* ---------- Navegação ---------- */
     .tabbar {
@@ -488,6 +494,27 @@
         ta.remove();
       }
     }
+
+    // Categorias já usadas pelo lojista (mais usadas primeiro).
+    function categories() {
+      const count = new Map();
+      for (const p of state.products) {
+        const c = String(p.category || '').trim();
+        if (c) count.set(c, (count.get(c) || 0) + 1);
+      }
+      return [...count.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pt-BR')).map(([c]) => c);
+    }
+
+    // Esconde a barra de baixo enquanto o teclado está aberto, para não cobrir os campos.
+    document.addEventListener('focusin', (e) => {
+      if (e.target.matches('input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea')) document.body.classList.add('typing');
+    });
+    document.addEventListener('focusout', () => {
+      setTimeout(() => {
+        const a = document.activeElement;
+        if (!a || !a.matches('input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea')) document.body.classList.remove('typing');
+      }, 120);
+    });
 
     /* ---------------- Mensagens de oferta (3 modelos) ---------------- */
     const OFFER_MODELS = [
@@ -887,6 +914,7 @@
           <div class="line"><span class="badge ${plat.cls}">${esc(plat.label)}</span>
             ${p.price !== null && p.price !== undefined ? `<span class="price" ${Number(p.show_price) === 0 ? 'style="text-decoration:line-through;opacity:.6" title="Preço oculto na vitrine"' : ''}>${brl(p.price)}</span>` : '<span>sem preço</span>'}
             ${Number(p.show_price) === 0 ? '<span class="tag-hidden">preço oculto</span>' : ''}
+            ${p.category ? `<span>· ${esc(p.category)}</span>` : ''}
             ${p.is_physical ? '<span>· 📍 entrega local</span>' : ''}
             ${hidden ? '<span class="tag-hidden">Oculto</span>' : ''}</div></div>
         <div class="acts">
@@ -933,7 +961,8 @@
       };
       return `
         <div class="top"><button type="button" class="icon-btn" data-tab="products" aria-label="Voltar">${I.back}</button>
-          <div class="who"><small>${state.editing ? 'Editar produto' : 'Novo produto'}</small><strong>${state.editing ? esc(p.title) : 'Cadastrar na vitrine'}</strong></div></div>
+          <div class="who"><small>${state.editing ? 'Editar produto' : 'Novo produto'}</small><strong>${state.editing ? esc(p.title) : 'Cadastrar na vitrine'}</strong></div>
+          <button type="submit" form="productForm" class="btn btn-sm btn-primary save-top" ${locked ? 'disabled' : ''}>Salvar</button></div>
         ${locked ? planBanner() : ''}
         <form id="productForm" novalidate>
           <fieldset ${locked ? 'disabled' : ''} style="border:0;padding:0;margin:0;min-width:0">
@@ -964,6 +993,11 @@
             <h2>Informações</h2><p class="sub">O que o cliente vai ver no cartão do produto.</p>
             <label class="field"><span>Título <small id="titleCount">${(p.title || '').length}/120</small></span>
               <input class="input" name="title" maxlength="120" required value="${esc(p.title)}" placeholder="Ex.: Tênis de corrida leve"></label>
+            <label class="field"><span>Categoria <small>opcional, vira filtro na vitrine</small></span>
+              <input class="input" name="category" maxlength="40" list="catList" value="${esc(p.category || '')}" placeholder="Ex.: Cozinha, Moda, Eletrônicos" autocomplete="off">
+              <datalist id="catList">${categories().map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
+              ${categories().length ? `<div class="cat-chips">${categories().map((c) => `<button type="button" data-cat="${esc(c)}" aria-pressed="${c === (p.category || '')}">${esc(c)}</button>`).join('')}</div>` : ''}
+            </label>
             <label class="field"><span>Descrição <small id="descCount">${(p.description || '').length}/1500</small></span>
               <textarea class="textarea" name="description" maxlength="1500" placeholder="Destaque benefícios, tamanhos, cores...">${esc(p.description)}</textarea></label>
             <div class="row">
@@ -997,8 +1031,8 @@
           </div>
           </fieldset>
 
-          <div class="sticky-actions">
-            ${state.editing ? `<button type="button" class="btn btn-danger" data-act="delete" data-id="${p.id}" style="flex:0 0 auto" aria-label="Excluir">${I.trash}</button>` : ''}
+          <div class="form-actions">
+            ${state.editing ? `<button type="button" class="btn btn-danger" data-act="delete" data-id="${p.id}" style="flex:0 0 auto;width:54px" aria-label="Excluir">${I.trash}</button>` : ''}
             <button type="submit" class="btn btn-primary" id="saveProduct" ${locked ? 'disabled' : ''}>${state.editing ? 'Salvar alterações' : 'Publicar na vitrine'}</button>
           </div>
         </form>`;
@@ -1138,6 +1172,7 @@
         sort_order: fd.get('pinned') ? -1 : 0,
         show_price: fd.get('show_price') ? 1 : 0,
         original_price: String(fd.get('original_price') || '').trim(),
+        category: String(fd.get('category') || '').trim(),
       };
       if (!String(body.title || '').trim()) { toast('Dê um título ao produto.', true); form.title.focus(); return; }
       if (body.platform !== 'proprio' && !body.affiliate_link) { toast('Cole o link de afiliado.', true); form.affiliate_link.focus(); return; }
@@ -1321,6 +1356,14 @@
 
     /* ---------------- Eventos ---------------- */
     document.addEventListener('click', async (e) => {
+      const cat = e.target.closest('[data-cat]');
+      if (cat) {
+        const input = $('[name="category"]');
+        const same = input.value === cat.dataset.cat;
+        input.value = same ? '' : cat.dataset.cat;
+        document.querySelectorAll('[data-cat]').forEach((b) => b.setAttribute('aria-pressed', String(!same && b === cat)));
+        return;
+      }
       const t = e.target.closest('[data-tab], [data-act], [data-color], [data-model]');
       if (!t || t.disabled) return;
       if (t.dataset.tab) return go(t.dataset.tab);
@@ -1390,6 +1433,7 @@
         if (s) { s.focus(); s.setSelectionRange(pos, pos); }
       }
       if (el.dataset && el.dataset.offer) { state.offer[el.dataset.offer] = el.value; updateOfferPreview(); return; }
+      if (el.name === 'category') document.querySelectorAll('[data-cat]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.cat === el.value)));
       if (el.name === 'title' && $('#titleCount')) $('#titleCount').textContent = `${el.value.length}/120`;
       if (el.name === 'description' && $('#descCount')) $('#descCount').textContent = `${el.value.length}/1500`;
     });

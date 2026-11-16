@@ -280,6 +280,11 @@ function productInput(body) {
     sort_order: clampInt(body.sort_order, -100000, 100000, 0),
     show_price: body.show_price === undefined ? 1 : bool01(body.show_price),
     original_price: price(body.original_price),
+    // Categoria livre, com a primeira letra maiúscula (ex.: "Cozinha", "Moda feminina").
+    category: (() => {
+      const c = text(body.category, 40, 'Categoria').replace(/\s+/g, ' ');
+      return c ? c.charAt(0).toUpperCase() + c.slice(1) : '';
+    })(),
   };
   // Preço antigo (De) só faz sentido se for maior que o preço atual.
   if (product.original_price !== null && (product.price === null || product.original_price <= product.price)) product.original_price = null;
@@ -398,6 +403,7 @@ function ensureSchema(env) {
       if (!pc.has('is_visible')) alters.push('ALTER TABLE products ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1');
       if (!pc.has('show_price')) alters.push('ALTER TABLE products ADD COLUMN show_price INTEGER NOT NULL DEFAULT 1');
       if (!pc.has('original_price')) alters.push('ALTER TABLE products ADD COLUMN original_price REAL');
+      if (!pc.has('category')) alters.push("ALTER TABLE products ADD COLUMN category TEXT NOT NULL DEFAULT ''");
       if (!sc.has('show_banner')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_banner INTEGER NOT NULL DEFAULT 1');
       if (!sc.has('share_message')) alters.push("ALTER TABLE tenant_settings ADD COLUMN share_message TEXT NOT NULL DEFAULT ''");
       if (!sc.has('offer_template')) alters.push('ALTER TABLE tenant_settings ADD COLUMN offer_template INTEGER NOT NULL DEFAULT 1');
@@ -1196,7 +1202,7 @@ async function loadSettings(env, tenantId) {
 async function loadProducts(env, tenantId, { onlyVisible = false } = {}) {
   const { results } = await env.DB.prepare(
     `SELECT id, title, description, price, image_url, affiliate_link, platform,
-            is_physical, delivery_cities, sort_order, is_visible, show_price, original_price, created_at, updated_at
+            is_physical, delivery_cities, sort_order, is_visible, show_price, original_price, category, created_at, updated_at
        FROM products WHERE tenant_id = ? ${onlyVisible ? 'AND is_visible = 1' : ''}
       ORDER BY sort_order ASC, id DESC`,
   ).bind(tenantId).all();
@@ -1503,12 +1509,12 @@ async function handleCreateProduct(request, env, tenant) {
   const ts = nowIso();
   const row = await env.DB.prepare(
     `INSERT INTO products (tenant_id, title, description, price, image_url, affiliate_link, platform,
-                           is_physical, delivery_cities, sort_order, show_price, original_price, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           is_physical, delivery_cities, sort_order, show_price, original_price, category, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`,
   ).bind(
     tenant.id, p.title, p.description, p.price, p.image_url, p.affiliate_link, p.platform,
-    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, p.original_price, ts, ts,
+    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, p.original_price, p.category, ts, ts,
   ).first();
   return json({ product: row }, 201);
 }
@@ -1519,12 +1525,12 @@ async function handleUpdateProduct(request, env, tenant, rawId) {
   const p = productInput(await readJson(request));
   const row = await env.DB.prepare(
     `UPDATE products SET title = ?, description = ?, price = ?, image_url = ?, affiliate_link = ?, platform = ?,
-                         is_physical = ?, delivery_cities = ?, sort_order = ?, show_price = ?, original_price = ?, updated_at = ?
+                         is_physical = ?, delivery_cities = ?, sort_order = ?, show_price = ?, original_price = ?, category = ?, updated_at = ?
      WHERE id = ? AND tenant_id = ?
      RETURNING *`,
   ).bind(
     p.title, p.description, p.price, p.image_url, p.affiliate_link, p.platform,
-    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, p.original_price, nowIso(), current.id, tenant.id,
+    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, p.original_price, p.category, nowIso(), current.id, tenant.id,
   ).first();
   if (current.image_url && current.image_url !== p.image_url) await deleteImage(env, current.image_url, tenant.id);
   return json({ product: row });

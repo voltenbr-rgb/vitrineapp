@@ -541,12 +541,12 @@
       const s = state.settings;
       if (!s.show_prices) {
         return isAffiliate(p)
-          ? `<div class="price-alt">Ver preço no ${esc(PLATFORM[p.platform].label)}</div>`
+          ? `<div class="price-alt">Ver preço ${p.platform === 'shopee' ? 'na' : 'no'} ${esc(PLATFORM[p.platform].label)}</div>`
           : `<div class="price-alt">Consulte o preço</div>`;
       }
       if (p.price === null || p.price === undefined || p.price === '') {
         return isAffiliate(p)
-          ? `<div class="price-alt">Ver preço no ${esc(PLATFORM[p.platform].label)}</div>`
+          ? `<div class="price-alt">Ver preço ${p.platform === 'shopee' ? 'na' : 'no'} ${esc(PLATFORM[p.platform].label)}</div>`
           : `<div class="price-alt">Preço sob consulta</div>`;
       }
       const orig = Number(p.original_price);
@@ -599,7 +599,8 @@
       let list = state.products.filter((p) => {
         if (state.filter === 'favs' && !state.favs.has(p.id)) return false;
         if (['mercadolivre', 'shopee', 'proprio'].includes(state.filter) && p.platform !== state.filter) return false;
-        if (q && !normalize(`${p.title} ${p.description} ${p.delivery_cities}`).includes(q)) return false;
+        if (state.filter.startsWith('cat:') && String(p.category || '') !== state.filter.slice(4)) return false;
+        if (q && !normalize(`${p.title} ${p.description} ${p.delivery_cities} ${p.category || ''}`).includes(q)) return false;
         return true;
       });
       const priceOf = (p) => (p.price === null || p.price === undefined ? null : Number(p.price));
@@ -681,8 +682,12 @@
       const avatar = safeUrl(s.avatar_url, true);
       const heroImg = safeUrl((state.products.find((p) => safeUrl(p.image_url, true)) || {}).image_url, true) || avatar;
       const platforms = new Set(state.products.map((p) => p.platform));
+      const catCount = new Map();
+      state.products.forEach((p) => { const c = String(p.category || '').trim(); if (c) catCount.set(c, (catCount.get(c) || 0) + 1); });
+      const cats = [...catCount.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pt-BR')).map(([c]) => c);
       const chips = [
         { id: 'all', label: 'Todos', icon: ICON.grid },
+        ...cats.map((c) => ({ id: `cat:${c}`, label: c, icon: '' })),
         ...['mercadolivre', 'shopee', 'proprio'].filter((k) => platforms.has(k)).map((k) => ({
           id: k, label: PLATFORM[k].label,
           icon: `<span class="dot" style="background:${PLATFORM[k].color || 'var(--accent)'}"></span>`,
@@ -715,8 +720,8 @@
           <div class="hero-art">${heroImg ? `<img src="${esc(heroImg)}" alt="">` : `<div class="hero-initial">${esc(initials(s.store_name))}</div>`}</div>
         </section>`}
 
-        <nav class="chips" aria-label="Filtrar por origem">
-          ${chips.map((c) => `<button type="button" class="chip" data-filter="${c.id}" aria-pressed="false">${c.icon}${esc(c.label)}</button>`).join('')}
+        <nav class="chips" aria-label="Filtrar por categoria e origem">
+          ${chips.map((c) => `<button type="button" class="chip" data-filter="${esc(c.id)}" aria-pressed="false">${c.icon}${esc(c.label)}</button>`).join('')}
         </nav>
 
         <div class="section-head">
