@@ -1263,8 +1263,8 @@
       } catch (err) {
         showLogin(err.message);
         loginFails += 1;
-        // Errou 2 vezes ou foi bloqueado: mostra o botão do suporte.
-        if (loginFails >= 2 || err.code === 'locked' || err.status === 429) $('#loginHelp').hidden = false;
+        // Errou 3 vezes ou foi bloqueado: mostra o botão do suporte.
+        if (loginFails >= 3 || err.code === 'locked' || err.status === 429) $('#loginHelp').hidden = false;
       } finally {
         setBusy(btn, false);
       }
