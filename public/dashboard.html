@@ -55,6 +55,14 @@
     /* ---------- Componentes ---------- */
     .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
     .card + .card { margin-top: 14px; }
+    .mode-pick { display: grid; gap: 8px; margin: 2px 0 14px; }
+    .mode-pick label { display: block; cursor: pointer; }
+    .mode-pick input { position: absolute; opacity: 0; pointer-events: none; }
+    .mode-pick span { display: block; padding: 11px 14px; border-radius: 14px; border: 2px solid #e6e8ee; background: var(--card); }
+    .mode-pick b { display: block; font-size: 14.5px; }
+    .mode-pick small { color: #7d8494; font-size: 12.5px; }
+    .mode-pick input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
+    .mode-pick input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); }
     /* Minhas lojas */
     .stores-head { display: flex; align-items: center; gap: 12px; margin: 6px 2px 14px; }
     .stores-head h1 { margin: 0; font-size: 22px; }
@@ -1024,6 +1032,12 @@
         <p>Cada loja tem o próprio link, produtos, cores e configurações. A conta, a senha e o plano são os mesmos.</p>
         <label class="field"><span>Nome da loja</span><input class="input" id="nsName" maxlength="80" placeholder="Ex.: Achadinhos da Casa"></label>
         <label class="field"><span>Endereço <small>vitrineapp.pages.dev/s/...</small></span><input class="input" id="nsSlug" maxlength="40" placeholder="achadinhos-da-casa" spellcheck="false" autocapitalize="off"></label>
+        <div class="field"><span>O que essa loja vai mostrar?</span>
+          <div class="mode-pick" role="radiogroup" aria-label="Tipo da loja">
+            <label><input type="radio" name="ns_mode" value="affiliate"><span><b>🔗 Links de afiliado</b><small>Shopee, Mercado Livre...</small></span></label>
+            <label><input type="radio" name="ns_mode" value="local"><span><b>📍 Vendas na região</b><small>Catálogo com carrinho no WhatsApp</small></span></label>
+            <label><input type="radio" name="ns_mode" value="mixed" checked><span><b>🔀 Os dois</b><small>Afiliados + produtos da região</small></span></label>
+          </div></div>
         <div class="grid-2">
           <button type="button" class="btn btn-ghost" data-s="close">Cancelar</button>
           <button type="button" class="btn btn-primary" data-s="create">Criar loja</button>
@@ -1043,7 +1057,8 @@
         if (!name.value.trim()) { toast('Dê um nome para a loja.', true); return name.focus(); }
         setBusy(b, true, 'Criando...');
         try {
-          const { store } = await api('/api/me/stores', { method: 'POST', body: { store_name: name.value.trim(), id: slugify(slug.value || name.value) } });
+          const mode = (dlg.querySelector('[name="ns_mode"]:checked') || {}).value || 'mixed';
+          const { store } = await api('/api/me/stores', { method: 'POST', body: { store_name: name.value.trim(), id: slugify(slug.value || name.value), store_mode: mode } });
           close();
           toast('Loja criada! 🎉');
           await openStore(store.id);
@@ -1216,7 +1231,7 @@
 
     function renderForm() {
       // Afiliado começa com o preço oculto (o sistema não atualiza preços sozinho); produto próprio começa visível.
-      const p = state.editing || { title: '', description: '', price: null, original_price: null, image_url: '', affiliate_link: '', platform: 'mercadolivre', is_physical: 0, delivery_cities: '', sort_order: 0, show_price: 0, ...(state.prefill || {}) };
+      const p = state.editing || { title: '', description: '', price: null, original_price: null, image_url: '', affiliate_link: '', platform: state.settings && state.settings.store_mode === 'local' ? 'proprio' : 'mercadolivre', is_physical: state.settings && state.settings.store_mode === 'local' ? 1 : 0, delivery_cities: '', sort_order: 0, show_price: state.settings && state.settings.store_mode === 'local' ? 1 : 0, ...(state.prefill || {}) };
       state.prefill = null;
       priceTouched = !!state.editing;
       const img = safeImg(p.image_url);
@@ -1344,6 +1359,19 @@
               <label><input type="radio" name="view_mode" value="list" data-setting="view_mode" ${s.view_mode === 'list' ? 'checked' : ''}><span class="opt">☰ Lista</span></label>
             </div>
           </div>
+        </div>
+
+        <div class="card">
+          <h2>Tipo da loja e WhatsApp</h2><p class="sub">Vale só para esta loja.</p>
+          <div class="field" style="margin-bottom:6px"><span class="field-label">O que esta loja mostra</span>
+            <div class="mode-pick" role="radiogroup" aria-label="Tipo da loja">
+            <label><input type="radio" name="store_mode" value="affiliate" data-setting="store_mode" ${s.store_mode === 'affiliate' ? 'checked' : ''}><span><b>🔗 Links de afiliado</b><small>Shopee, Mercado Livre...</small></span></label>
+            <label><input type="radio" name="store_mode" value="local" data-setting="store_mode" ${s.store_mode === 'local' ? 'checked' : ''}><span><b>📍 Vendas na região</b><small>Catálogo com carrinho no WhatsApp</small></span></label>
+            <label><input type="radio" name="store_mode" value="mixed" data-setting="store_mode" ${s.store_mode !== 'affiliate' && s.store_mode !== 'local' ? 'checked' : ''}><span><b>🔀 Os dois</b><small>Afiliados + produtos da região</small></span></label>
+          </div></div>
+          <div class="switch-row"><div><strong>Mostrar botão "Chamar no WhatsApp"</strong><small>No topo da vitrine e no menu de baixo. Desligado, o cliente não vê seu número. ${state.tenant.whatsapp ? `Número desta loja: ${esc(fmtPhone(state.tenant.whatsapp))} (troque em Perfil da loja).` : ''}</small></div>
+            <label class="switch"><input type="checkbox" data-setting="show_whatsapp" ${s.show_whatsapp !== 0 ? 'checked' : ''}><span class="track"></span></label></div>
+          ${s.store_mode !== 'affiliate' ? '<p class="sub" style="margin:8px 0 0">🛒 Produtos da região (sem link) ganham o botão <b>Adicionar ao carrinho</b>, e o pedido chega no WhatsApp desta loja, mesmo com o botão acima desligado.</p>' : ''}
         </div>
 
         <div class="card">
@@ -1511,12 +1539,16 @@
         show_stock_warning: get('show_stock_warning').checked ? 1 : 0,
         view_mode: ($('[data-setting="view_mode"]:checked') || {}).value || 'grid',
         theme_mode: ($('[data-setting="theme_mode"]:checked') || {}).value || 'light',
+        store_mode: ($('[data-setting="store_mode"]:checked') || {}).value || 'mixed',
+        show_whatsapp: get('show_whatsapp').checked ? 1 : 0,
         card_tone: ($('[data-setting="card_tone"]:checked') || {}).value || 'white',
       };
       try {
+        const before = state.settings && state.settings.store_mode;
         const { settings } = await api('/api/me/settings', { method: 'PUT', body });
         state.settings = settings;
         toast('Vitrine atualizada ✓');
+        if (before !== settings.store_mode) { const y = window.scrollY; render(); window.scrollTo(0, y); }
       } catch (err) { handleError(err); }
     }
 

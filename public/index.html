@@ -239,6 +239,15 @@
     .checks li svg { margin-top: 2px; color: #16a34a; }
     .price-note { text-align: center; color: var(--muted); font-size: 13px; margin: 12px 0 0; }
 
+    .mode-pick { display: grid; gap: 8px; margin: 2px 0 14px; }
+    .mode-pick label { display: block; cursor: pointer; }
+    .mode-pick input { position: absolute; opacity: 0; pointer-events: none; }
+    .mode-pick span { display: block; padding: 11px 14px; border-radius: 14px; border: 2px solid #e6e8ee; background: #fff; }
+    .mode-pick b { display: block; font-size: 14.5px; }
+    .mode-pick small { color: #7d8494; font-size: 12.5px; }
+    .mode-pick input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
+    .mode-pick input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+
     /* FAQ */
     .faq { max-width: 780px; margin: 0 auto; display: grid; gap: 10px; }
     .faq details { background: #fff; border-radius: 18px; box-shadow: var(--shadow); padding: 0 20px; }
@@ -613,6 +622,12 @@
         <label class="field"><span>Seu endereço <small id="slugHint"></small></span>
           <div class="group"><span class="pre">/s/</span><input class="input" name="id" maxlength="40" required placeholder="achadinhos-da-ana" autocapitalize="none" spellcheck="false" autocomplete="off"></div>
           <div class="slug-status" id="slugStatus" aria-live="polite"></div></label>
+        <div class="field"><span>O que você vai mostrar na vitrine?</span>
+          <div class="mode-pick" role="radiogroup" aria-label="Tipo da loja">
+            <label><input type="radio" name="store_mode" value="affiliate"><span><b>🔗 Links de afiliado</b><small>Shopee, Mercado Livre...</small></span></label>
+            <label><input type="radio" name="store_mode" value="local"><span><b>📍 Vendas na região</b><small>Catálogo com carrinho no WhatsApp</small></span></label>
+            <label><input type="radio" name="store_mode" value="mixed" checked><span><b>🔀 Os dois</b><small>Afiliados + produtos da região</small></span></label>
+          </div></div>
         <label class="field"><span>Seu nome</span>
           <input class="input" name="owner_name" maxlength="80" placeholder="Como você quer ser chamado(a)" autocomplete="name"></label>
         <label class="field"><span>WhatsApp com DDD <small>você vai entrar com ele</small></span>

@@ -377,6 +377,42 @@
       border-radius: 999px; background: #e11d48; color: #fff; font-size: 10px; display: grid; place-items: center;
     }
 
+    /* ---------- Carrinho (produtos da região) ---------- */
+    .btn-buy.in-cart { background: color-mix(in srgb, var(--accent) 16%, var(--card)); color: var(--accent-deep); box-shadow: none; }
+    html.dark .btn-buy.in-cart { color: var(--ink); }
+    .btn-wa-mini { width: 42px; height: 42px; flex-shrink: 0; display: grid; place-items: center; border-radius: 12px; background: var(--wa-deep); color: #fff; }
+    .cart-bar {
+      position: fixed; left: 50%; transform: translateX(-50%); z-index: 41;
+      bottom: calc(90px + var(--safe-bottom)); width: min(92vw, 420px);
+      display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 16px;
+      border-radius: 18px; background: var(--ink); color: var(--bg); box-shadow: 0 14px 34px rgba(0, 0, 0, .28);
+      font-size: 13.5px; font-weight: 700; animation: cartRise .25s ease;
+    }
+    html.dark .cart-bar { background: #f1f3f7; color: #14161b; }
+    .cart-bar .cart-info { flex: 1; min-width: 0; }
+    .cart-bar small { display: block; font-weight: 600; opacity: .7; font-size: 12px; }
+    .cart-bar button { height: 42px; padding: 0 16px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); font-weight: 800; font-size: 13.5px; white-space: nowrap; }
+    @keyframes cartRise { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+    .cart-list { display: grid; gap: 10px; margin: 6px 0 14px; max-height: 42vh; overflow: auto; }
+    .cart-item { display: flex; gap: 10px; align-items: center; padding: 10px; border-radius: 14px; background: var(--chip); }
+    .cart-item img, .cart-item .ph { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; background: var(--media); flex-shrink: 0; display: grid; place-items: center; color: var(--muted); }
+    .cart-item .ci { flex: 1; min-width: 0; }
+    .cart-item .ci strong { display: block; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cart-item .ci small { color: var(--muted); font-size: 12px; }
+    .qty { display: flex; align-items: center; gap: 4px; }
+    .qty button { width: 30px; height: 30px; border-radius: 9px; background: var(--card); font-weight: 800; font-size: 16px; color: var(--ink); }
+    .qty b { min-width: 22px; text-align: center; font-size: 14px; }
+    .cart-total { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; margin: 4px 2px 12px; }
+    .cart-total b { font-size: 20px; }
+    .cart-field { display: block; margin-bottom: 10px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+    .cart-field input, .cart-field textarea { display: block; width: 100%; margin-top: 5px; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 14px; resize: vertical; }
+    .btn-checkout { width: 100%; height: 52px; border-radius: 16px; background: var(--wa-deep); color: #fff; font-weight: 800; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .cart-empty-btn { width: 100%; margin-top: 8px; height: 40px; border-radius: 12px; color: var(--muted); font-weight: 700; font-size: 13px; }
+    .bottom-nav.no-contact { grid-template-columns: repeat(3, 1fr); }
+    .hero-art .feat { position: relative; display: grid; justify-items: center; cursor: pointer; }
+    .hero-art .feat-tag { position: absolute; top: -4px; right: -2px; z-index: 2; background: #fff; color: #14161b; font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 999px; box-shadow: 0 4px 12px rgba(0,0,0,.18); white-space: nowrap; }
+    .hero.no-art { grid-template-columns: 1fr; }
+
     /* ---------- Painéis (detalhes / ordenação) ---------- */
     .overlay {
       position: fixed; inset: 0; z-index: 60;
@@ -493,6 +529,7 @@
       sliders: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>',
       heart: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-9.2-8.7C1.4 8.4 3 5 6.4 5c2 0 3.3 1.1 4 2.3h3.2C14.3 6.1 15.6 5 17.6 5 21 5 22.6 8.4 21.2 11.3 19 15.6 12 20 12 20z"/></svg>',
       wa: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.6 11.6 0 0 0 4.4 3.9c1.6.7 2.3.8 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.2-.3-.3-.5-.4z"/></svg>',
+      cart: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.6 12.2a2 2 0 0 0 2 1.6h8.3a2 2 0 0 0 2-1.5L22 8H6"/></svg>',
       bag: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg>',
       external: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
       info: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
@@ -524,6 +561,7 @@
       sort: 'default',
       view: 'grid',
       favs: new Set(),
+      cart: {},      // { idDoProduto: quantidade }
     };
 
     const $ = (sel, root = document) => root.querySelector(sel);
@@ -606,7 +644,93 @@
       return parts.join('');
     }
 
+    /* ---------------- Carrinho (produtos da região) ---------------- */
+    // Produto da região sem link externo: vai para o carrinho e o pedido fecha no WhatsApp da loja.
+    const isLocal = (p) => p.platform === 'proprio' && !safeUrl(p.affiliate_link);
+    const hasPrice = (p) => state.settings.show_prices && p.price !== null && p.price !== undefined && p.price !== '';
+    const cartCount = () => Object.values(state.cart).reduce((a, b) => a + b, 0);
+    function saveCart() { storage.set(`vitrine:cart:${state.slug}`, state.cart); }
+    function cartLines() {
+      return Object.entries(state.cart)
+        .map(([id, qty]) => ({ p: state.products.find((x) => x.id === Number(id)), qty }))
+        .filter((x) => x.p && x.qty > 0);
+    }
+    function totalOf(lines) {
+      const priced = lines.filter((l) => hasPrice(l.p));
+      return { total: priced.reduce((a, l) => a + Number(l.p.price) * l.qty, 0), allPriced: priced.length === lines.length };
+    }
+    function addToCart(id, delta = 1) {
+      const next = (state.cart[id] || 0) + delta;
+      if (next <= 0) delete state.cart[id]; else state.cart[id] = Math.min(next, 99);
+      saveCart();
+    }
+    function orderMessage(lines, { name = '', note = '' } = {}) {
+      const { total, allPriced } = totalOf(lines);
+      const msg = [`Olá! 😊 Quero fazer um pedido pela vitrine *${state.store.store_name}*:`, '', '🛒 *Meu pedido*'];
+      lines.forEach(({ p, qty }) => msg.push(`• ${qty}x ${p.title}${hasPrice(p) ? ` — ${brl(Number(p.price) * qty)}` : ' — valor a combinar'}`));
+      if (total > 0) msg.push('', `💰 *Total: ${brl(total)}*${allPriced ? '' : ' (+ itens a combinar)'}`);
+      if (name.trim()) msg.push('', `👤 Nome: ${name.trim()}`);
+      if (note.trim()) msg.push(`📝 Obs.: ${note.trim()}`);
+      msg.push('', 'Aguardo a confirmação do pedido. Obrigado!');
+      return msg.join('\n');
+    }
+    function orderNow(p) {
+      window.open(waLink(state.store.whatsapp, orderMessage([{ p, qty: 1 }])), '_blank', 'noopener');
+    }
+
+    function renderCartBar() {
+      let bar = $('#cartBar');
+      const n = cartCount();
+      if (!n || !state.store || !state.store.whatsapp) { if (bar) bar.remove(); return; }
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'cartBar';
+        bar.className = 'cart-bar';
+        document.body.appendChild(bar);
+      }
+      const { total, allPriced } = totalOf(cartLines());
+      bar.innerHTML = `${ICON.cart}<div class="cart-info">${n} ${n === 1 ? 'item' : 'itens'} no carrinho
+          <small>${total > 0 ? `${brl(total)}${allPriced ? '' : ' + a combinar'}` : 'Valores a combinar'}</small></div>
+        <button type="button" data-cart="open">Ver pedido</button>`;
+    }
+
+    function openCart() {
+      const lines = cartLines();
+      if (!lines.length) { closeSheet(); return toast('Seu carrinho está vazio'); }
+      const { total, allPriced } = totalOf(lines);
+      const saved = storage.get('vitrine:buyer') || {};
+      const name = ($('#buyerName') || {}).value ?? saved.name ?? '';
+      const note = ($('#buyerNote') || {}).value ?? '';
+      openSheet(`
+        <div class="grabber"></div>
+        <div class="sheet-head"><h3 id="sheetTitle">🛒 Seu pedido</h3>
+          <button type="button" class="icon-btn" data-close aria-label="Fechar">${ICON.close}</button></div>
+        <div class="cart-list">${lines.map(({ p, qty }) => {
+          const img = safeUrl(p.image_url, true);
+          return `<div class="cart-item">${img ? `<img src="${esc(img)}" alt="">` : `<span class="ph">${ICON.box}</span>`}
+            <div class="ci"><strong>${esc(p.title)}</strong><small>${hasPrice(p) ? `${brl(p.price)} cada` : 'Valor a combinar'}</small></div>
+            <div class="qty"><button type="button" data-qty="${p.id}" data-d="-1" aria-label="Menos">−</button><b>${qty}</b><button type="button" data-qty="${p.id}" data-d="1" aria-label="Mais">+</button></div></div>`;
+        }).join('')}</div>
+        ${total > 0 ? `<div class="cart-total"><span>Total${allPriced ? '' : ' (sem os itens a combinar)'}</span><b>${brl(total)}</b></div>` : ''}
+        <label class="cart-field">Seu nome (opcional)<input id="buyerName" maxlength="60" autocomplete="name" value="${esc(name)}"></label>
+        <label class="cart-field">Observação (opcional)<textarea id="buyerNote" rows="2" maxlength="300" placeholder="Ex.: bairro para entrega, tamanho, cor...">${esc(note)}</textarea></label>
+        <button type="button" class="btn-checkout" data-cart="checkout">${ICON.wa}Finalizar pedido no WhatsApp</button>
+        <button type="button" class="cart-empty-btn" data-cart="clear">Esvaziar carrinho</button>`);
+    }
+
+    function checkout() {
+      const name = ($('#buyerName') || {}).value || '';
+      const note = ($('#buyerNote') || {}).value || '';
+      storage.set('vitrine:buyer', { name });
+      window.open(waLink(state.store.whatsapp, orderMessage(cartLines(), { name, note })), '_blank', 'noopener');
+      toast('Pedido montado! É só enviar no WhatsApp ✅');
+    }
+
     function buyButton(p, extraClass = '') {
+      if (isLocal(p) && state.store.whatsapp) {
+        const q = state.cart[p.id] || 0;
+        return `<button type="button" class="btn-buy ${q ? 'in-cart' : ''} ${extraClass}" data-add="${p.id}">${q ? ICON.check : ICON.cart}<span>${q ? `No carrinho (${q})` : 'Adicionar'}</span></button>`;
+      }
       const link = safeUrl(p.affiliate_link);
       if (link) {
         const label = isAffiliate(p) ? 'Ver oferta' : 'Comprar';
@@ -684,7 +808,9 @@
           ${noticeBlock(p)}
           <div class="card-actions">
             ${buyButton(p)}
-            <button type="button" class="btn-share" data-share="${p.id}" aria-label="Compartilhar ${esc(p.title)} no WhatsApp" title="Compartilhar no WhatsApp">${ICON.wa}</button>
+            ${isLocal(p) && state.store.whatsapp
+              ? `<button type="button" class="btn-wa-mini" data-order="${p.id}" aria-label="Pedir só este pelo WhatsApp" title="Pedir só este pelo WhatsApp">${ICON.wa}</button>`
+              : `<button type="button" class="btn-share" data-share="${p.id}" aria-label="Compartilhar ${esc(p.title)} no WhatsApp" title="Compartilhar no WhatsApp">${ICON.wa}</button>`}
           </div>
         </div>
       </article>`;
@@ -715,6 +841,7 @@
       const count = $('#favCount');
       count.hidden = state.favs.size === 0;
       count.textContent = state.favs.size;
+      renderCartBar();
     }
 
     // A capa desliza mais devagar que a página: efeito de profundidade leve ao rolar.
@@ -738,7 +865,10 @@
       const s = state.store;
       const avatar = safeUrl(s.avatar_url, true);
       const cover = safeUrl(s.cover_url, true);
-      const heroImg = safeUrl((state.products.find((p) => safeUrl(p.image_url, true)) || {}).image_url, true) || avatar;
+      // Cartão de apresentação mostra o produto em destaque (o 1º da ordem da loja: fixados primeiro), não a logo.
+      const featured = state.products.find((p) => safeUrl(p.image_url, true));
+      const heroImg = featured ? safeUrl(featured.image_url, true) : '';
+      const showWa = state.settings.show_whatsapp !== 0 && !!s.whatsapp;
       const platforms = new Set(state.products.map((p) => p.platform));
       const catCount = new Map();
       state.products.forEach((p) => { const c = String(p.category || '').trim(); if (c) catCount.set(c, (catCount.get(c) || 0) + 1); });
@@ -768,17 +898,16 @@
           <button type="button" class="filter-btn" id="btnSort" aria-label="Ordenar produtos">${ICON.sliders}</button>
         </div>
 
-        ${state.settings.show_banner === 0 ? '' : `<section class="hero${cover ? ' has-cover' : ''}" aria-label="Sobre a loja">
+        ${state.settings.show_banner === 0 ? '' : `<section class="hero${cover ? ' has-cover' : ''}${featured ? '' : ' no-art'}" aria-label="Sobre a loja">
           ${cover ? `<div class="hero-bg" id="heroBg" style="background-image:url('${esc(cover)}')"></div><div class="hero-shade"></div>` : ''}
           <div class="hero-text">
             <span class="hero-kicker">✨ Seleção ${firstName ? 'da ' + esc(firstName) : 'especial'}</span>
             <h1>${esc(s.store_name)}</h1>
             <p>Achados escolhidos a dedo para você${s.owner_name ? ', por ' + esc(s.owner_name) : ''}.</p>
-            ${s.whatsapp ? `<a class="hero-cta" href="${esc(waLink(s.whatsapp, `Olá! Vim pela sua vitrine ${s.store_name} 😊`))}" target="_blank" rel="noopener noreferrer">${ICON.wa}Chamar no WhatsApp</a>` : ''}
+            ${showWa ? `<a class="hero-cta" href="${esc(waLink(s.whatsapp, `Olá! Vim pela sua vitrine ${s.store_name} 😊`))}" target="_blank" rel="noopener noreferrer">${ICON.wa}Chamar no WhatsApp</a>` : ''}
           </div>
-          <div class="hero-art">${cover
-            ? (avatar ? `<img src="${esc(avatar)}" alt="">` : `<div class="hero-initial">${esc(initials(s.store_name))}</div>`)
-            : (heroImg ? `<img src="${esc(heroImg)}" alt="">` : `<div class="hero-initial">${esc(initials(s.store_name))}</div>`)}</div>
+          ${featured ? `<div class="hero-art"><button type="button" class="feat" data-open="${featured.id}" aria-label="Ver destaque: ${esc(featured.title)}">
+            <span class="feat-tag">⭐ Destaque</span><img src="${esc(heroImg)}" alt=""></button></div>` : ''}
         </section>`}
 
         <nav class="chips" aria-label="Filtrar por categoria e origem">
@@ -798,6 +927,9 @@
         <footer class="footer">Vitrine criada com <a href="/">Vitrine App</a> · Crie a sua grátis por 7 dias</footer>
       `;
       $('#bottomNav').hidden = false;
+      const showContact = state.settings.show_whatsapp !== 0 && !!s.whatsapp;
+      $('[data-nav="contact"]').hidden = !showContact;
+      $('#bottomNav').classList.toggle('no-contact', !showContact);
       renderProducts();
     }
 
@@ -844,6 +976,7 @@
         <div style="display:grid;gap:8px">${noticeBlock(p)}</div>
         <div class="detail-actions">
           ${buyButton(p)}
+          ${isLocal(p) && state.store.whatsapp ? `<button type="button" class="btn-buy wa" data-order="${p.id}">${ICON.wa}<span>Pedir só este</span></button>` : ''}
           <button type="button" class="btn-share-wide" data-share="${p.id}">${ICON.wa}Compartilhar</button>
         </div>`);
     }
@@ -876,6 +1009,19 @@
       }
       if (t.matches('[data-close]')) return closeSheet();
       if (t.dataset.open) return openProduct(Number(t.dataset.open));
+      if (t.dataset.add) {
+        const id = Number(t.dataset.add);
+        addToCart(id, 1);
+        toast('Adicionado ao carrinho 🛒');
+        renderProducts();
+        if (overlay.classList.contains('open')) openProduct(id);
+        return;
+      }
+      if (t.dataset.order) return orderNow(state.products.find((p) => p.id === Number(t.dataset.order)));
+      if (t.dataset.qty) { addToCart(Number(t.dataset.qty), Number(t.dataset.d)); renderProducts(); return openCart(); }
+      if (t.dataset.cart === 'open') return openCart();
+      if (t.dataset.cart === 'checkout') return checkout();
+      if (t.dataset.cart === 'clear') { state.cart = {}; saveCart(); renderProducts(); closeSheet(); return toast('Carrinho esvaziado'); }
       if (t.dataset.share) return shareProduct(state.products.find((p) => p.id === Number(t.dataset.share)));
       if (t.dataset.fav) {
         const id = Number(t.dataset.fav);
@@ -937,6 +1083,12 @@
         }
 
         state.favs = new Set((storage.get(`vitrine:favs:${state.slug}`) || []).filter((id) => state.products.some((p) => p.id === id)));
+        const savedCart = storage.get(`vitrine:cart:${state.slug}`) || {};
+        state.cart = {};
+        for (const [id, q] of Object.entries(savedCart)) {
+          const p = state.products.find((x) => x.id === Number(id));
+          if (p && isLocal(p) && Number(q) > 0) state.cart[id] = Math.min(Number(q), 99);
+        }
         state.view = storage.get(`vitrine:view:${state.slug}`) || state.settings.view_mode || 'grid';
         document.documentElement.classList.toggle('dark', state.settings.theme_mode === 'dark');
         document.documentElement.classList.toggle('tinted', state.settings.card_tone === 'tinted');

@@ -411,6 +411,8 @@ function ensureSchema(env) {
       if (!tc.has('cover_url')) alters.push('ALTER TABLE tenants ADD COLUMN cover_url TEXT');
       if (!sc.has('theme_mode')) alters.push("ALTER TABLE tenant_settings ADD COLUMN theme_mode TEXT NOT NULL DEFAULT 'light'");
       if (!sc.has('card_tone')) alters.push("ALTER TABLE tenant_settings ADD COLUMN card_tone TEXT NOT NULL DEFAULT 'white'");
+      if (!sc.has('show_whatsapp')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_whatsapp INTEGER NOT NULL DEFAULT 1');
+      if (!sc.has('store_mode')) alters.push("ALTER TABLE tenant_settings ADD COLUMN store_mode TEXT NOT NULL DEFAULT 'mixed'");
       if (!sc.has('offer_templates')) alters.push("ALTER TABLE tenant_settings ADD COLUMN offer_templates TEXT NOT NULL DEFAULT ''");
       for (const sql of alters) {
         try {
@@ -1569,13 +1571,16 @@ function tenantPrivate(t) {
 
 const DEFAULT_SETTINGS = {
   show_prices: 1, show_stock_warning: 1, view_mode: 'grid', show_banner: 1, share_message: '', offer_template: 1,
-  theme_mode: 'light', card_tone: 'white', offer_templates: '',
+  theme_mode: 'light', card_tone: 'white', offer_templates: '', show_whatsapp: 1, store_mode: 'mixed',
 };
+// Tipo da loja: só afiliados, só catálogo da região (com carrinho) ou os dois.
+const STORE_MODES = ['affiliate', 'local', 'mixed'];
+const storeMode = (v) => (STORE_MODES.includes(v) ? v : 'mixed');
 
 async function loadSettings(env, tenantId) {
   const row = await env.DB.prepare(
     `SELECT show_prices, show_stock_warning, view_mode, show_banner, share_message, offer_template,
-            theme_mode, card_tone, offer_templates FROM tenant_settings WHERE tenant_id = ?`,
+            theme_mode, card_tone, offer_templates, show_whatsapp, store_mode FROM tenant_settings WHERE tenant_id = ?`,
   ).bind(tenantId).first();
   return row ? { ...DEFAULT_SETTINGS, ...row } : { ...DEFAULT_SETTINGS };
 }
@@ -1927,6 +1932,8 @@ async function handleSettings(request, env, tenant) {
     theme_mode: pick('theme_mode') === 'dark' ? 'dark' : 'light',
     card_tone: pick('card_tone') === 'tinted' ? 'tinted' : 'white',
     offer_templates: current.offer_templates || '',
+    show_whatsapp: bool01(pick('show_whatsapp')),
+    store_mode: storeMode(pick('store_mode')),
   };
   // Recursos do plano: modelos 2 e 3 e edição dos modelos são do plano Completo (e do teste grátis).
   const plan = PLANS[effectivePlan(tenant.account)];
@@ -1942,8 +1949,8 @@ async function handleSettings(request, env, tenant) {
   }
   await env.DB.prepare(
     `INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, show_banner, share_message,
-                                  offer_template, theme_mode, card_tone, offer_templates)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  offer_template, theme_mode, card_tone, offer_templates, show_whatsapp, store_mode)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (tenant_id) DO UPDATE SET
        show_prices = excluded.show_prices,
        show_stock_warning = excluded.show_stock_warning,
@@ -1953,9 +1960,11 @@ async function handleSettings(request, env, tenant) {
        offer_template = excluded.offer_template,
        theme_mode = excluded.theme_mode,
        card_tone = excluded.card_tone,
-       offer_templates = excluded.offer_templates`,
+       offer_templates = excluded.offer_templates,
+       show_whatsapp = excluded.show_whatsapp,
+       store_mode = excluded.store_mode`,
   ).bind(tenant.id, settings.show_prices, settings.show_stock_warning, settings.view_mode, settings.show_banner, settings.share_message,
-    settings.offer_template, settings.theme_mode, settings.card_tone, settings.offer_templates).run();
+    settings.offer_template, settings.theme_mode, settings.card_tone, settings.offer_templates, settings.show_whatsapp, settings.store_mode).run();
   return json({ settings });
 }
 
@@ -2108,6 +2117,7 @@ async function createStore(env, account, body) {
   };
   const exists = await env.DB.prepare('SELECT 1 FROM tenants WHERE id = ?').bind(id).first();
   if (exists) throw new HttpError(409, `O endereço "${id}" já está em uso. Escolha outro.`, { code: 'slug_taken' });
+  const mode = storeMode(body.store_mode);
   const ts = nowIso();
   try {
     await env.DB.batch([
@@ -2119,9 +2129,10 @@ async function createStore(env, account, body) {
         data.id, account.id, data.store_name, data.owner_name, data.whatsapp, data.avatar_url, data.theme_color,
         account.password_hash, account.status, account.trial_ends_at, account.paid_until || null, ts, ts,
       ),
+      // Só afiliados: começa sem o botão de WhatsApp (dá para ligar depois).
       env.DB.prepare(
-        'INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode) VALUES (?, 1, 1, ?)',
-      ).bind(data.id, 'grid'),
+        'INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, store_mode, show_whatsapp) VALUES (?, 1, 1, ?, ?, ?)',
+      ).bind(data.id, 'grid', mode, mode === 'affiliate' ? 0 : 1),
     ]);
   } catch (err) {
     if (/UNIQUE|PRIMARY/i.test(String(err && err.message))) {
@@ -2129,7 +2140,7 @@ async function createStore(env, account, body) {
     }
     throw err;
   }
-  return { ...data, views: 0, product_count: 0, created_at: ts };
+  return { ...data, store_mode: mode, views: 0, product_count: 0, created_at: ts };
 }
 
 async function createAccountWithStore(env, body, { plan = 'basic' } = {}) {
