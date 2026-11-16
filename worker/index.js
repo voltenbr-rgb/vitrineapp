@@ -1066,9 +1066,10 @@ async function handleMlSearch(request, env) {
   const found = new Map();
   let searchError = null;
   const exhausted = new Set();
-  for (let page = round; page < round + 4 && found.size < limit * 2 && debug.calls < 14; page++) {
+  // O Cloudflare permite ~50 consultas externas por clique: a busca usa no máximo ~40.
+  for (let page = round; page < round + 3 && found.size < limit * 2 && debug.calls < 12; page++) {
     for (const q of queries) {
-      if (debug.calls >= 14 || found.size >= limit * 2) break;
+      if (debug.calls >= 12 || found.size >= limit * 2) break;
       if (exhausted.has(q)) continue;
       debug.calls++;
       let data;
@@ -1096,11 +1097,14 @@ async function handleMlSearch(request, env) {
   debug.source = 'items';
 
   // 2) Busca de anúncios bloqueada: usa o catálogo e busca preço/frete de cada produto.
+  const warnings = [];
   if (!found.size && searchError) {
     debug.source = 'catalog';
     const candidates = new Map();
+    let catalogCalls = 0;
     for (const q of queries) {
-      if (candidates.size >= 60 || debug.calls >= 14) break;
+      if (candidates.size >= limit * 3 || catalogCalls >= 6) break;
+      catalogCalls++;
       debug.calls++;
       let data;
       try {
@@ -1120,22 +1124,39 @@ async function handleMlSearch(request, env) {
         candidates.set(r.id, { r, q });
       }
     }
-    // Detalhes (preço do vendedor da vez, preço antigo, frete) em lotes paralelos.
-    const list = [...candidates.values()].slice(0, Math.min(45, limit * 3));
-    for (let i = 0; i < list.length; i += 8) {
-      const batch = list.slice(i, i + 8);
-      const details = await Promise.all(batch.map(({ r }) => mlGet(token, `/products/${r.id}`).catch(() => null)));
+    // Detalhes (preço do vendedor da vez, preço antigo, frete) em lotes — no máximo 28 consultas.
+    const list = [...candidates.values()].slice(0, Math.min(28, Math.max(limit * 2, 10)));
+    const detailed = [];
+    debug.details_ok = 0;
+    for (let i = 0; i < list.length; i += 7) {
+      const batch = list.slice(i, i + 7);
+      const details = await Promise.all(batch.map(({ r }) => mlGet(token, `/products/${r.id}`).catch((err) => ({ __error: err.message }))));
+      debug.calls += batch.length;
       batch.forEach(({ r, q }, k) => {
         const d = details[k] || {};
+        if (d.__error) debug.errors.push(`product: ${d.__error}`.slice(0, 120));
         const w = d.buy_box_winner || {};
+        if (Number(w.price) > 0) debug.details_ok++;
         const pics = (d.pictures && d.pictures.length ? d.pictures : r.pictures) || [];
-        const it = mkItem(r.id, d.name || r.name, w.price, w.original_price,
+        detailed.push(mkItem(r.id, d.name || r.name, w.price, w.original_price,
           pics[0] && (pics[0].secure_url || pics[0].url), `https://www.mercadolivre.com.br/p/${r.id}`,
-          w.shipping && w.shipping.free_shipping, q);
-        if (passesFilters(it)) found.set(r.id, it);
+          w.shipping && w.shipping.free_shipping, q));
       });
-      debug.calls += batch.length;
     }
+    // Nunca zera o resultado por falta de dados: se não deu para ver preço/frete, mostra sem esse filtro e avisa.
+    const withPrice = detailed.filter((it) => it.price);
+    let pool = detailed.filter(passesFilters);
+    if (!pool.length && (onlyDiscount || freeOnly) && detailed.length) {
+      pool = detailed;
+      warnings.push(withPrice.length
+        ? 'Nenhum produto com desconto/frete grátis nesta leva. Mostrando os encontrados — toque em "Mostrar outros" para ver mais.'
+        : 'O Mercado Livre não informou preço e frete destes produtos, então os filtros "desconto" e "frete grátis" não puderam ser aplicados.');
+    }
+    if (!withPrice.length && detailed.length) {
+      warnings.push('Os preços não vieram pela API do Mercado Livre. Os links funcionam normalmente; confira o preço ao abrir.');
+    }
+    // Com preço primeiro quando a ordem depende de preço/desconto.
+    for (const it of pool) found.set(it.id, it);
   }
 
   let items = [...found.values()];
@@ -1145,7 +1166,7 @@ async function handleMlSearch(request, env) {
   items = items.slice(0, limit);
   debug.returned = items.length;
   await saveDebug(env, 'debug_ml_search', debug);
-  return json({ items, source: debug.source, affiliate: aff, affiliate_ok: Object.keys(aff).length > 0, calls: debug.calls, round, analyzed: debug.raw, rejected: debug.rejected });
+  return json({ items, source: debug.source, affiliate: aff, affiliate_ok: Object.keys(aff).length > 0, calls: debug.calls, round, analyzed: debug.raw, rejected: debug.rejected, warnings });
 }
 
 async function handleMlCallback(request, env) {

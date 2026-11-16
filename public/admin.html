@@ -816,7 +816,10 @@
     async function searchModal() {
       let aff = { params: {}, connected: false };
       try { aff = await api('/api/admin/ml/affiliate'); } catch (err) { return toast(err.message, true); }
-      const prefs = { preset: 'airsoft', limit: 15, sort: 'relevance', only_discount: false, ...loadSearchPrefs() };
+      const saved = loadSearchPrefs();
+      // Termos salvos de versões antigas dos modelos são descartados (modelo novo: "só as armas").
+      if (saved.v !== 2) { delete saved.query; delete saved.include; delete saved.exclude; saved.preset = 'airsoft'; }
+      const prefs = { preset: 'airsoft', limit: 15, sort: 'relevance', only_discount: false, ...saved };
       const pr = PRESETS[prefs.preset] || PRESETS.airsoft;
       const hasAff = Object.keys(aff.params || {}).length > 0;
       openModal(`${head('🔎 Buscar links no Mercado Livre', 'Encontra produtos do nicho e monta os links com o seu código de afiliado.')}
@@ -894,7 +897,7 @@
           query: form.query.value, include: form.include.value, exclude: form.exclude.value,
           limit, sort: form.sort.value, only_discount: form.only_discount.checked, free_shipping: form.free_shipping.checked,
         };
-        saveSearchPrefs({ preset: form.preset.value, ...body });
+        saveSearchPrefs({ v: 2, preset: form.preset.value, ...body });
         if (more) { round += 1; } else { round = 0; seen = []; }
         const btn = more ? $('#moreBtn') : $('#srchBtn');
         setBusy(btn, true, more ? 'Buscando outros...' : 'Buscando no Mercado Livre...');
@@ -921,6 +924,7 @@
       out.innerHTML = `
         ${data.affiliate_ok ? '' : '<div class="aff-box aff-warn" style="margin-top:14px">⚠️ Links <b>sem</b> código de afiliado. Cole um link seu no quadro acima e busque de novo.</div>'}
         ${data.source === 'catalog' ? '<div class="aff-box aff-warn" style="margin-top:8px">ℹ️ Resultados do catálogo do Mercado Livre (a busca de anúncios não foi liberada para o seu aplicativo).</div>' : ''}
+        ${(data.warnings || []).map((w) => `<div class="aff-box aff-warn" style="margin-top:8px">⚠️ ${esc(w)}</div>`).join('')}
         <div class="res-tools">
           <b style="align-self:center;margin-right:auto">${items.length} produtos</b>
           <button type="button" class="btn btn-sm btn-dark" data-out="links">📋 Copiar links</button>
