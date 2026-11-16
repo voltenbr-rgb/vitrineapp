@@ -164,6 +164,8 @@
     /* Vídeo */
     .video-box { position: relative; max-width: 900px; margin: 0 auto; border-radius: 28px; overflow: hidden; background: #0f1115; aspect-ratio: 16 / 9; box-shadow: var(--shadow-lg); }
     .video-box iframe, .video-box video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .video-box video { object-fit: cover; background: #0f1115; }
+    .sound-btn { position: absolute; top: 14px; right: 14px; z-index: 2; border: 0; border-radius: 999px; padding: 8px 14px; font: inherit; font-weight: 800; font-size: 13px; color: #0f172a; background: rgba(255,255,255,.92); box-shadow: 0 6px 18px rgba(0,0,0,.25); cursor: pointer; }
     .video-ph { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: #fff; padding: 20px; background: radial-gradient(80% 90% at 70% 10%, rgba(31, 181, 240, .55), transparent 60%), radial-gradient(70% 80% at 10% 100%, rgba(109, 93, 252, .55), transparent 60%), #111318; }
     .video-ph .play { width: 84px; height: 84px; border-radius: 50%; margin: 0 auto 14px; display: grid; place-items: center; background: #fff; color: var(--accent-deep); box-shadow: 0 0 0 14px rgba(255, 255, 255, .15); }
     .video-ph strong { font-size: 20px; display: block; }
@@ -416,17 +418,13 @@
     <!-- ================= VÍDEO ================= -->
     <section class="section" id="video" style="background:#fff">
       <div class="container center">
-        <span class="eyebrow">Veja na prática</span>
-        <h2 class="h2">Em 1 minuto você entende tudo</h2>
-        <p class="sub">Do cadastro ao primeiro link compartilhado: veja como é simples montar a sua vitrine.</p>
+        <span class="eyebrow">▶ Vitrine App em ação</span>
+        <h2 class="h2">Veja como funciona</h2>
+        <p class="sub">Cadastre, publique e divulgue no WhatsApp: sua lojinha de achadinhos em um link só.</p>
         <div class="video-box" id="videoBox">
-          <div class="video-ph">
-            <div>
-              <div class="play"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10.5-6.5a1 1 0 0 0 0-1.8L9.5 4.6A1 1 0 0 0 8 5.5z"/></svg></div>
-              <strong>Vídeo explicativo</strong>
-              <span>Em breve aqui. Enquanto isso, teste grátis por 7 dias!</span>
-            </div>
-          </div>
+          <!-- Vídeo leve (2,5 MB) servido pelo próprio site; só começa a baixar quando aparece na tela. -->
+          <video id="heroVideo" src="/media/vitrine-hero.mp4" poster="/media/vitrine-hero-capa.jpg" muted loop playsinline controls preload="none"></video>
+          <button type="button" class="sound-btn" id="soundBtn" aria-label="Ativar som">🔊 Ativar som</button>
         </div>
         <div style="margin-top:26px"><button type="button" class="btn btn-primary" data-signup>Quero minha vitrine agora</button></div>
       </div>
@@ -670,6 +668,22 @@
 
     $('#year').textContent = new Date().getFullYear();
 
+    /* ---------- Vídeo: toca sem som quando aparece na tela; botão para ativar o som ---------- */
+    (() => {
+      const v = document.getElementById('heroVideo');
+      const btn = document.getElementById('soundBtn');
+      if (!v) return;
+      const play = () => { v.play().catch(() => {}); };
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver((entries) => {
+          entries.forEach((e) => { if (e.isIntersecting) play(); else if (!v.paused) v.pause(); });
+        }, { threshold: 0.35 }).observe(v);
+      }
+      const sync = () => { if (btn) btn.hidden = !v.muted; };
+      if (btn) btn.addEventListener('click', () => { v.muted = false; v.currentTime = 0; play(); sync(); });
+      v.addEventListener('volumechange', sync);
+    })();
+
     /* ---------- De onde veio o visitante (para o relatório do Master) ---------- */
     // Guarda a 1ª origem por 30 dias: links com ?utm_source=... (ou ?ref=...) e o site anterior.
     const ORIGIN_KEY = 'vitrine:origin';
@@ -710,7 +724,7 @@
       document.querySelectorAll('[data-day]').forEach((el) => { el.textContent = day(price); });
       document.querySelectorAll('[data-day-complete]').forEach((el) => { el.textContent = day(priceC); });
       supportPhone = cfg.support_whatsapp || '';
-      if (cfg.video && cfg.video.src) {
+      if (cfg.video && cfg.video.src && !/\/media\/vitrine-hero\.mp4$/.test(cfg.video.src)) {
         const box = $('#videoBox');
         box.innerHTML = cfg.video.type === 'video'
           ? `<video src="${esc(cfg.video.src)}" controls playsinline preload="metadata"></video>`
