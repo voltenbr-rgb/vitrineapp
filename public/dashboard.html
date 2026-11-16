@@ -204,6 +204,8 @@
     .brand-logo { width: 48px; height: 48px; border-radius: 16px; display: grid; place-items: center; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 35%, transparent); }
     .brand h1 { margin: 0; font-size: 22px; letter-spacing: -.02em; }
     .brand p { margin: 0; color: var(--muted); font-size: 13px; }
+    .help-box { display: grid; gap: 6px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #14532d; border-radius: 14px; padding: 12px; font-size: 13px; margin-bottom: 14px; }
+    .help-box .btn { margin-top: 4px; }
     .error-box { background: #fff1f2; color: #9f1239; border-radius: 12px; padding: 10px 12px; font-size: 13px; font-weight: 600; margin-bottom: 14px; }
     .login-foot { margin-top: 18px; text-align: center; font-size: 13px; color: var(--muted); }
     .login-foot a { color: var(--accent-deep); font-weight: 700; }
@@ -382,6 +384,11 @@
         <div><h1>Painel da Vitrine</h1><p>Entre para gerenciar sua loja</p></div>
       </div>
       <div class="error-box" id="loginError" hidden></div>
+      <div class="help-box" id="loginHelp" hidden>
+        <strong>Não está conseguindo entrar?</strong>
+        <span>Fale com o suporte: a gente redefine sua senha rapidinho.</span>
+        <button type="button" class="btn btn-wa btn-block" id="helpBtn">Chamar o suporte no WhatsApp</button>
+      </div>
       <label class="field"><span>Seu WhatsApp <small>o mesmo do cadastro</small></span>
         <input class="input" id="loginStore" name="login" inputmode="tel" placeholder="(67) 99999-9999" autocomplete="username" spellcheck="false" required>
       </label>
@@ -1255,17 +1262,31 @@
         await afterLogin();
       } catch (err) {
         showLogin(err.message);
+        loginFails += 1;
+        // Errou 2 vezes ou foi bloqueado: mostra o botão do suporte.
+        if (loginFails >= 2 || err.code === 'locked' || err.status === 429) $('#loginHelp').hidden = false;
       } finally {
         setBusy(btn, false);
       }
     });
 
-    $('#forgotLink').addEventListener('click', (e) => {
-      e.preventDefault();
-      const store = $('#loginStore').value.trim();
-      const msg = `Olá! Esqueci a senha da minha vitrine${store ? ` (${store})` : ''}. Pode me ajudar?`;
+    // Suporte de senha: abre o WhatsApp do suporte com a mensagem pronta.
+    let loginFails = 0;
+    function openSupport() {
+      const typed = $('#loginStore').value.trim();
+      const phone = /[a-z]/i.test(typed) ? '' : fmtPhone(typed.replace(/\D/g, ''));
+      const msg = [
+        'Olá! 👋 Preciso de ajuda para entrar no meu painel do Vitrine App (esqueci a senha).',
+        '',
+        'Meu nome: ',
+        `WhatsApp do cadastro: ${phone || typed || ''}`,
+        /[a-z]/i.test(typed) ? `Loja: ${typed}` : '',
+      ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n');
+      if (!state.config.support_whatsapp) return toast('Suporte indisponível no momento. Tente mais tarde.', true);
       window.open(waLink(state.config.support_whatsapp, msg), '_blank', 'noopener');
-    });
+    }
+    $('#helpBtn').addEventListener('click', openSupport);
+    $('#forgotLink').addEventListener('click', (e) => { e.preventDefault(); openSupport(); });
 
     $('#signupLink').addEventListener('click', (e) => {
       e.preventDefault();
