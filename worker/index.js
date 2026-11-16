@@ -786,6 +786,9 @@ async function mlGet(token, path) {
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) throw new HttpError(502, 'A conexão com o Mercado Livre expirou. Conecte de novo no Master.', { code: 'ml_reconnect' });
   if (res.status === 429) throw new HttpError(429, 'Limite de consultas do Mercado Livre atingido. Tente em alguns minutos.');
+  if (res.status === 403 && (data.code === 'PA_UNAUTHORIZED_RESULT_FROM_POLICIES' || /policy/i.test(data.message || ''))) {
+    throw new HttpError(502, 'O aplicativo do Mercado Livre ainda não tem permissão para ler anúncios.', { code: 'ml_permission' });
+  }
   if (!res.ok) throw new HttpError(502, `Mercado Livre: ${String(data.message || res.status).slice(0, 120)}`);
   return data;
 }
@@ -850,6 +853,19 @@ async function resolveMl(rawUrl) {
   return { ids: null, meta: fallbackMeta, trace };
 }
 
+// Prévia pública da página (nome/foto/preço), usada quando a API não libera o anúncio.
+async function fetchPreview(url) {
+  for (const ua of [...UA_CRAWLERS, UA_BROWSER]) {
+    try {
+      const res = await fetch(url, { headers: { 'User-Agent': ua, Accept: 'text/html', 'Accept-Language': 'pt-BR,pt;q=0.9' } });
+      if (!res.ok) continue;
+      const meta = readMeta((await res.text()).slice(0, 600_000));
+      if (usefulMeta(meta)) return meta;
+    } catch { /* tenta o próximo */ }
+  }
+  return null;
+}
+
 const httpsImage = (u) => (u ? String(u).replace(/^http:\/\//i, 'https://') : null);
 
 async function lookupMercadoLivre(env, token, url) {
@@ -868,31 +884,50 @@ async function lookupMercadoLivre(env, token, url) {
     }
     throw new HttpError(422, 'Não consegui abrir este link do Mercado Livre. Tente o link completo do produto (abra o link no navegador e copie o endereço).');
   }
-  if (ids.itemId) {
-    const item = await mlGet(token, `/items/${ids.itemId}`);
-    if (item && item.title) {
-      return {
-        platform: 'mercadolivre',
-        title: String(item.title).slice(0, 120),
-        price: Number(item.price) > 0 ? Number(item.price) : null,
-        image_url: httpsImage((item.pictures && item.pictures[0] && (item.pictures[0].secure_url || item.pictures[0].url)) || item.thumbnail),
-        shop_name: null,
-      };
+  let apiError = null;
+  try {
+    if (ids.itemId) {
+      const item = await mlGet(token, `/items/${ids.itemId}`);
+      if (item && item.title) {
+        return {
+          platform: 'mercadolivre',
+          title: String(item.title).slice(0, 120),
+          price: Number(item.price) > 0 ? Number(item.price) : null,
+          image_url: httpsImage((item.pictures && item.pictures[0] && (item.pictures[0].secure_url || item.pictures[0].url)) || item.thumbnail),
+          shop_name: null,
+        };
+      }
     }
-  }
-  if (ids.productId) {
-    const prod = await mlGet(token, `/products/${ids.productId}`);
-    if (prod && prod.name) {
-      const price = prod.buy_box_winner && Number(prod.buy_box_winner.price);
-      return {
-        platform: 'mercadolivre',
-        title: String(prod.name).slice(0, 120),
-        price: price > 0 ? price : null,
-        image_url: httpsImage(prod.pictures && prod.pictures[0] && (prod.pictures[0].secure_url || prod.pictures[0].url)),
-        shop_name: null,
-      };
+    if (ids.productId) {
+      const prod = await mlGet(token, `/products/${ids.productId}`);
+      if (prod && prod.name) {
+        const price = prod.buy_box_winner && Number(prod.buy_box_winner.price);
+        return {
+          platform: 'mercadolivre',
+          title: String(prod.name).slice(0, 120),
+          price: price > 0 ? price : null,
+          image_url: httpsImage(prod.pictures && prod.pictures[0] && (prod.pictures[0].secure_url || prod.pictures[0].url)),
+          shop_name: null,
+        };
+      }
     }
+  } catch (err) {
+    apiError = err;
+    console.error('Mercado Livre API:', err && err.message);
   }
+  // A API não liberou: usa a prévia pública da página do produto.
+  let preview = usefulMeta(meta) ? meta : null;
+  if (!preview) {
+    const pageUrl = ids.itemId ? `https://produto.mercadolivre.com.br/MLB-${ids.itemId.replace(/^MLB/i, '')}` : `https://www.mercadolivre.com.br/p/${ids.productId}`;
+    preview = await fetchPreview(pageUrl);
+  }
+  if (apiError && apiError.extra && apiError.extra.code === 'ml_permission') {
+    await saveDebug(env, 'debug_ml', { input: url, ids, error: 'ml_permission', preview: preview ? preview.title : null });
+  }
+  if (preview) {
+    return { platform: 'mercadolivre', title: preview.title.replace(/\s*[|-]\s*Mercado Livre.*$/i, '').slice(0, 120), price: preview.price, image_url: /^https:\/\//.test(preview.image) ? preview.image : null, shop_name: null, source: 'preview' };
+  }
+  if (apiError) throw apiError;
   if (usefulMeta(meta)) {
     return { platform: 'mercadolivre', title: meta.title.replace(/\s*[|-]\s*Mercado Livre.*$/i, '').slice(0, 120), price: meta.price, image_url: /^https:\/\//.test(meta.image) ? meta.image : null, shop_name: null, source: 'preview' };
   }
