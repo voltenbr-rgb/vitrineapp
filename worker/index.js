@@ -528,13 +528,25 @@ function readMeta(html) {
   };
   const canonical = (html.match(/<link[^>]+rel=["']canonical["'][^>]*href=["']([^"']+)/i) || [])[1] || '';
   const price = get('product:price:amount') || get('og:price:amount');
+  const all = [];
+  for (const m of html.matchAll(/<meta\s[^>]{0,600}>/gi)) {
+    const tag = m[0];
+    const key = (tag.match(/(?:property|name)=["']([^"']+)/i) || [])[1];
+    const val = (tag.match(/content=["']([^"']*)/i) || [])[1];
+    if (key && val && all.length < 30) all.push(`${key}=${decodeEntities(val).slice(0, 140)}`);
+  }
   return {
+    all,
     title: get('og:title') || decodeEntities((html.match(/<title>([^<]{3,200})<\/title>/i) || [])[1] || ''),
     image: get('og:image'),
     url: get('og:url') || decodeEntities(canonical),
     price: price && Number(price.replace(',', '.')) > 0 ? Number(price.replace(',', '.')) : null,
   };
 }
+
+// Títulos genéricos (página inicial / bloqueio) não servem como nome de produto.
+const GENERIC_TITLE = /^(shopee brasil|mercado livre|mercado libre)\b|ofertas incr[ií]veis|melhores pre[çc]os|acesso negado|access denied|just a moment|verify|captcha/i;
+const usefulMeta = (meta) => !!(meta && meta.title && meta.title.length > 6 && !GENERIC_TITLE.test(meta.title));
 
 async function saveDebug(env, key, data) {
   try { await setConfig(env, key, JSON.stringify({ at: nowIso(), ...data }).slice(0, 4000)); } catch { /* diagnóstico é opcional */ }
@@ -572,8 +584,8 @@ async function resolveShopee(env, rawUrl) {
         const refresh = (html.match(/http-equiv=["']refresh["'][^>]*content=["'][^"']*url=([^"']+)/i) || [])[1]
           || (html.match(/(?:window\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/i) || [])[1];
         const found = extractShopeeIds(meta.url) || extractShopeeIds(refresh ? decodeEntities(refresh) : '') || extractShopeeIds(html);
-        trace[trace.length - 1].meta = { title: meta.title.slice(0, 60), url: meta.url.slice(0, 160), refresh: refresh ? refresh.slice(0, 160) : null };
-        if (meta.title && meta.image && !fallbackMeta) fallbackMeta = meta;
+        trace[trace.length - 1].meta = { title: meta.title.slice(0, 80), url: meta.url.slice(0, 160), refresh: refresh ? refresh.slice(0, 160) : null, tags: meta.all.slice(0, 20) };
+        if (usefulMeta(meta) && (!fallbackMeta || !fallbackMeta.image)) fallbackMeta = meta;
         if (found) return { ids: found, meta: fallbackMeta, trace };
         if (refresh && hop < 6) {
           current = new URL(decodeEntities(refresh), current).toString();
@@ -619,11 +631,64 @@ async function shopeeGraphql(creds, query) {
   return data.data || {};
 }
 
+function normalizeWords(t) {
+  return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length > 2);
+}
+
+function titleSimilarity(a, b) {
+  const wa = new Set(normalizeWords(a));
+  const wb = new Set(normalizeWords(b));
+  if (!wa.size || !wb.size) return 0;
+  let hit = 0;
+  for (const w of wa) if (wb.has(w)) hit++;
+  return hit / Math.min(wa.size, wb.size);
+}
+
+function shopeeNodeToProduct(node) {
+  const priceValue = Number(node.priceMin || node.price);
+  return {
+    platform: 'shopee',
+    title: String(node.productName || '').slice(0, 120),
+    price: Number.isFinite(priceValue) && priceValue > 0 ? Math.round(priceValue * 100) / 100 : null,
+    price_max: Number(node.priceMax) || null,
+    image_url: /^https?:\/\//.test(node.imageUrl || '') ? node.imageUrl : null,
+    shop_name: node.shopName || null,
+    rating: node.ratingStar ? Number(node.ratingStar) : null,
+    sales: node.sales ? Number(node.sales) : null,
+  };
+}
+
+async function shopeeSearchByTitle(creds, title) {
+  const keyword = normalizeWords(title).slice(0, 10).join(' ');
+  if (!keyword) return null;
+  const query = `{ productOfferV2(keyword: ${JSON.stringify(keyword)}, page: 1, limit: 10) {
+    nodes { itemId shopId productName price priceMin priceMax imageUrl shopName ratingStar sales } } }`;
+  const data = await shopeeGraphql(creds, query);
+  const nodes = ((data.productOfferV2 || {}).nodes) || [];
+  let best = null;
+  let bestScore = 0;
+  for (const n of nodes) {
+    const score = titleSimilarity(title, n.productName);
+    if (score > bestScore) { best = n; bestScore = score; }
+  }
+  return best && bestScore >= 0.75 ? { ...shopeeNodeToProduct(best), source: 'title_match' } : null;
+}
+
 async function lookupShopee(env, creds, url) {
   const { ids, meta, trace } = await resolveShopee(env, url);
   if (!ids) {
     await saveDebug(env, 'debug_shopee', { input: url, trace });
-    if (meta && meta.title) {
+    // Achou o nome pela prévia: procura o mesmo produto na API pelo nome para trazer preço e foto.
+    if (usefulMeta(meta)) {
+      try {
+        const found = await shopeeSearchByTitle(creds, meta.title);
+        if (found) return found;
+      } catch (err) {
+        console.error('Shopee busca por nome:', err && err.message);
+      }
+    }
+    if (usefulMeta(meta)) {
       // Sem o código do produto, usa a prévia pública da página (nome e foto).
       return { platform: 'shopee', title: meta.title.replace(/\s*\|\s*Shopee.*$/i, '').slice(0, 120), price: meta.price, image_url: /^https:\/\//.test(meta.image) ? meta.image : null, shop_name: null, source: 'preview' };
     }
@@ -634,7 +699,7 @@ async function lookupShopee(env, creds, url) {
   const data = await shopeeGraphql(creds, query);
   const node = (((data.productOfferV2 || {}).nodes) || [])[0];
   if (!node) {
-    if (meta && meta.title) {
+    if (usefulMeta(meta)) {
       return { platform: 'shopee', title: meta.title.replace(/\s*\|\s*Shopee.*$/i, '').slice(0, 120), price: meta.price, image_url: /^https:\/\//.test(meta.image) ? meta.image : null, shop_name: null, source: 'preview' };
     }
     throw new HttpError(404, 'A Shopee não retornou este produto. Ele pode não participar do programa de afiliados.');
@@ -739,41 +804,70 @@ function extractMlIds(text) {
   return itemId || productId ? { itemId, productId } : null;
 }
 
-async function resolveMlIds(rawUrl) {
-  let current = rawUrl;
-  for (let hop = 0; hop < 6; hop++) {
-    const ids = extractMlIds(current);
-    if (ids) return ids;
-    let res;
-    try {
-      res = await fetch(current, {
-        redirect: 'manual',
-        headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36', Accept: 'text/html' },
-      });
-    } catch {
-      return null;
+async function resolveMl(rawUrl) {
+  const trace = [];
+  let fallbackMeta = null;
+  for (const ua of [UA_BROWSER, ...UA_CRAWLERS]) {
+    let current = rawUrl;
+    for (let hop = 0; hop < 8; hop++) {
+      const ids = extractMlIds(current);
+      if (ids) return { ids, meta: fallbackMeta, trace };
+      let res;
+      try {
+        res = await fetch(current, {
+          redirect: 'manual',
+          headers: { 'User-Agent': ua, Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'pt-BR,pt;q=0.9' },
+        });
+      } catch (err) {
+        trace.push({ ua: ua.slice(0, 18), url: current.slice(0, 200), error: String(err && err.message).slice(0, 80) });
+        break;
+      }
+      const location = res.headers.get('Location');
+      trace.push({ ua: ua.slice(0, 18), url: current.slice(0, 200), status: res.status, location: location ? location.slice(0, 400) : null });
+      if (location && res.status >= 300 && res.status < 400) {
+        current = new URL(location, current).toString();
+        continue;
+      }
+      if (res.ok) {
+        const html = (await res.text()).slice(0, 600_000);
+        const meta = readMeta(html);
+        const refresh = (html.match(/http-equiv=["']refresh["'][^>]*content=["'][^"']*url=([^"']+)/i) || [])[1]
+          || (html.match(/(?:window\.)?location(?:\.href|\.replace)?\s*(?:=|\()\s*["']([^"']+)["']/i) || [])[1];
+        const itemJson = html.match(/"(?:item_id|itemId|id)"\s*:\s*"(MLB\d{6,})"/);
+        const found = extractMlIds(meta.url) || extractMlIds(refresh ? decodeEntities(refresh) : '')
+          || (itemJson ? { itemId: itemJson[1], productId: null } : null);
+        trace[trace.length - 1].meta = { title: meta.title.slice(0, 80), url: meta.url.slice(0, 200), refresh: refresh ? refresh.slice(0, 200) : null, tags: meta.all.slice(0, 20) };
+        if (usefulMeta(meta) && (!fallbackMeta || !fallbackMeta.image)) fallbackMeta = meta;
+        if (found) return { ids: found, meta: fallbackMeta, trace };
+        if (refresh && hop < 7) {
+          current = new URL(decodeEntities(refresh), current).toString();
+          continue;
+        }
+      }
+      break;
     }
-    const location = res.headers.get('Location');
-    if (location && res.status >= 300 && res.status < 400) {
-      current = new URL(location, current).toString();
-      continue;
-    }
-    if (res.ok) {
-      const html = (await res.text()).slice(0, 400_000);
-      const canonical = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)/i)
-        || html.match(/<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)/i);
-      return extractMlIds(canonical ? canonical[1] : html);
-    }
-    return null;
   }
-  return extractMlIds(current);
+  return { ids: null, meta: fallbackMeta, trace };
 }
 
 const httpsImage = (u) => (u ? String(u).replace(/^http:\/\//i, 'https://') : null);
 
 async function lookupMercadoLivre(env, token, url) {
-  const ids = await resolveMlIds(url);
-  if (!ids) throw new HttpError(422, 'Não encontrei o produto neste link do Mercado Livre. Confira se é o link de um produto.');
+  const { ids, meta, trace } = await resolveMl(url);
+  if (!ids) {
+    await saveDebug(env, 'debug_ml', { input: url, trace });
+    if (usefulMeta(meta)) {
+      return {
+        platform: 'mercadolivre',
+        title: meta.title.replace(/\s*[|-]\s*Mercado Livre.*$/i, '').slice(0, 120),
+        price: meta.price,
+        image_url: /^https:\/\//.test(meta.image) ? meta.image : null,
+        shop_name: null,
+        source: 'preview',
+      };
+    }
+    throw new HttpError(422, 'Não consegui abrir este link do Mercado Livre. Tente o link completo do produto (abra o link no navegador e copie o endereço).');
+  }
   if (ids.itemId) {
     const item = await mlGet(token, `/items/${ids.itemId}`);
     if (item && item.title) {
@@ -798,6 +892,9 @@ async function lookupMercadoLivre(env, token, url) {
         shop_name: null,
       };
     }
+  }
+  if (usefulMeta(meta)) {
+    return { platform: 'mercadolivre', title: meta.title.replace(/\s*[|-]\s*Mercado Livre.*$/i, '').slice(0, 120), price: meta.price, image_url: /^https:\/\//.test(meta.image) ? meta.image : null, shop_name: null, source: 'preview' };
   }
   throw new HttpError(404, 'O Mercado Livre não retornou este produto. Ele pode ter sido pausado ou removido.');
 }
