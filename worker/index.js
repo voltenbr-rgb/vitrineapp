@@ -2436,7 +2436,7 @@ function paymentPublic(p, extra = {}) {
 }
 
 async function handlePayCreate(request, env, account) {
-  if (!mpConfigured(env)) throw new HttpError(501, 'Pagamento online ainda não foi ativado. Fale com o suporte para assinar.', { code: 'not_configured' });
+  if (!mpConfigured(env)) throw new HttpError(501, 'O pagamento online está sendo ativado. Tente de novo em alguns minutos.', { code: 'not_configured' });
   const body = await readJson(request);
   const plan = PLANS[body.plan] ? body.plan : 'basic';
   const method = body.method === 'card' ? 'card' : 'pix';

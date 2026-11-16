@@ -695,15 +695,15 @@
       const chosen = planId || ((state.account && state.account.plan) || 'complete');
       const email = ls.get('vitrine:email') || '';
       dlg.innerHTML = `<h3 id="dlgTitle">💳 Planos do Vitrine App</h3>
-        <p>${state.config.payments ? '30 dias de acesso. Ativa na hora que o pagamento é aprovado.' : 'Escolha o plano e fale com a gente para assinar.'}</p>
+        <p>30 dias de acesso. Ativa na hora que o pagamento é aprovado.</p>
         <div class="pay-plans">
           ${['basic', 'complete'].map((id) => `<label><input type="radio" name="payPlan" value="${id}" ${id === chosen ? 'checked' : ''}><span><b>${id === 'complete' ? '⭐ Completo' : 'Básico'}</b>R$ ${esc(priceOf(id))}<br><small>${id === 'complete' ? 'até 3 lojas · 3 modelos' : '1 loja'}</small></span></label>`).join('')}
         </div>
-        ${state.config.payments ? `<label class="field"><span>Seu e-mail <small>o comprovante chega nele</small></span><input class="input" id="payEmail" type="email" inputmode="email" autocomplete="email" value="${esc(email)}" placeholder="voce@email.com"></label>
+        <label class="field"><span>Seu e-mail <small>o comprovante chega nele</small></span><input class="input" id="payEmail" type="email" inputmode="email" autocomplete="email" value="${esc(email)}" placeholder="voce@email.com"></label>
         <div class="grid-2">
           <button type="button" class="btn btn-primary" data-p="pix">⚡ Pagar com Pix</button>
           <button type="button" class="btn btn-soft" data-p="card">💳 Cartão</button>
-        </div>` : `<button type="button" class="btn btn-wa btn-block" data-p="wa">${I.wa}Assinar pelo WhatsApp</button>`}
+        </div>
         <button type="button" class="btn btn-ghost btn-block" data-p="close" style="margin-top:8px">Agora não</button>`;
       ov.classList.add('open');
       const close = () => { stopPayPoll(); ov.classList.remove('open'); ov.onclick = null; };
@@ -714,7 +714,6 @@
         if (b.dataset.p === 'close') return close();
         if (b.dataset.p === 'copy') return copy(b.dataset.code, 'Código Pix copiado! Cole no app do seu banco 💸');
         const plan = (dlg.querySelector('[name="payPlan"]:checked') || {}).value || 'basic';
-        if (b.dataset.p === 'wa') { close(); return upgradeDialogWa(plan); }
         const mail = ($('#payEmail') || {}).value ? $('#payEmail').value.trim() : '';
         if (b.dataset.p === 'pix' && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) { toast('Informe seu e-mail para gerar o Pix.', true); return $('#payEmail').focus(); }
         if (mail) ls.set('vitrine:email', mail);
@@ -774,23 +773,14 @@
       };
     }
 
-    function upgradeDialogWa(planId) {
-      const id = planId || 'complete';
-      const msg = `Olá! Quero assinar o plano ${id === 'complete' ? 'Completo' : 'Básico'} da Vitrine (R$ ${priceOf(id)}/mês). Conta: ${state.account ? fmtPhone(state.account.whatsapp) : ''}.`;
-      if (state.config.support_whatsapp) window.open(waLink(state.config.support_whatsapp, msg), '_blank', 'noopener');
-      else toast('Fale com o suporte para assinar.', true);
-    }
-
     function upgradeDialog(feature) {
-      const msg = `Olá! Quero mudar para o plano Completo da Vitrine (R$ ${priceOf('complete')}/mês). Conta: ${state.account ? fmtPhone(state.account.whatsapp) : ''}.`;
       const dlg = $('#dialog');
       dlg.innerHTML = `<h3 id="dlgTitle">⭐ Recurso do plano Completo</h3>
         <p>${esc(feature)}</p>
         <p style="font-size:13.5px">No <b>Completo (R$ ${esc(priceOf('complete'))}/mês)</b> você tem até 3 lojas, os 3 modelos de mensagem editáveis e 30 buscas automáticas por hora.</p>
         <div class="grid-2">
           <button type="button" class="btn btn-ghost" data-dlg="close">Agora não</button>
-          ${state.config.payments ? `<button type="button" class="btn btn-primary" data-dlg="pay">⭐ Quero o Completo</button>`
-            : state.config.support_whatsapp ? `<a class="btn btn-wa" href="${esc(waLink(state.config.support_whatsapp, msg))}" target="_blank" rel="noopener">${I.wa}Quero o Completo</a>` : ''}
+          <button type="button" class="btn btn-primary" data-dlg="pay">⭐ Quero o Completo</button>
         </div>`;
       $('#dialogOverlay').classList.add('open');
       dlg.querySelector('[data-dlg="close"]').onclick = () => $('#dialogOverlay').classList.remove('open');
@@ -1263,18 +1253,9 @@
       const p = plan();
       const contracted = (state.account && state.account.plan) || 'basic';
       const price = esc(priceOf(contracted));
-      const who = state.tenant ? `"${state.tenant.store_name}" (${state.tenant.id})` : fmtPhone(a.whatsapp);
-      const msgFor = (id) => `Olá! Quero assinar o plano ${id === 'complete' ? 'Completo' : 'Básico'} da Vitrine (R$ ${priceOf(id)}/mês). Conta: ${who}.`;
-      const wa = state.config.support_whatsapp;
-      const payBtns = state.config.payments
-        ? `<div class="pay-row">
+      const payBtns = `<div class="pay-row">
             <button type="button" class="btn btn-sm btn-primary" data-act="pay" data-plan="complete">⭐ Completo R$ ${esc(priceOf('complete'))}</button>
-            <button type="button" class="btn btn-sm btn-ghost" data-act="pay" data-plan="basic">Básico R$ ${esc(priceOf('basic'))}</button></div>`
-        : wa
-        ? `<div class="pay-row">
-            <a class="btn btn-sm btn-wa" href="${esc(waLink(wa, msgFor('complete')))}" target="_blank" rel="noopener noreferrer">${I.wa}Completo R$ ${esc(priceOf('complete'))}</a>
-            <a class="btn btn-sm btn-ghost" href="${esc(waLink(wa, msgFor('basic')))}" target="_blank" rel="noopener noreferrer">Básico R$ ${esc(priceOf('basic'))}</a></div>`
-        : '';
+            <button type="button" class="btn btn-sm btn-ghost" data-act="pay" data-plan="basic">Básico R$ ${esc(priceOf('basic'))}</button></div>`;
       if (a.status === 'trial') {
         const total = Number(state.config.trial_days) || 7;
         const left = a.trial_days_left;
@@ -1300,7 +1281,7 @@
         return `<div class="plan active"><div class="plan-icon">${I.check}</div><div class="plan-body">
           <strong>Plano ${esc(p.name)} ativo · R$ ${price}/mês</strong>
           ${a.paid_until ? `Válido até ${fmtDate(a.paid_until)} (${a.paid_days_left} ${a.paid_days_left === 1 ? 'dia' : 'dias'}).` : 'Sua vitrine está no ar.'}
-          ${state.config.payments && a.paid_days_left !== null && a.paid_days_left <= 7 ? `<div class="pay-row"><button type="button" class="btn btn-sm btn-primary" data-act="pay" data-plan="${esc(contracted)}">🔄 Renovar agora</button></div>` : ''}</div></div>`;
+          ${a.paid_days_left !== null && a.paid_days_left <= 7 ? `<div class="pay-row"><button type="button" class="btn btn-sm btn-primary" data-act="pay" data-plan="${esc(contracted)}">🔄 Renovar agora</button></div>` : ''}</div></div>`;
       }
       return `<div class="plan expired"><div class="plan-icon">${I.lock}</div><div class="plan-body">
         <strong>Seu acesso terminou</strong>
@@ -1995,7 +1976,7 @@
       if (act === 'stores') return showStores();
       if (act === 'open-store') return openStore(t.dataset.id);
       if (act === 'new-store') return openNewStore();
-      if (act === 'upgrade') return state.config.payments ? openPay('complete') : upgradeDialog('Libere mais lojas e todos os modelos de mensagem.');
+      if (act === 'upgrade') return openPay('complete');
       if (act === 'pay') return openPay(t.dataset.plan);
       if (act === 'plans') return openPay();
       if (act === 'trial-hide') { ls.set(`vitrine:trial-hide:${(state.account || {}).id || ''}`, String(Date.now())); return render(); }
