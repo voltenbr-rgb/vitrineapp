@@ -1652,7 +1652,33 @@ async function handleConfig(request, env) {
   });
 }
 
-async function handleStore(env, rawId) {
+// Foto guardada no banco (data URL) vira um link próprio: a vitrine carrega os textos primeiro
+// e cada foto só é baixada quando aparece na tela (e fica no cache do navegador).
+function photoLink(base, kind, id, dataUrl, version) {
+  if (!dataUrl || !String(dataUrl).startsWith('data:')) return dataUrl;
+  const v = encodeURIComponent(String(version || '').replace(/\D/g, '').slice(-12) || '1');
+  return `${base}/api/photo/${kind}/${encodeURIComponent(id)}?v=${v}`;
+}
+
+async function handlePhoto(env, kind, rawId) {
+  let row = null;
+  if (kind === 'p' && /^\d+$/.test(rawId)) {
+    row = await env.DB.prepare('SELECT image_url AS img FROM products WHERE id = ? AND is_visible = 1').bind(Number(rawId)).first();
+  } else if (kind === 's' && SLUG_RE.test(rawId)) {
+    row = await env.DB.prepare('SELECT avatar_url AS img FROM tenants WHERE id = ?').bind(rawId).first();
+  }
+  const m = row && String(row.img || '').match(/^data:(image\/(?:png|jpe?g|webp));base64,(.+)$/);
+  if (!m) throw new HttpError(404, 'Imagem não encontrada.');
+  return new Response(unb64u(m[2].replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')), {
+    headers: {
+      'Content-Type': m[1],
+      'Cache-Control': 'public, max-age=31536000, immutable', // o ?v= muda quando a foto muda
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
+}
+
+async function handleStore(request, env, rawId) {
   const id = String(rawId || '').toLowerCase();
   if (!SLUG_RE.test(id)) throw new HttpError(404, 'Vitrine não encontrada.');
   const tenant = await loadPublicStore(env, id);
@@ -1672,9 +1698,15 @@ async function handleStore(env, rawId) {
   delete settings.offer_templates;
 
   // Preço oculto (geral ou do produto): o valor nem sai do servidor.
-  const visibleProducts = products.map((p) => (settings.show_prices && Number(p.show_price) !== 0 ? p : { ...p, price: null, original_price: null }));
+  const base = publicBase(request, env);
+  const visibleProducts = products.map((p) => {
+    const item = { ...p, image_url: photoLink(base, 'p', p.id, p.image_url, p.updated_at) };
+    return settings.show_prices && Number(p.show_price) !== 0 ? item : { ...item, price: null, original_price: null };
+  });
+  const store = tenantPublic(tenant);
+  store.avatar_url = photoLink(base, 's', tenant.id, tenant.avatar_url, tenant.updated_at);
 
-  return json({ store: tenantPublic(tenant), settings, products: visibleProducts });
+  return json({ store, settings, products: visibleProducts });
 }
 
 async function handleImage(env, key) {
@@ -2298,7 +2330,8 @@ async function routeApi(request, env, path) {
   if (path === '/api/health' && method === 'GET') return json({ ok: true, time: nowIso() });
   await ensureSchema(env);
   if (path === '/api/config' && method === 'GET') return handleConfig(request, env);
-  if ((m = path.match(/^\/api\/store\/([^/]+)$/)) && method === 'GET') return handleStore(env, decodeURIComponent(m[1]));
+  if ((m = path.match(/^\/api\/store\/([^/]+)$/)) && method === 'GET') return handleStore(request, env, decodeURIComponent(m[1]));
+  if ((m = path.match(/^\/api\/photo\/([ps])\/([^/]+)$/)) && method === 'GET') return handlePhoto(env, m[1], decodeURIComponent(m[2]).toLowerCase());
   if ((m = path.match(/^\/api\/images\/(.+)$/)) && method === 'GET') return handleImage(env, decodeURIComponent(m[1]));
   if (path === '/api/auth/login' && method === 'POST') return handleLogin(request, env);
   if (path === '/api/auth/register' && method === 'POST') return handleRegister(request, env);
