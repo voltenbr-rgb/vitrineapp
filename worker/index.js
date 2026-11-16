@@ -26,7 +26,7 @@
  * Rotas do lojista (Authorization: Bearer <token>)
  *   GET    /api/me
  *   POST   /api/me/ping                    presença (online no Master)
- *   POST   /api/me/lookup                  { url } → nome, preço e foto do produto (API de afiliados)
+ *   POST   /api/me/lookup                  { url } → nome, preço e foto (cota: 5 buscas/hora por lojista)
  *   PUT    /api/me/profile
  *   PUT    /api/me/settings
  *   PUT    /api/me/password
@@ -323,6 +323,10 @@ function ensureSchema(env) {
       await env.DB.prepare(
         'CREATE TABLE IF NOT EXISTS product_cache (key TEXT PRIMARY KEY, data TEXT NOT NULL, fetched_at TEXT NOT NULL)',
       ).run();
+      await env.DB.prepare(
+        'CREATE TABLE IF NOT EXISTS lookup_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT NOT NULL, at TEXT NOT NULL)',
+      ).run();
+      await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_lookup_usage ON lookup_usage (tenant_id, at)').run();
       const columns = async (table) => {
         const { results } = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
         return new Set((results || []).map((r) => r.name));
@@ -530,16 +534,22 @@ async function lookupShopee(env, creds, url) {
   };
 }
 
-const lookupHits = new Map(); // limite simples por lojista (por instância)
-function lookupRateLimit(key, max = 60) {
-  const now = Date.now();
-  const hits = (lookupHits.get(key) || []).filter((t) => now - t < 3_600_000);
-  if (hits.length >= max) throw new HttpError(429, 'Muitas buscas em pouco tempo. Aguarde alguns minutos.');
-  hits.push(now);
-  lookupHits.set(key, hits);
+// Cota do plano básico: buscas automáticas por lojista a cada hora (padrão 5).
+// Conta no banco, então vale para todos os servidores. Resultados do cache não gastam cota.
+const lookupLimit = (env) => clampInt(env.LOOKUP_LIMIT_PER_HOUR, 1, 1000, 5);
+
+async function lookupQuota(env, tenantId) {
+  const since = new Date(Date.now() - 3_600_000).toISOString();
+  const row = await env.DB.prepare(
+    'SELECT COUNT(*) AS used, MIN(at) AS oldest FROM lookup_usage WHERE tenant_id = ? AND at > ?',
+  ).bind(tenantId, since).first();
+  const limit = lookupLimit(env);
+  const used = Number(row && row.used) || 0;
+  const resetMin = row && row.oldest ? Math.max(1, Math.ceil((Date.parse(row.oldest) + 3_600_000 - Date.now()) / 60_000)) : 60;
+  return { limit, used, remaining: Math.max(0, limit - used), reset_minutes: used ? resetMin : null };
 }
 
-async function lookupProduct(env, rawUrl, { useCache = true } = {}) {
+async function lookupProduct(env, rawUrl, { useCache = true, tenantId = null } = {}) {
   const link = httpUrl(rawUrl, 'Link', { required: true });
   const url = new URL(link);
   const platform = detectPlatform(url);
@@ -548,6 +558,16 @@ async function lookupProduct(env, rawUrl, { useCache = true } = {}) {
   if (useCache) {
     const hit = await env.DB.prepare('SELECT data, fetched_at FROM product_cache WHERE key = ?').bind(cacheKey).first();
     if (hit && Date.now() - Date.parse(hit.fetched_at) < 6 * 3_600_000) return { ...JSON.parse(hit.data), cached: true };
+  }
+  if (tenantId) {
+    const quota = await lookupQuota(env, tenantId);
+    if (quota.remaining <= 0) {
+      throw new HttpError(429, `Você usou as ${quota.limit} buscas automáticas desta hora. Libera de novo em ${quota.reset_minutes} min — enquanto isso, preencha manualmente.`, { code: 'quota', quota });
+    }
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO lookup_usage (tenant_id, at) VALUES (?, ?)').bind(tenantId, nowIso()),
+      env.DB.prepare('DELETE FROM lookup_usage WHERE at < ?').bind(new Date(Date.now() - 2 * 3_600_000).toISOString()),
+    ]);
   }
   const cfg = await getConfig(env);
   let result;
@@ -874,9 +894,9 @@ async function handleRegister(request, env) {
 
 async function handleLookup(request, env, tenant) {
   assertCanEdit(tenant);
-  lookupRateLimit(tenant.id);
   const body = await readJson(request);
-  return json({ product: await lookupProduct(env, body.url) });
+  const product = await lookupProduct(env, body.url, { tenantId: tenant.id });
+  return json({ product, quota: await lookupQuota(env, tenant.id) });
 }
 
 async function handlePing(env, tenant) {
@@ -902,6 +922,7 @@ async function handleMe(request, env, tenant) {
     settings,
     products,
     store_url: `${publicBase(request, env)}/s/${tenant.id}`,
+    lookup_quota: await lookupQuota(env, tenant.id),
   });
 }
 

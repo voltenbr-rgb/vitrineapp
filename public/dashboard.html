@@ -614,6 +614,7 @@
       state.settings = data.settings;
       state.products = data.products;
       state.storeUrl = data.store_url;
+      state.quota = data.lookup_quota || null;
       applyTheme(state.tenant.theme_color);
       ls.set('vitrine:last-store', state.tenant.id);
     }
@@ -792,6 +793,7 @@
                 <input class="input" name="affiliate_link" type="url" inputmode="url" placeholder="https://..." value="${esc(p.affiliate_link || '')}">
                 <small id="linkHint"></small></label>
             </div>
+            <small class="hint" id="quotaHint" style="display:block;text-align:center;margin-bottom:6px"></small>
             <button type="button" class="btn btn-soft btn-block" data-act="autofill" id="autofillBtn" hidden style="white-space:normal;height:auto;min-height:48px;padding:10px 14px">✨ Preencher automaticamente</button>
           </div>
 
@@ -830,6 +832,7 @@
         : 'Sem link, o botão "Pedir" abre o seu WhatsApp.';
       const canFill = !!(state.config.lookup && state.config.lookup[platform]);
       $('#autofillBtn').hidden = !canFill;
+      renderQuota(canFill);
       $('#priceHint').textContent = affiliate
         ? 'Opcional: o preço muda no site parceiro.'
         : 'Deixe vazio para "Preço sob consulta".';
@@ -1036,6 +1039,17 @@
       busy.remove();
     }
 
+    function renderQuota(show) {
+      const el = $('#quotaHint');
+      if (!el) return;
+      const q = state.quota;
+      el.hidden = !show || !q;
+      if (!q) return;
+      el.textContent = q.remaining > 0
+        ? `✨ ${q.remaining} de ${q.limit} buscas automáticas disponíveis nesta hora`
+        : `Buscas automáticas esgotadas nesta hora · libera em ${q.reset_minutes} min`;
+    }
+
     // Busca nome, preço e foto pelo link (API de afiliados configurada no Master).
     let lastFilled = '';
     async function autoFill(manual) {
@@ -1051,7 +1065,8 @@
       const btn = $('#autofillBtn');
       setBusy(btn, true, 'Buscando dados do produto...');
       try {
-        const { product } = await api('/api/me/lookup', { method: 'POST', body: { url: link } });
+        const { product, quota } = await api('/api/me/lookup', { method: 'POST', body: { url: link } });
+        if (quota) { state.quota = quota; renderQuota(true); }
         if (product.title && (manual || !form.title.value.trim())) {
           form.title.value = product.title;
           $('#titleCount').textContent = `${product.title.length}/120`;
@@ -1065,6 +1080,7 @@
         }
         toast('✨ Dados do produto preenchidos! Confira e publique.');
       } catch (err) {
+        if (err.code === 'quota') { lastFilled = ''; if (state.quota) { state.quota.remaining = 0; renderQuota(true); } }
         if (manual || err.status !== 501) toast(err.message, true);
       } finally {
         setBusy(btn, false);
