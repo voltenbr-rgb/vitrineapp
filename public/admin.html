@@ -207,6 +207,7 @@
         <input class="input" id="masterPass" type="password" autocomplete="current-password" required autofocus>
       </label>
       <button class="btn btn-dark btn-block" id="loginBtn" type="submit">Entrar</button>
+        <a href="/" style="display:block;text-align:center;margin-top:14px;font-size:13.5px;font-weight:700;color:#6b7280;text-decoration:none">← Voltar ao site</a>
     </form>
   </section>
 
@@ -1005,7 +1006,7 @@
       const t = state.tenants.find((x) => String(x.id) === b.dataset.id);
       switch (b.dataset.act) {
         case 'refresh': try { await load(); toast('Atualizado'); } catch (err) { toast(err.message, true); } break;
-        case 'logout': logout(); break;
+        case 'logout': logout(); location.href = '/'; break; // sair volta para o site
         case 'new': newStoreModal(); break;
         case 'activate': if (t) activateModal(t); break;
         case 'trial':
