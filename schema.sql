@@ -1,10 +1,13 @@
 -- =====================================================================
--- Vitrine — SaaS multi-tenant de vitrines de produtos
+-- Vitrine App — SaaS multi-tenant de vitrines de produtos
 -- Banco: Cloudflare D1 (SQLite)
 --
 -- Aplicar:
 --   npx wrangler d1 execute minhavitrine --remote --file=schema.sql
 -- (use --local para o banco de desenvolvimento)
+--
+-- Bancos criados por versões anteriores são atualizados sozinhos pela API
+-- (colunas novas e a tabela app_config são adicionadas no primeiro acesso).
 --
 -- Datas são gravadas em ISO 8601 UTC (ex.: 2026-11-16T04:15:00.000Z),
 -- o que permite comparar datas como texto com segurança.
@@ -28,6 +31,9 @@ CREATE TABLE IF NOT EXISTS tenants (
                  CHECK (status IN ('trial', 'active', 'expired')),
   trial_ends_at  TEXT NOT NULL,                       -- created_at + 7 dias (calculado na criação)
   paid_until     TEXT,                                -- validade do plano pago (R$ 19,90/mês)
+  last_seen_at   TEXT,                                -- último sinal do painel (online no Master)
+  last_login_at  TEXT,
+  views          INTEGER NOT NULL DEFAULT 0,          -- visitas à vitrine pública
   created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -51,6 +57,7 @@ CREATE TABLE IF NOT EXISTS products (
   is_physical      INTEGER NOT NULL DEFAULT 0 CHECK (is_physical IN (0, 1)),
   delivery_cities  TEXT NOT NULL DEFAULT '',          -- ex.: "Campo Grande, Dourados"
   sort_order       INTEGER NOT NULL DEFAULT 0,
+  is_visible       INTEGER NOT NULL DEFAULT 1 CHECK (is_visible IN (0, 1)),  -- 0 = oculto para os clientes
   created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -64,5 +71,17 @@ CREATE TABLE IF NOT EXISTS tenant_settings (
   tenant_id           TEXT PRIMARY KEY REFERENCES tenants (id) ON DELETE CASCADE,
   show_prices         INTEGER NOT NULL DEFAULT 1 CHECK (show_prices IN (0, 1)),
   show_stock_warning  INTEGER NOT NULL DEFAULT 1 CHECK (show_stock_warning IN (0, 1)),
-  view_mode           TEXT NOT NULL DEFAULT 'grid' CHECK (view_mode IN ('grid', 'list'))
+  view_mode           TEXT NOT NULL DEFAULT 'grid' CHECK (view_mode IN ('grid', 'list')),
+  show_banner         INTEGER NOT NULL DEFAULT 1,     -- 0 = cliente vê só os produtos
+  share_message       TEXT NOT NULL DEFAULT ''        -- mensagem pronta personalizada ({loja} e {link})
+);
+
+-- ---------------------------------------------------------------------
+-- Configurações do sistema (vídeo da página inicial, WhatsApp de suporte,
+-- senha Master personalizada, segredo de sessão gerado automaticamente)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS app_config (
+  key         TEXT PRIMARY KEY,
+  value       TEXT NOT NULL,
+  updated_at  TEXT
 );

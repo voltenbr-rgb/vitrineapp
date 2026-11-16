@@ -6,9 +6,10 @@
  *   ASSETS  → arquivos de /public (Workers Static Assets ou Pages)
  *   IMAGES  → R2 (opcional; sem ele as imagens enviadas são guardadas comprimidas no D1)
  *
- * Segredos (wrangler secret put ...):
- *   MASTER_PASSWORD  → senha do painel Master (cabeçalho X-Master-Password)
- *   SESSION_SECRET   → assina os logins dos lojistas
+ * Segredos (opcionais — wrangler secret put ... / painel do Pages):
+ *   MASTER_PASSWORD  → fixa a senha do Master. Sem ele vale a senha salva no painel Master
+ *                      (padrão inicial: 1989 — troque em Master → Configurações).
+ *   SESSION_SECRET   → assina os logins. Sem ele, um segredo aleatório é gerado e guardado no D1.
  *
  * Variáveis (wrangler.toml [vars]):
  *   TRIAL_DAYS, PLAN_PRICE, SUPPORT_WHATSAPP, ALLOWED_ORIGIN, PUBLIC_BASE_URL
@@ -18,26 +19,34 @@
  *   GET    /api/config
  *   GET    /api/store/:tenantId
  *   GET    /api/images/:key+
+ *   GET    /api/auth/check-slug?id=        endereço disponível?
+ *   POST   /api/auth/register              cadastro com 7 dias grátis
  *   POST   /api/auth/login                 { store_id, password }
  *
  * Rotas do lojista (Authorization: Bearer <token>)
  *   GET    /api/me
+ *   POST   /api/me/ping                    presença (online no Master)
  *   PUT    /api/me/profile
  *   PUT    /api/me/settings
  *   PUT    /api/me/password
  *   POST   /api/me/upload                  corpo binário (image/jpeg|png|webp)
  *   POST   /api/me/products
  *   PUT    /api/me/products/:id
+ *   PATCH  /api/me/products/:id/visibility { is_visible }
  *   DELETE /api/me/products/:id
  *
  * Rotas Master (X-Master-Password)
- *   GET    /api/admin/tenants
+ *   GET    /api/admin/tenants              lojas + estatísticas + quem está online
  *   POST   /api/admin/tenants
  *   PATCH  /api/admin/tenants/:id          { action: activate|extend_trial|expire|reset_password|update, ... }
  *   DELETE /api/admin/tenants/:id
+ *   GET    /api/admin/config
+ *   PUT    /api/admin/config               vídeo da página inicial, WhatsApp de suporte, senha Master
  */
 
 const DAY_MS = 86_400_000;
+const ONLINE_WINDOW_MS = 3 * 60_000;      // lojista "online" se deu sinal nos últimos 3 min
+const MASTER_DEFAULT_PASSWORD = '1989';   // vale até ser trocada no painel Master
 const PBKDF2_ITERATIONS = 100_000; // limite máximo suportado pelo Workers
 const TOKEN_TTL_MS = 30 * DAY_MS;
 const MAX_JSON_BYTES = 1_000_000;
@@ -297,15 +306,94 @@ async function verifyPassword(pw, stored) {
 // Hash fixo usado quando a loja não existe, para o tempo de resposta não revelar quais lojas existem.
 const DUMMY_HASH = 'pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
-function sessionSecret(env) {
-  const secret = env.SESSION_SECRET || env.MASTER_PASSWORD;
-  if (!secret) throw new HttpError(500, 'Servidor sem SESSION_SECRET configurado.');
-  return secret;
+/* ------------------------------------------------------------------ */
+/* Banco: atualização automática e configurações do sistema           */
+/* ------------------------------------------------------------------ */
+
+// Garante tabelas/colunas novas em bancos criados por versões anteriores (roda 1x por instância).
+let schemaReady = null;
+function ensureSchema(env) {
+  if (!schemaReady) {
+    schemaReady = (async () => {
+      await env.DB.prepare(
+        'CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT)',
+      ).run();
+      const columns = async (table) => {
+        const { results } = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
+        return new Set((results || []).map((r) => r.name));
+      };
+      const [tc, pc, sc] = await Promise.all([columns('tenants'), columns('products'), columns('tenant_settings')]);
+      const alters = [];
+      if (!tc.has('last_seen_at')) alters.push('ALTER TABLE tenants ADD COLUMN last_seen_at TEXT');
+      if (!tc.has('last_login_at')) alters.push('ALTER TABLE tenants ADD COLUMN last_login_at TEXT');
+      if (!tc.has('views')) alters.push('ALTER TABLE tenants ADD COLUMN views INTEGER NOT NULL DEFAULT 0');
+      if (!pc.has('is_visible')) alters.push('ALTER TABLE products ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1');
+      if (!sc.has('show_banner')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_banner INTEGER NOT NULL DEFAULT 1');
+      if (!sc.has('share_message')) alters.push("ALTER TABLE tenant_settings ADD COLUMN share_message TEXT NOT NULL DEFAULT ''");
+      for (const sql of alters) {
+        try {
+          await env.DB.prepare(sql).run();
+        } catch (err) {
+          if (!/duplicate column/i.test(String(err && err.message))) throw err;
+        }
+      }
+    })().catch((err) => {
+      schemaReady = null;
+      throw err;
+    });
+  }
+  return schemaReady;
+}
+
+async function getConfig(env) {
+  const { results } = await env.DB.prepare('SELECT key, value FROM app_config').all();
+  return Object.fromEntries((results || []).map((r) => [r.key, r.value]));
+}
+
+async function setConfig(env, key, value) {
+  await env.DB.prepare(
+    `INSERT INTO app_config (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  ).bind(key, String(value), nowIso()).run();
+}
+
+// Converte links do YouTube/Vimeo em endereço de incorporação seguro.
+function videoEmbed(raw) {
+  const v = String(raw || '').trim();
+  if (!v) return null;
+  let url;
+  try { url = new URL(v); } catch { return null; }
+  if (url.protocol !== 'https:') return null;
+  const host = url.hostname.replace(/^www\.|^m\./, '');
+  let id = null;
+  if (host === 'youtu.be') id = url.pathname.slice(1).split('/')[0];
+  else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+    id = url.searchParams.get('v') || (url.pathname.match(/^\/(?:embed|shorts|live)\/([^/?#]+)/) || [])[1];
+  }
+  if (id && /^[\w-]{6,20}$/.test(id)) return { type: 'iframe', src: `https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1` };
+  if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+    const vid = (url.pathname.match(/(\d{6,12})/) || [])[1];
+    if (vid) return { type: 'iframe', src: `https://player.vimeo.com/video/${vid}` };
+  }
+  if (/\.(mp4|webm)$/i.test(url.pathname)) return { type: 'video', src: url.toString() };
+  return null;
+}
+
+let cachedSecret = null;
+async function sessionSecret(env) {
+  if (env.SESSION_SECRET) return env.SESSION_SECRET;
+  if (cachedSecret) return cachedSecret;
+  // Sem SESSION_SECRET: gera um segredo aleatório uma única vez e guarda no D1.
+  await env.DB.prepare('INSERT OR IGNORE INTO app_config (key, value, updated_at) VALUES (?, ?, ?)')
+    .bind('session_secret', b64u(crypto.getRandomValues(new Uint8Array(32))), nowIso()).run();
+  cachedSecret = await env.DB.prepare("SELECT value FROM app_config WHERE key = 'session_secret'").first('value');
+  if (!cachedSecret) throw new HttpError(500, 'Não foi possível iniciar as sessões.');
+  return cachedSecret;
 }
 
 async function hmacKey(env) {
   return crypto.subtle.importKey(
-    'raw', enc.encode('vitrine-session:' + sessionSecret(env)),
+    'raw', enc.encode('vitrine-session:' + (await sessionSecret(env))),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'],
   );
 }
@@ -337,11 +425,20 @@ async function verifyToken(env, token) {
   }
 }
 
+// Ordem: secret MASTER_PASSWORD → senha trocada no painel Master (hash no D1) → padrão 1989.
 async function requireMaster(request, env) {
-  if (!env.MASTER_PASSWORD) throw new HttpError(500, 'Servidor sem MASTER_PASSWORD configurada.');
   const given = request.headers.get('X-Master-Password') || '';
-  const ok = timingSafeEqual(await sha256(given), await sha256(env.MASTER_PASSWORD));
-  if (!given || !ok) throw new HttpError(401, 'Senha Master incorreta.');
+  if (!given) throw new HttpError(401, 'Senha Master incorreta.');
+  let ok;
+  if (env.MASTER_PASSWORD) {
+    ok = timingSafeEqual(await sha256(given), await sha256(env.MASTER_PASSWORD));
+  } else {
+    const stored = await env.DB.prepare("SELECT value FROM app_config WHERE key = 'master_hash'").first('value');
+    ok = stored
+      ? await verifyPassword(given, stored)
+      : timingSafeEqual(await sha256(given), await sha256(MASTER_DEFAULT_PASSWORD));
+  }
+  if (!ok) throw new HttpError(401, 'Senha Master incorreta.');
 }
 
 async function requireTenant(request, env) {
@@ -416,26 +513,40 @@ function tenantPrivate(t) {
     paid_days_left: t.status === 'active' ? (t.paid_until ? daysLeft(t.paid_until) : null) : 0,
     created_at: t.created_at,
     updated_at: t.updated_at,
+    last_seen_at: t.last_seen_at || null,
+    last_login_at: t.last_login_at || null,
+    views: Number(t.views || 0),
+    online: !!t.last_seen_at && Date.now() - Date.parse(t.last_seen_at) < ONLINE_WINDOW_MS,
   };
 }
 
-const DEFAULT_SETTINGS = { show_prices: 1, show_stock_warning: 1, view_mode: 'grid' };
+const DEFAULT_SETTINGS = { show_prices: 1, show_stock_warning: 1, view_mode: 'grid', show_banner: 1, share_message: '' };
 
 async function loadSettings(env, tenantId) {
   const row = await env.DB.prepare(
-    'SELECT show_prices, show_stock_warning, view_mode FROM tenant_settings WHERE tenant_id = ?',
+    'SELECT show_prices, show_stock_warning, view_mode, show_banner, share_message FROM tenant_settings WHERE tenant_id = ?',
   ).bind(tenantId).first();
   return row ? { ...DEFAULT_SETTINGS, ...row } : { ...DEFAULT_SETTINGS };
 }
 
-async function loadProducts(env, tenantId) {
+async function loadProducts(env, tenantId, { onlyVisible = false } = {}) {
   const { results } = await env.DB.prepare(
     `SELECT id, title, description, price, image_url, affiliate_link, platform,
-            is_physical, delivery_cities, sort_order, created_at, updated_at
-       FROM products WHERE tenant_id = ?
+            is_physical, delivery_cities, sort_order, is_visible, created_at, updated_at
+       FROM products WHERE tenant_id = ? ${onlyVisible ? 'AND is_visible = 1' : ''}
       ORDER BY sort_order ASC, id DESC`,
   ).bind(tenantId).all();
   return results || [];
+}
+
+async function touchPresence(env, tenantId, { login = false } = {}) {
+  const ts = nowIso();
+  await env.DB.prepare(
+    login
+      ? 'UPDATE tenants SET last_seen_at = ?, last_login_at = ? WHERE id = ?'
+      : 'UPDATE tenants SET last_seen_at = ? WHERE id = ?',
+  ).bind(...(login ? [ts, ts, tenantId] : [ts, tenantId])).run();
+  return ts;
 }
 
 function publicBase(request, env) {
@@ -477,11 +588,13 @@ async function deleteAllTenantImages(env, tenantId) {
 /* ------------------------------------------------------------------ */
 
 async function handleConfig(request, env) {
+  const cfg = await getConfig(env);
   return json({
-    app_name: 'Vitrine',
+    app_name: 'Vitrine App',
     trial_days: trialDays(env),
     plan_price: env.PLAN_PRICE || '19,90',
-    support_whatsapp: (env.SUPPORT_WHATSAPP || '').replace(/\D/g, ''),
+    support_whatsapp: String(cfg.support_whatsapp || env.SUPPORT_WHATSAPP || '').replace(/\D/g, ''),
+    video: videoEmbed(cfg.landing_video_url),
     uploads: !!env.IMAGES,
     public_base_url: publicBase(request, env),
   });
@@ -496,8 +609,14 @@ async function handleStore(env, rawId) {
 
   const [settings, products] = await Promise.all([
     loadSettings(env, id),
-    tenant.status === 'expired' ? Promise.resolve([]) : loadProducts(env, id),
+    tenant.status === 'expired' ? Promise.resolve([]) : loadProducts(env, id, { onlyVisible: true }),
   ]);
+  if (tenant.status !== 'expired') {
+    try {
+      await env.DB.prepare('UPDATE tenants SET views = views + 1 WHERE id = ?').bind(id).run();
+    } catch { /* contador não é crítico */ }
+  }
+  delete settings.share_message;
 
   // Quando o lojista oculta preços, o preço nem sai do servidor.
   const visibleProducts = settings.show_prices
@@ -529,14 +648,60 @@ async function handleLogin(request, env) {
   const ok = await verifyPassword(pw, tenant ? tenant.password_hash : DUMMY_HASH);
   if (!tenant || !ok) throw new HttpError(401, 'Loja ou senha incorretas.');
   await refreshStatus(env, tenant);
+  tenant.last_seen_at = tenant.last_login_at = await touchPresence(env, tenant.id, { login: true });
   return json({ token: await signToken(env, tenant), tenant: tenantPrivate(tenant) });
+}
+
+async function handleCheckSlug(env, url) {
+  const raw = String(url.searchParams.get('id') || '').trim().toLowerCase();
+  const id = slugify(raw);
+  if (!SLUG_RE.test(id)) return json({ id, available: false, reason: 'Use de 3 a 40 letras, números ou hífens.' });
+  if (RESERVED_SLUGS.has(id)) return json({ id, available: false, reason: 'Endereço reservado.' });
+  const exists = await env.DB.prepare('SELECT 1 FROM tenants WHERE id = ?').bind(id).first();
+  if (!exists) return json({ id, available: true });
+  let suggestion = null;
+  for (let i = 2; i < 30 && !suggestion; i++) {
+    const candidate = `${id.slice(0, 36)}-${i}`;
+    if (!(await env.DB.prepare('SELECT 1 FROM tenants WHERE id = ?').bind(candidate).first())) suggestion = candidate;
+  }
+  return json({ id, available: false, reason: 'Este endereço já está em uso.', suggestion });
+}
+
+// Cadastro aberto: cria a loja com 7 dias grátis e já entra no painel.
+async function handleRegister(request, env) {
+  const body = await readJson(request);
+  if (String(body.website || '').trim()) throw new HttpError(400, 'Não foi possível concluir o cadastro.'); // campo-isca anti-robô
+  const tenant = await createTenant(request, env, body);
+  tenant.last_seen_at = tenant.last_login_at = await touchPresence(env, tenant.id, { login: true });
+  const full = await env.DB.prepare('SELECT * FROM tenants WHERE id = ?').bind(tenant.id).first();
+  return json({
+    token: await signToken(env, full),
+    tenant: tenantPrivate(full),
+    store_url: `${publicBase(request, env)}/s/${tenant.id}`,
+  }, 201);
 }
 
 /* ------------------------------------------------------------------ */
 /* Handlers do lojista                                                 */
 /* ------------------------------------------------------------------ */
 
+async function handlePing(env, tenant) {
+  await touchPresence(env, tenant.id);
+  return json({ ok: true, status: tenant.status });
+}
+
+async function handleVisibility(request, env, tenant, rawId) {
+  assertCanEdit(tenant);
+  const current = await getOwnedProduct(env, tenant, rawId);
+  const body = await readJson(request);
+  const visible = bool01(body.is_visible);
+  await env.DB.prepare('UPDATE products SET is_visible = ?, updated_at = ? WHERE id = ? AND tenant_id = ?')
+    .bind(visible, nowIso(), current.id, tenant.id).run();
+  return json({ product: { ...current, is_visible: visible } });
+}
+
 async function handleMe(request, env, tenant) {
+  await touchPresence(env, tenant.id).catch(() => {});
   const [settings, products] = await Promise.all([loadSettings(env, tenant.id), loadProducts(env, tenant.id)]);
   return json({
     tenant: tenantPrivate(tenant),
@@ -568,20 +733,25 @@ async function handleProfile(request, env, tenant) {
 async function handleSettings(request, env, tenant) {
   assertCanEdit(tenant);
   const body = await readJson(request);
-  const viewMode = body.view_mode === 'list' ? 'list' : 'grid';
+  const current = await loadSettings(env, tenant.id);
+  const pick = (key) => (body[key] === undefined ? current[key] : body[key]);
   const settings = {
-    show_prices: bool01(body.show_prices),
-    show_stock_warning: bool01(body.show_stock_warning),
-    view_mode: viewMode,
+    show_prices: bool01(pick('show_prices')),
+    show_stock_warning: bool01(pick('show_stock_warning')),
+    view_mode: pick('view_mode') === 'list' ? 'list' : 'grid',
+    show_banner: bool01(pick('show_banner')),
+    share_message: text(pick('share_message'), 600, 'Mensagem pronta'),
   };
   await env.DB.prepare(
-    `INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, show_banner, share_message)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT (tenant_id) DO UPDATE SET
        show_prices = excluded.show_prices,
        show_stock_warning = excluded.show_stock_warning,
-       view_mode = excluded.view_mode`,
-  ).bind(tenant.id, settings.show_prices, settings.show_stock_warning, settings.view_mode).run();
+       view_mode = excluded.view_mode,
+       show_banner = excluded.show_banner,
+       share_message = excluded.share_message`,
+  ).bind(tenant.id, settings.show_prices, settings.show_stock_warning, settings.view_mode, settings.show_banner, settings.share_message).run();
   return json({ settings });
 }
 
@@ -681,52 +851,96 @@ async function handleAdminList(request, env) {
     product_count: Number(t.product_count || 0),
     store_url: `${base}/s/${t.id}`,
   }));
+  const dayAgo = Date.now() - DAY_MS;
   const stats = {
     total: tenants.length,
     trial: tenants.filter((t) => t.status === 'trial').length,
     active: tenants.filter((t) => t.status === 'active').length,
     expired: tenants.filter((t) => t.status === 'expired').length,
+    online: tenants.filter((t) => t.online).length,
+    active_today: tenants.filter((t) => t.last_seen_at && Date.parse(t.last_seen_at) >= dayAgo).length,
+    with_products: tenants.filter((t) => t.product_count > 0).length,
+    products: tenants.reduce((sum, t) => sum + t.product_count, 0),
+    views: tenants.reduce((sum, t) => sum + t.views, 0),
+    new_7d: tenants.filter((t) => Date.parse(t.created_at) >= Date.now() - 7 * DAY_MS).length,
   };
-  return json({ tenants, stats, plan_price: env.PLAN_PRICE || '19,90', trial_days: trialDays(env) });
+  return json({ tenants, stats, plan_price: env.PLAN_PRICE || '19,90', trial_days: trialDays(env), server_time: nowIso() });
 }
 
-async function handleAdminCreate(request, env) {
+async function handleAdminConfigGet(env) {
+  const cfg = await getConfig(env);
+  return json({
+    landing_video_url: cfg.landing_video_url || '',
+    support_whatsapp: cfg.support_whatsapp || env.SUPPORT_WHATSAPP || '',
+    master_password_source: env.MASTER_PASSWORD ? 'secret' : cfg.master_hash ? 'custom' : 'default',
+  });
+}
+
+async function handleAdminConfigPut(request, env) {
   const body = await readJson(request);
+  if (body.landing_video_url !== undefined) {
+    const v = String(body.landing_video_url || '').trim();
+    if (v && !videoEmbed(v)) throw new HttpError(400, 'Link de vídeo inválido. Use um link do YouTube, Vimeo ou um arquivo .mp4 (https).');
+    await setConfig(env, 'landing_video_url', v);
+  }
+  if (body.support_whatsapp !== undefined) {
+    await setConfig(env, 'support_whatsapp', whatsapp(body.support_whatsapp));
+  }
+  if (body.new_master_password !== undefined && String(body.new_master_password) !== '') {
+    if (env.MASTER_PASSWORD) {
+      throw new HttpError(400, 'A senha Master está fixada no Cloudflare (secret MASTER_PASSWORD). Altere por lá.');
+    }
+    await setConfig(env, 'master_hash', await hashPassword(password(body.new_master_password, 'Nova senha Master')));
+  }
+  return handleAdminConfigGet(env);
+}
+
+async function createTenant(request, env, body) {
   const storeName = text(body.store_name, 80, 'Nome da loja', { required: true });
-  const id = storeSlug(body.id || slugify(storeName));
+  const id = storeSlug(body.id ? slugify(body.id) : slugify(storeName));
   const data = {
     id,
     store_name: storeName,
-    owner_name: text(body.owner_name, 80, 'Nome do responsável'),
+    owner_name: text(body.owner_name, 80, 'Seu nome'),
     whatsapp: whatsapp(body.whatsapp, { required: true }),
     avatar_url: httpUrl(body.avatar_url, 'Foto/logo'),
     theme_color: color(body.theme_color),
     password_hash: await hashPassword(password(body.password)),
   };
   const exists = await env.DB.prepare('SELECT 1 FROM tenants WHERE id = ?').bind(id).first();
-  if (exists) throw new HttpError(409, `O endereço "${id}" já está em uso.`);
+  if (exists) throw new HttpError(409, `O endereço "${id}" já está em uso. Escolha outro.`, { code: 'slug_taken' });
 
   const createdMs = Date.now();
   const createdAt = new Date(createdMs).toISOString();
   const trialEndsAt = addDays(createdMs, trialDays(env)); // 7 dias grátis automáticos
 
-  await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO tenants (id, store_name, owner_name, whatsapp, avatar_url, theme_color, password_hash,
-                            status, trial_ends_at, paid_until, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'trial', ?, NULL, ?, ?)`,
-    ).bind(
-      data.id, data.store_name, data.owner_name, data.whatsapp, data.avatar_url, data.theme_color,
-      data.password_hash, trialEndsAt, createdAt, createdAt,
-    ),
-    env.DB.prepare(
-      'INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode) VALUES (?, 1, 1, ?)',
-    ).bind(data.id, 'grid'),
-  ]);
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO tenants (id, store_name, owner_name, whatsapp, avatar_url, theme_color, password_hash,
+                              status, trial_ends_at, paid_until, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'trial', ?, NULL, ?, ?)`,
+      ).bind(
+        data.id, data.store_name, data.owner_name, data.whatsapp, data.avatar_url, data.theme_color,
+        data.password_hash, trialEndsAt, createdAt, createdAt,
+      ),
+      env.DB.prepare(
+        'INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode) VALUES (?, 1, 1, ?)',
+      ).bind(data.id, 'grid'),
+    ]);
+  } catch (err) {
+    if (/UNIQUE|PRIMARY/i.test(String(err && err.message))) {
+      throw new HttpError(409, `O endereço "${id}" já está em uso. Escolha outro.`, { code: 'slug_taken' });
+    }
+    throw err;
+  }
+  return env.DB.prepare('SELECT * FROM tenants WHERE id = ?').bind(id).first();
+}
 
-  const tenant = await env.DB.prepare('SELECT * FROM tenants WHERE id = ?').bind(id).first();
+async function handleAdminCreate(request, env) {
+  const tenant = await createTenant(request, env, await readJson(request));
   return json({
-    tenant: { ...tenantPrivate(tenant), product_count: 0, store_url: `${publicBase(request, env)}/s/${id}` },
+    tenant: { ...tenantPrivate(tenant), product_count: 0, store_url: `${publicBase(request, env)}/s/${tenant.id}` },
   }, 201);
 }
 
@@ -810,19 +1024,26 @@ async function routeApi(request, env, path) {
   let m;
 
   if (path === '/api/health' && method === 'GET') return json({ ok: true, time: nowIso() });
+  await ensureSchema(env);
   if (path === '/api/config' && method === 'GET') return handleConfig(request, env);
   if ((m = path.match(/^\/api\/store\/([^/]+)$/)) && method === 'GET') return handleStore(env, decodeURIComponent(m[1]));
   if ((m = path.match(/^\/api\/images\/(.+)$/)) && method === 'GET') return handleImage(env, decodeURIComponent(m[1]));
   if (path === '/api/auth/login' && method === 'POST') return handleLogin(request, env);
+  if (path === '/api/auth/register' && method === 'POST') return handleRegister(request, env);
+  if (path === '/api/auth/check-slug' && method === 'GET') return handleCheckSlug(env, new URL(request.url));
 
   if (path === '/api/me' || path.startsWith('/api/me/')) {
     const tenant = await requireTenant(request, env);
     if (path === '/api/me' && method === 'GET') return handleMe(request, env, tenant);
+    if (path === '/api/me/ping' && method === 'POST') return handlePing(env, tenant);
     if (path === '/api/me/profile' && method === 'PUT') return handleProfile(request, env, tenant);
     if (path === '/api/me/settings' && method === 'PUT') return handleSettings(request, env, tenant);
     if (path === '/api/me/password' && method === 'PUT') return handlePassword(request, env, tenant);
     if (path === '/api/me/upload' && method === 'POST') return handleUpload(request, env, tenant);
     if (path === '/api/me/products' && method === 'POST') return handleCreateProduct(request, env, tenant);
+    if ((m = path.match(/^\/api\/me\/products\/(\d+)\/visibility$/)) && method === 'PATCH') {
+      return handleVisibility(request, env, tenant, m[1]);
+    }
     if ((m = path.match(/^\/api\/me\/products\/(\d+)$/))) {
       if (method === 'PUT') return handleUpdateProduct(request, env, tenant, m[1]);
       if (method === 'DELETE') return handleDeleteProduct(env, tenant, m[1]);
@@ -834,6 +1055,8 @@ async function routeApi(request, env, path) {
     await requireMaster(request, env);
     if (path === '/api/admin/tenants' && method === 'GET') return handleAdminList(request, env);
     if (path === '/api/admin/tenants' && method === 'POST') return handleAdminCreate(request, env);
+    if (path === '/api/admin/config' && method === 'GET') return handleAdminConfigGet(env);
+    if (path === '/api/admin/config' && method === 'PUT') return handleAdminConfigPut(request, env);
     if ((m = path.match(/^\/api\/admin\/tenants\/([^/]+)$/))) {
       if (method === 'PATCH') return handleAdminPatch(request, env, decodeURIComponent(m[1]));
       if (method === 'DELETE') return handleAdminDelete(env, decodeURIComponent(m[1]));
@@ -854,7 +1077,7 @@ async function storeMeta(env, slug, productId) {
   ).bind(slug).first();
   if (!t) return null;
   const meta = {
-    title: `${t.store_name} | Vitrine`,
+    title: `${t.store_name} | Vitrine App`,
     description: `Confira os produtos selecionados por ${t.owner_name || t.store_name}.`,
     image: isHttpUrl(t.avatar_url) ? t.avatar_url : '',
     color: t.theme_color || '#16a6e0',
@@ -880,7 +1103,7 @@ async function serveAsset(request, env, url) {
   const m = url.pathname.match(/^\/s\/([a-z0-9-]{3,40})\/?$/i);
   if (!m) return env.ASSETS.fetch(request);
 
-  const res = await env.ASSETS.fetch(new Request(new URL('/', url), request));
+  const res = await env.ASSETS.fetch(new Request(new URL('/loja', url), request));
   const headers = new Headers(res.headers);
   headers.set('Cache-Control', 'public, max-age=60');
   const plain = new Response(res.body, { status: res.status, headers });
@@ -888,6 +1111,7 @@ async function serveAsset(request, env, url) {
 
   let meta = null;
   try {
+    await ensureSchema(env);
     meta = await storeMeta(env, m[1].toLowerCase(), url.searchParams.get('p'));
   } catch (err) {
     console.error('Falha ao montar prévia da vitrine:', err);

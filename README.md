@@ -8,7 +8,8 @@ Com a Vitrine, lojistas, criadores de conteúdo e afiliados montam a própria vi
 |---|---|
 | `schema.sql` | Tabelas do D1: `tenants`, `products`, `tenant_settings` |
 | `worker/index.js` | API completa (Cloudflare Worker, ES Modules) e a prévia Open Graph de `/s/<loja>` |
-| `public/index.html` | Vitrine pública do lojista (`/s/<loja>` ou `/?loja=<loja>`) |
+| `public/index.html` | Página inicial (landing) com vídeo, plano básico e cadastro grátis de 7 dias |
+| `public/loja.html` | Vitrine pública do lojista (`/s/<loja>`) |
 | `public/dashboard.html` | Painel do lojista: produtos, fotos, configurações, perfil e senha |
 | `public/admin.html` | Painel Master: lojas, testes, ativação, cobrança, senha e exclusão |
 | `public/config.js` | Endereço da API, usado só quando o site e a API ficam em domínios diferentes |
@@ -22,9 +23,11 @@ O `wrangler.toml` já informa ao Pages a pasta publicada (`public`), o banco D1 
 1. *Workers & Pages → Create → **Pages** → Connect to Git* → repositório `vitrineapp`.
 2. **Project name:** `vitrineapp` → o site fica em `https://vitrineapp.pages.dev`.
 3. *Framework preset:* **None** · *Build command:* vazio · *Build output directory:* **`public`** → **Save and Deploy**.
-4. *Settings → Variables and Secrets* → crie como **Secret**: `MASTER_PASSWORD` e `SESSION_SECRET` (texto longo aleatório).
-5. *Deployments → ⋯ → Retry deployment* (os segredos só valem após um novo deploy).
-6. Teste: `/api/health`, depois `/admin.html`.
+4. Pronto! Teste `/api/health` e depois a página inicial.
+
+**Área Master:** ponto discreto `·` no rodapé da página inicial (ou `/admin.html`). Senha inicial **1989** — troque em Master → ⚙️ Configurações. Ali também ficam o link do vídeo da página inicial e o seu WhatsApp de suporte.
+
+Segredos opcionais: `SESSION_SECRET` (sem ele, um segredo aleatório é gerado e guardado no banco) e `MASTER_PASSWORD` (se criado, fixa a senha Master e substitui a do painel).
 
 As tabelas do banco já foram criadas. Para recriar em outro banco: `npm run db:init`.
 
@@ -32,7 +35,7 @@ As tabelas do banco já foram criadas. Para recriar em outro banco: `npm run db:
 Crie o bucket `vitrine-imagens` no painel R2 e descomente o bloco `[[r2_buckets]]` do `wrangler.toml`. O painel detecta sozinho.
 
 ## Fluxo de uso
-1. No **Master** (`/admin.html`), crie a loja. Ela começa automaticamente com 7 dias de teste. Os dados de acesso podem ser enviados ao lojista com um toque, pelo WhatsApp.
+1. O lojista se cadastra na **página inicial** ("Começar grátis") e já cai no painel com 7 dias de teste. O Master também pode criar lojas manualmente.
 2. O **lojista** entra em `/dashboard.html`, cadastra os produtos e configura a vitrine.
 3. O **cliente final** acessa `/s/<loja>` e compra pelo link do produto ou compartilha o produto no WhatsApp.
 4. Quando o teste vence, o status muda sozinho para `expired`: a vitrine sai do ar e a edição fica pausada, mas os produtos continuam salvos. No Master, a opção **Ativar plano** (30, 90, 180 ou 365 dias) devolve tudo na hora.

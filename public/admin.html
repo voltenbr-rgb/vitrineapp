@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#14161b">
-  <title>Master | Vitrine</title>
+  <title>Master | Vitrine App</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2314161b'/%3E%3Cpath d='M18 24h28l-3 22H21z' fill='white'/%3E%3Cpath d='M25 24a7 7 0 0 1 14 0' stroke='white' stroke-width='4' fill='none'/%3E%3C/svg%3E">
   <script src="/config.js"></script>
   <style>
@@ -88,15 +88,30 @@
     .top .title small { color: var(--muted); font-size: 12px; font-weight: 600; }
     .top .title strong { display: block; font-size: 20px; letter-spacing: -.02em; }
 
-    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
-    @media (min-width: 720px) { .stats { grid-template-columns: repeat(5, 1fr); gap: 14px; } }
+    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+    @media (min-width: 720px) { .stats { grid-template-columns: repeat(4, 1fr); gap: 14px; } }
+    .stat small { display: block; font-size: 11.5px; color: var(--muted); font-weight: 600; margin-top: 2px; }
+    .stat.online { background: linear-gradient(135deg, #ecfdf5, #fff); }
+    .live { position: absolute; right: 12px; top: 12px; width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 0 rgba(34, 197, 94, .6); animation: pulse 1.8s infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, .55); } 70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
+    .online-box { background: var(--card); border-radius: 18px; box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 16px; }
+    .online-box h3 { margin: 0 0 10px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+    .online-box .who { display: flex; flex-wrap: wrap; gap: 8px; }
+    .online-box .who span { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; background: #f0fdf4; color: #166534; padding: 7px 11px; border-radius: 11px; }
+    .online-box .who span i { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; }
+    .online-box .none { color: var(--muted); font-size: 13.5px; }
+    .tavatar { position: relative; }
+    .tavatar .on { position: absolute; right: -2px; bottom: -2px; width: 14px; height: 14px; border-radius: 50%; background: #22c55e; border: 2.5px solid #fff; }
+    .tavatar { overflow: visible !important; }
+    .tavatar img { border-radius: 16px; }
+    .updated { font-size: 12px; color: var(--muted); font-weight: 600; }
+    @media (max-width: 560px) { .updated { display: none; } }
     .stat { background: var(--card); border-radius: 18px; box-shadow: var(--shadow); padding: 14px 16px; position: relative; overflow: hidden; }
     .stat span { font-size: 12px; color: var(--muted); font-weight: 700; }
     .stat b { display: block; font-size: 26px; letter-spacing: -.02em; margin-top: 2px; }
     .stat i { position: absolute; right: 12px; top: 12px; width: 10px; height: 10px; border-radius: 50%; }
-    .stat.revenue { grid-column: 1 / -1; background: linear-gradient(135deg, #14161b, #2b313d); color: #fff; }
-    .stat.revenue span { color: rgba(255, 255, 255, .7); }
-    @media (min-width: 720px) { .stat.revenue { grid-column: auto; } }
+    .stat.revenue { background: linear-gradient(135deg, #14161b, #2b313d); color: #fff; }
+    .stat.revenue span, .stat.revenue small { color: rgba(255, 255, 255, .7); }
 
     .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
     .search { flex: 1 1 260px; display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; background: var(--card); border-radius: 999px; box-shadow: var(--shadow); color: var(--muted); }
@@ -118,6 +133,7 @@
     .tname strong { display: block; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .tname a { font-size: 12.5px; color: var(--accent-deep); font-weight: 600; }
     .tinfo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tinfo .on-text { color: #15803d; }
     .tinfo div { background: var(--field); border-radius: 12px; padding: 9px 11px; min-width: 0; }
     .tinfo small { display: block; font-size: 11px; color: var(--muted); font-weight: 700; }
     .tinfo span { display: block; font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -178,12 +194,15 @@
     <main class="wrap">
       <header class="top">
         <div class="brand-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg></div>
-        <div class="title"><small>Painel Master</small><strong>Lojas da Vitrine</strong></div>
+        <div class="title"><small>Painel Master</small><strong>Vitrine App</strong></div>
+        <span class="updated" id="updated"></span>
+        <button type="button" class="icon-btn" data-act="settings" aria-label="Configurações do sistema" title="Configurações"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
         <button type="button" class="icon-btn" data-act="refresh" aria-label="Atualizar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
         <button type="button" class="icon-btn" data-act="logout" aria-label="Sair"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/></svg></button>
       </header>
 
       <section class="stats" id="stats" aria-label="Resumo"></section>
+      <section class="online-box" id="onlineBox" aria-live="polite"></section>
 
       <div class="toolbar">
         <label class="search"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -208,6 +227,7 @@
     const STATUS = { trial: 'Teste grátis', active: 'Ativa', expired: 'Expirada' };
     const FILTERS = [
       { id: 'all', label: 'Todas' },
+      { id: 'online', label: '🟢 Online' },
       { id: 'trial', label: 'Em teste' },
       { id: 'ending', label: 'Vencendo (≤ 2 dias)' },
       { id: 'active', label: 'Ativas' },
@@ -239,6 +259,17 @@
       const arr = crypto.getRandomValues(new Uint32Array(8));
       return Array.from(arr, (n) => chars[n % chars.length]).join('');
     };
+    const ago = (iso) => {
+      if (!iso) return 'nunca';
+      const min = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+      if (min < 1) return 'agora';
+      if (min < 60) return `há ${min} min`;
+      const h = Math.round(min / 60);
+      if (h < 24) return `há ${h} h`;
+      const d = Math.round(h / 24);
+      return d === 1 ? 'ontem' : `há ${d} dias`;
+    };
+    const num = (n) => Number(n || 0).toLocaleString('pt-BR');
     const dashboardUrl = (t) => `${location.origin}/dashboard.html?loja=${encodeURIComponent(t.id)}`;
     const ss = {
       get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
@@ -330,6 +361,7 @@
       const qDigits = q.replace(/\D/g, '');
       return state.tenants.filter((t) => {
         if (state.filter === 'ending' && !isEnding(t)) return false;
+        if (state.filter === 'online' && !t.online) return false;
         if (['trial', 'active', 'expired'].includes(state.filter) && t.status !== state.filter) return false;
         if (!q) return true;
         return `${t.id} ${t.store_name} ${t.owner_name}`.toLowerCase().includes(q) || (qDigits.length >= 3 && String(t.whatsapp).includes(qDigits));
@@ -340,13 +372,22 @@
       const s = state.stats;
       const ending = state.tenants.filter(isEnding).length;
       $('#stats').innerHTML = `
-        <div class="stat"><i style="background:#94a3b8"></i><span>Total de lojas</span><b>${s.total || 0}</b></div>
-        <div class="stat"><i style="background:#f59e0b"></i><span>Em teste</span><b>${s.trial || 0}</b></div>
-        <div class="stat"><i style="background:#16a34a"></i><span>Ativas (pagantes)</span><b>${s.active || 0}</b></div>
-        <div class="stat"><i style="background:#e11d48"></i><span>Expiradas</span><b>${s.expired || 0}</b></div>
-        <div class="stat revenue"><span>Receita mensal estimada</span><b>${brl((s.active || 0) * priceNumber())}</b></div>`;
+        <div class="stat"><i style="background:#94a3b8"></i><span>Cadastrados</span><b>${num(s.total)}</b><small>+${num(s.new_7d)} nos últimos 7 dias</small></div>
+        <div class="stat online"><span class="live"></span><span>Online agora</span><b>${num(s.online)}</b><small>com o painel aberto</small></div>
+        <div class="stat"><i style="background:#0ea5e9"></i><span>Usando (24h)</span><b>${num(s.active_today)}</b><small>${num(s.with_products)} lojas com produtos</small></div>
+        <div class="stat revenue"><span>Receita mensal estimada</span><b>${brl((s.active || 0) * priceNumber())}</b><small>${num(s.active)} pagantes × R$ ${esc(state.planPrice)}</small></div>
+        <div class="stat"><i style="background:#f59e0b"></i><span>Em teste</span><b>${num(s.trial)}</b><small>${num(ending)} vencendo em até 2 dias</small></div>
+        <div class="stat"><i style="background:#16a34a"></i><span>Ativas (pagantes)</span><b>${num(s.active)}</b></div>
+        <div class="stat"><i style="background:#e11d48"></i><span>Expiradas</span><b>${num(s.expired)}</b></div>
+        <div class="stat"><i style="background:#8b5cf6"></i><span>Visitas às vitrines</span><b>${num(s.views)}</b><small>${num(s.products)} produtos cadastrados</small></div>`;
 
-      const counts = { all: state.tenants.length, trial: s.trial || 0, ending, active: s.active || 0, expired: s.expired || 0 };
+      const online = state.tenants.filter((t) => t.online);
+      $('#onlineBox').innerHTML = `<h3><span class="live" style="position:static"></span>Quem está online agora</h3>
+        ${online.length ? `<div class="who">${online.map((t) => `<span><i></i>${esc(t.store_name)} · ${esc(ago(t.last_seen_at))}</span>`).join('')}</div>`
+          : '<div class="none">Nenhum lojista com o painel aberto neste momento.</div>'}`;
+      $('#updated').textContent = 'Atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+      const counts = { online: online.length, all: state.tenants.length, trial: s.trial || 0, ending, active: s.active || 0, expired: s.expired || 0 };
       $('#chips').innerHTML = FILTERS.map((f) => `<button type="button" class="chip" data-filter="${f.id}" aria-pressed="${state.filter === f.id}">${esc(f.label)}<b>${counts[f.id]}</b></button>`).join('');
 
       const list = filtered();
@@ -368,7 +409,7 @@
       const img = safeImg(t.avatar_url);
       return `<article class="tcard">
         <div class="thead">
-          <div class="tavatar" style="background:${esc(t.theme_color)}">${img ? `<img src="${esc(img)}" alt="">` : esc(initials(t.store_name))}</div>
+          <div class="tavatar" style="background:${esc(t.theme_color)}">${img ? `<img src="${esc(img)}" alt="">` : esc(initials(t.store_name))}${t.online ? '<span class="on" title="Online agora"></span>' : ''}</div>
           <div class="tname"><strong>${esc(t.store_name)}</strong><a href="${esc(t.store_url)}" target="_blank" rel="noopener">/s/${esc(t.id)} ↗</a></div>
           <span class="pill ${esc(t.status)}"><span class="dot"></span>${esc(STATUS[t.status] || t.status)}</span>
         </div>
@@ -377,11 +418,14 @@
           <div><small>WhatsApp</small><span>${t.whatsapp ? `<a href="https://wa.me/${esc(t.whatsapp)}" target="_blank" rel="noopener noreferrer">${esc(fmtPhone(t.whatsapp))}</a>` : '—'}</span></div>
           ${dueInfo(t)}
           <div><small>Produtos · desde</small><span>${t.product_count} · ${fmtDate(t.created_at)}</span></div>
+          <div><small>Último acesso</small><span class="${t.online ? 'on-text' : ''}">${t.online ? '● Online agora' : esc(ago(t.last_seen_at))}</span></div>
+          <div><small>Visitas na vitrine</small><span>${num(t.views)}</span></div>
         </div>
         <div class="tacts">
           <button type="button" class="btn btn-sm btn-ok" data-act="activate" data-id="${esc(t.id)}">✓ ${t.status === 'active' ? 'Renovar' : 'Ativar'} plano</button>
           <button type="button" class="btn btn-sm btn-soft" data-act="trial" data-id="${esc(t.id)}">+7 dias teste</button>
           <button type="button" class="btn btn-sm btn-wa" data-act="charge" data-id="${esc(t.id)}">${WA}Cobrar</button>
+          <button type="button" class="btn btn-sm btn-ghost" data-act="password" data-id="${esc(t.id)}">🔑 Senha</button>
           <button type="button" class="btn btn-sm btn-ghost" data-act="more" data-id="${esc(t.id)}" aria-label="Mais ações">•••</button>
         </div>
       </article>`;
@@ -607,6 +651,46 @@
       }
     }
 
+    async function settingsModal() {
+      let cfg;
+      try { cfg = await api('/api/admin/config'); } catch (err) { return toast(err.message, true); }
+      const fixed = cfg.master_password_source === 'secret';
+      openModal(`${head('Configurações do sistema', 'Valem para a página inicial e para todos os lojistas.')}
+        <form id="cfgForm" novalidate>
+          <label class="field"><span>Vídeo explicativo da página inicial <small>YouTube, Vimeo ou .mp4</small></span>
+            <input class="input" name="landing_video_url" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=..." value="${esc(cfg.landing_video_url)}"></label>
+          <label class="field"><span>Seu WhatsApp de suporte e vendas</span>
+            <input class="input" name="support_whatsapp" inputmode="tel" placeholder="(67) 99999-9999" value="${esc(fmtPhone(cfg.support_whatsapp) === '—' ? '' : fmtPhone(cfg.support_whatsapp))}"></label>
+          <div class="field"><span>Senha Master</span>
+            ${fixed
+              ? '<small>A senha está fixada no Cloudflare (secret MASTER_PASSWORD). Para trocar, altere o secret.</small>'
+              : `<input class="input" name="new_master_password" type="password" minlength="6" autocomplete="new-password" placeholder="${cfg.master_password_source === 'default' ? 'Ainda é a senha padrão — crie uma nova' : 'Deixe vazio para manter a atual'}">
+                 <input class="input" name="confirm_master_password" type="password" autocomplete="new-password" placeholder="Repita a nova senha" style="margin-top:8px">`}
+          </div>
+          <button type="submit" class="btn btn-dark btn-block" id="cfgBtn">Salvar configurações</button>
+        </form>`);
+      $('#cfgForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const f = e.target;
+        const body = { landing_video_url: f.landing_video_url.value.trim(), support_whatsapp: f.support_whatsapp.value.trim() };
+        if (!body.support_whatsapp) delete body.support_whatsapp;
+        const np = f.new_master_password ? f.new_master_password.value : '';
+        if (np) {
+          if (np.length < 6) return toast('A nova senha Master precisa de 6 caracteres ou mais.', true);
+          if (np !== f.confirm_master_password.value) return toast('As senhas não conferem.', true);
+          body.new_master_password = np;
+        }
+        const btn = $('#cfgBtn');
+        setBusy(btn, true);
+        try {
+          await api('/api/admin/config', { method: 'PUT', body });
+          if (np) { state.password = np; ss.set(KEY, np); }
+          closeModal();
+          toast(np ? 'Configurações e nova senha Master salvas ✓' : 'Configurações salvas ✓');
+        } catch (err) { toast(err.message, true); setBusy(btn, false); }
+      });
+    }
+
     function chargeMessage(t) {
       const lines = [`Olá${t.owner_name ? ', ' + t.owner_name.split(' ')[0] : ''}! Tudo bem? 😊`];
       if (t.status === 'trial') lines.push(`Seu teste grátis da Vitrine *${t.store_name}* termina em ${fmtDate(t.trial_ends_at)}.`);
@@ -640,11 +724,18 @@
           break;
         case 'charge': if (t) window.open(waLink(t.whatsapp, chargeMessage(t)), '_blank', 'noopener'); break;
         case 'more': if (t) moreModal(t); break;
+        case 'password': if (t) passwordModal(t); break;
+        case 'settings': settingsModal(); break;
         default: break;
       }
     });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('#overlay').classList.contains('open')) closeModal(); });
     $('#search').addEventListener('input', (e) => { state.query = e.target.value; render(); });
+
+    // Atualiza números e "online agora" a cada 60 s enquanto a aba estiver aberta.
+    setInterval(() => {
+      if (state.password && document.visibilityState === 'visible' && !$('#overlay').classList.contains('open')) load().catch(() => {});
+    }, 60000);
 
     /* ---------------- Início ---------------- */
     (async () => {
