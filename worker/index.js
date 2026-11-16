@@ -1789,6 +1789,8 @@ async function handleLogin(request, env) {
     throw new HttpError(401, 'WhatsApp ou senha incorretos.');
   }
   await clearFails(env, keys);
+  await syncPendingPayments(env, account).catch(() => {});
+  account = (await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(account.id).first()) || account;
   await refreshAccount(env, account);
   account.last_seen_at = account.last_login_at = await touchPresence(env, account.id, { login: true });
   return json({
@@ -1876,6 +1878,8 @@ async function handleMe(request, env, tenant) {
 // Lista de lojas da conta (tela "Minhas lojas").
 async function handleStores(request, env, account) {
   await touchPresence(env, account.id).catch(() => {});
+  await syncPendingPayments(env, account).catch(() => {});
+  account = (await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(account.id).first()) || account;
   const base = publicBase(request, env);
   const stores = (await loadAccountStoresFor(env, account)).map((st) => ({ ...st, store_url: `${base}/s/${st.id}` }));
   return json({ account: accountPrivate(env, account), stores, plans: plansCatalog(env) });
@@ -2507,6 +2511,19 @@ async function handlePayStatus(env, account, rawId) {
   return json({ payment: paymentPublic(current), account: accountPrivate(env, acc) });
 }
 
+// Rede de segurança: ao abrir o painel, confere Pix/cartão pendentes das últimas 48 h
+// (caso o aviso do Mercado Pago não tenha chegado).
+async function syncPendingPayments(env, account) {
+  if (!mpConfigured(env)) return;
+  const since = new Date(Date.now() - 48 * 3_600_000).toISOString();
+  const { results } = await env.DB.prepare(
+    "SELECT * FROM payments WHERE account_id = ? AND applied = 0 AND status NOT IN ('rejected', 'cancelled', 'refunded') AND created_at > ? ORDER BY id DESC LIMIT 3",
+  ).bind(account.id, since).all();
+  for (const pay of results || []) {
+    try { await syncPayment(env, pay); } catch { /* tenta na próxima vez */ }
+  }
+}
+
 // Valida a assinatura do aviso (quando MP_WEBHOOK_SECRET está configurado).
 async function mpSignatureOk(request, env, dataId) {
   if (!env.MP_WEBHOOK_SECRET) return true;
@@ -2514,7 +2531,7 @@ async function mpSignatureOk(request, env, dataId) {
   const reqId = request.headers.get('x-request-id') || '';
   const parts = Object.fromEntries(sig.split(',').map((kv) => kv.trim().split('=')));
   if (!parts.ts || !parts.v1) return false;
-  const manifest = `id:${String(dataId).toLowerCase()};request-id:${reqId};ts:${parts.ts};`;
+  const manifest = `id:${String(dataId).toLowerCase()};${reqId ? `request-id:${reqId};` : ''}ts:${parts.ts};`;
   const key = await crypto.subtle.importKey('raw', enc.encode(env.MP_WEBHOOK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(manifest)));
   const hex = [...mac].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -2527,7 +2544,7 @@ async function handleMpWebhook(request, env) {
   const url = new URL(request.url);
   const body = await request.json().catch(() => ({}));
   const type = body.type || body.topic || url.searchParams.get('type') || url.searchParams.get('topic') || '';
-  const dataId = (body.data && body.data.id) || url.searchParams.get('data.id') || url.searchParams.get('id') || '';
+  const dataId = url.searchParams.get('data.id') || (body.data && body.data.id) || url.searchParams.get('id') || '';
   if (!/payment/.test(type) || !/^\d+$/.test(String(dataId))) return json({ ok: true });
   if (!(await mpSignatureOk(request, env, dataId))) return json({ error: 'assinatura inválida' }, 401);
   let mp;
