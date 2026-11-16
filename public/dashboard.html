@@ -78,10 +78,17 @@
     .plan { position: relative; }
     .plan .plan-x { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(0,0,0,.06); color: inherit; font-size: 16px; font-weight: 800; cursor: pointer; display: grid; place-items: center; }
     /* Pagamento */
-    .pay-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0 12px; }
+    .pay-plans { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 4px 0 12px; max-height: 46vh; overflow: auto; }
+    .pay-plans .pp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .pay-plans .pp-price { font-size: 17px; font-weight: 900; color: var(--ink); white-space: nowrap; }
+    .pay-plans .pp-price small { font-size: 11px; font-weight: 700; }
+    .pay-plans ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 3px; font-size: 12.5px; color: var(--ink-2, #3b4150); }
+    .pay-plans li::before { content: "✓ "; color: #16a34a; font-weight: 800; }
+    .pay-plans li.soon::before { content: "✦ "; color: var(--accent); }
+    .pay-plans .tag { font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 999px; background: #fff1c7; color: #8a5a00; margin-left: 6px; vertical-align: middle; }
     .pay-plans label { cursor: pointer; }
     .pay-plans input { position: absolute; opacity: 0; pointer-events: none; }
-    .pay-plans span { display: block; padding: 12px; border-radius: 14px; border: 2px solid var(--line, #e6e8ee); text-align: center; }
+    .pay-plans label > span { display: block; padding: 12px; border-radius: 14px; border: 2px solid var(--line, #e6e8ee); text-align: left; }
     .pay-plans b { display: block; font-size: 15px; }
     .pay-plans small { color: var(--muted); font-size: 12px; }
     .pay-plans input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
@@ -688,6 +695,27 @@
     let payPoll = null;
     function stopPayPoll() { clearInterval(payPoll); payPoll = null; }
 
+    // O que cada plano inclui (mostrado na escolha do plano).
+    const PLAN_FEATURES = {
+      basic: [
+        ['1 loja com link exclusivo'],
+        ['Produtos de afiliado (Shopee, Mercado Livre) e da região'],
+        ['Carrinho com pedido pelo WhatsApp'],
+        ['15 buscas automáticas por hora'],
+        ['Mensagem de oferta 🔥 Destaque do dia'],
+        ['Tema claro/escuro, cor da loja e foto de capa'],
+        ['2 temas de loja', true],
+      ],
+      complete: [
+        ['Até 3 lojas (um link para cada nicho)'],
+        ['Tudo do Básico'],
+        ['30 buscas automáticas por hora'],
+        ['3 modelos de mensagem, com textos editáveis'],
+        ['Troca de loja com um toque'],
+        ['3 temas de loja', true],
+      ],
+    };
+
     function openPay(planId) {
       stopPayPoll();
       const ov = $('#dialogOverlay');
@@ -697,7 +725,10 @@
       dlg.innerHTML = `<h3 id="dlgTitle">💳 Planos do Vitrine App</h3>
         <p>30 dias de acesso. Ativa na hora que o pagamento é aprovado.</p>
         <div class="pay-plans">
-          ${['basic', 'complete'].map((id) => `<label><input type="radio" name="payPlan" value="${id}" ${id === chosen ? 'checked' : ''}><span><b>${id === 'complete' ? '⭐ Completo' : 'Básico'}</b>R$ ${esc(priceOf(id))}<br><small>${id === 'complete' ? 'até 3 lojas · 3 modelos' : '1 loja'}</small></span></label>`).join('')}
+          ${['basic', 'complete'].map((id) => `<label><input type="radio" name="payPlan" value="${id}" ${id === chosen ? 'checked' : ''}><span>
+            <div class="pp-head"><b>${id === 'complete' ? '⭐ Completo' : 'Básico'}${id === 'complete' ? '<span class="tag">Mais escolhido</span>' : ''}</b><span class="pp-price">R$ ${esc(priceOf(id))}<small>/mês</small></span></div>
+            <ul>${PLAN_FEATURES[id].map(([txt, soon]) => `<li class="${soon ? 'soon' : ''}">${esc(txt)}${soon ? ' <small>(em breve)</small>' : ''}</li>`).join('')}</ul>
+          </span></label>`).join('')}
         </div>
         <label class="field"><span>Seu e-mail <small>o comprovante chega nele</small></span><input class="input" id="payEmail" type="email" inputmode="email" autocomplete="email" value="${esc(email)}" placeholder="voce@email.com"></label>
         <div class="grid-2">
