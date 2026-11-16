@@ -44,6 +44,9 @@
  *   GET    /api/admin/config
  *   PUT    /api/admin/config               vídeo, WhatsApp de suporte, senha Master, chaves da Shopee
  *   POST   /api/admin/integrations/test    { url } testa a busca automática de produto
+ *   POST   /api/admin/ml/start             gera o link para conectar a conta do Mercado Livre
+ *   GET    /api/admin/ml/callback          retorno da autorização do Mercado Livre (público, validado por state)
+ *   POST   /api/admin/ml/disconnect
  */
 
 const DAY_MS = 86_400_000;
@@ -534,6 +537,199 @@ async function lookupShopee(env, creds, url) {
   };
 }
 
+/* ---------- Mercado Livre (OAuth: ML_CLIENT_ID / ML_CLIENT_SECRET) ---------- */
+
+const ML_API = 'https://api.mercadolibre.com';
+const mlConfigured = (env) => !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET);
+const mlRedirectUri = (request, env) => env.ML_REDIRECT_URI || `${publicBase(request, env)}/api/admin/ml/callback`;
+
+async function mlTokenRequest(env, params) {
+  let res;
+  try {
+    res = await fetch(`${ML_API}/oauth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body: new URLSearchParams({ client_id: env.ML_CLIENT_ID, client_secret: env.ML_CLIENT_SECRET, ...params }).toString(),
+    });
+  } catch {
+    throw new HttpError(502, 'Não foi possível falar com o Mercado Livre agora.');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.access_token) {
+    console.error('Mercado Livre token:', res.status, JSON.stringify(data).slice(0, 300));
+    const msg = data.error === 'invalid_grant'
+      ? 'A conexão com o Mercado Livre expirou. Conecte de novo no Master.'
+      : `Mercado Livre recusou: ${String(data.message || data.error || res.status).slice(0, 120)}`;
+    throw new HttpError(502, msg, { code: data.error === 'invalid_grant' ? 'ml_reconnect' : 'ml_error' });
+  }
+  return data;
+}
+
+async function mlSaveTokens(env, data) {
+  await setConfig(env, 'ml_tokens', await encryptValue(env, JSON.stringify({
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: Date.now() + (Number(data.expires_in) || 21600) * 1000,
+    user_id: data.user_id || null,
+  })));
+}
+
+let mlRefreshing = null;
+async function mlAccessToken(env, cfg) {
+  if (!mlConfigured(env) || !cfg.ml_tokens) return null;
+  const raw = await decryptValue(env, cfg.ml_tokens);
+  if (!raw) return null;
+  const tokens = JSON.parse(raw);
+  if (tokens.expires_at - Date.now() > 5 * 60_000) return tokens.access_token;
+  // Renova sozinho (o access token do ML dura 6 h; o refresh token só pode ser usado uma vez).
+  if (!mlRefreshing) {
+    mlRefreshing = (async () => {
+      const fresh = await env.DB.prepare("SELECT value FROM app_config WHERE key = 'ml_tokens'").first('value');
+      const current = JSON.parse((await decryptValue(env, fresh)) || '{}');
+      if (current.expires_at - Date.now() > 5 * 60_000) return current.access_token;
+      const data = await mlTokenRequest(env, { grant_type: 'refresh_token', refresh_token: current.refresh_token });
+      await mlSaveTokens(env, data);
+      return data.access_token;
+    })().finally(() => { mlRefreshing = null; });
+  }
+  return mlRefreshing;
+}
+
+async function mlGet(token, path) {
+  let res;
+  try {
+    res = await fetch(`${ML_API}${path}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+  } catch {
+    throw new HttpError(502, 'Não foi possível falar com o Mercado Livre agora.');
+  }
+  if (res.status === 404) return null;
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) throw new HttpError(502, 'A conexão com o Mercado Livre expirou. Conecte de novo no Master.', { code: 'ml_reconnect' });
+  if (res.status === 429) throw new HttpError(429, 'Limite de consultas do Mercado Livre atingido. Tente em alguns minutos.');
+  if (!res.ok) throw new HttpError(502, `Mercado Livre: ${String(data.message || res.status).slice(0, 120)}`);
+  return data;
+}
+
+// Acha o código do anúncio (MLB...) ou do produto de catálogo (/p/MLB...) em qualquer formato de link.
+function extractMlIds(text) {
+  let s = String(text || '');
+  for (let i = 0; i < 3; i++) {
+    try { const d = decodeURIComponent(s); if (d === s) break; s = d; } catch { break; }
+  }
+  const wid = s.match(/[?&#](?:wid|item_id|itemId)=(MLB-?\d{6,})/i);
+  const catalog = s.match(/\/p\/(MLB\d{5,})/i);
+  const pathItem = s.match(/\/(MLB)-(\d{6,})/i) || s.match(/\/(MLB)(\d{6,})(?:[-_/?#"']|$)/i);
+  const itemId = wid ? wid[1].replace('-', '').toUpperCase() : (!catalog && pathItem ? `MLB${pathItem[2]}` : null);
+  const productId = catalog ? catalog[1].toUpperCase() : null;
+  return itemId || productId ? { itemId, productId } : null;
+}
+
+async function resolveMlIds(rawUrl) {
+  let current = rawUrl;
+  for (let hop = 0; hop < 6; hop++) {
+    const ids = extractMlIds(current);
+    if (ids) return ids;
+    let res;
+    try {
+      res = await fetch(current, {
+        redirect: 'manual',
+        headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36', Accept: 'text/html' },
+      });
+    } catch {
+      return null;
+    }
+    const location = res.headers.get('Location');
+    if (location && res.status >= 300 && res.status < 400) {
+      current = new URL(location, current).toString();
+      continue;
+    }
+    if (res.ok) {
+      const html = (await res.text()).slice(0, 400_000);
+      const canonical = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)/i)
+        || html.match(/<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)/i);
+      return extractMlIds(canonical ? canonical[1] : html);
+    }
+    return null;
+  }
+  return extractMlIds(current);
+}
+
+const httpsImage = (u) => (u ? String(u).replace(/^http:\/\//i, 'https://') : null);
+
+async function lookupMercadoLivre(env, token, url) {
+  const ids = await resolveMlIds(url);
+  if (!ids) throw new HttpError(422, 'Não encontrei o produto neste link do Mercado Livre. Confira se é o link de um produto.');
+  if (ids.itemId) {
+    const item = await mlGet(token, `/items/${ids.itemId}`);
+    if (item && item.title) {
+      return {
+        platform: 'mercadolivre',
+        title: String(item.title).slice(0, 120),
+        price: Number(item.price) > 0 ? Number(item.price) : null,
+        image_url: httpsImage((item.pictures && item.pictures[0] && (item.pictures[0].secure_url || item.pictures[0].url)) || item.thumbnail),
+        shop_name: null,
+      };
+    }
+  }
+  if (ids.productId) {
+    const prod = await mlGet(token, `/products/${ids.productId}`);
+    if (prod && prod.name) {
+      const price = prod.buy_box_winner && Number(prod.buy_box_winner.price);
+      return {
+        platform: 'mercadolivre',
+        title: String(prod.name).slice(0, 120),
+        price: price > 0 ? price : null,
+        image_url: httpsImage(prod.pictures && prod.pictures[0] && (prod.pictures[0].secure_url || prod.pictures[0].url)),
+        shop_name: null,
+      };
+    }
+  }
+  throw new HttpError(404, 'O Mercado Livre não retornou este produto. Ele pode ter sido pausado ou removido.');
+}
+
+async function handleMlStart(request, env) {
+  if (!mlConfigured(env)) throw new HttpError(400, 'Crie os secrets ML_CLIENT_ID e ML_CLIENT_SECRET no Cloudflare e publique de novo.');
+  const state = b64u(crypto.getRandomValues(new Uint8Array(24)));
+  await setConfig(env, 'ml_oauth_state', JSON.stringify({ state, exp: Date.now() + 15 * 60_000 }));
+  const auth = new URL('https://auth.mercadolivre.com.br/authorization');
+  auth.searchParams.set('response_type', 'code');
+  auth.searchParams.set('client_id', env.ML_CLIENT_ID);
+  auth.searchParams.set('redirect_uri', mlRedirectUri(request, env));
+  auth.searchParams.set('state', state);
+  return json({ url: auth.toString(), redirect_uri: mlRedirectUri(request, env) });
+}
+
+async function handleMlCallback(request, env) {
+  const url = new URL(request.url);
+  const back = (status, msg) => new Response(null, {
+    status: 302,
+    headers: {
+      Location: `${publicBase(request, env)}/admin.html?ml=${status}${msg ? `&msg=${encodeURIComponent(msg)}` : ''}`,
+      'Cache-Control': 'no-store',
+    },
+  });
+  try {
+    if (url.searchParams.get('error')) return back('erro', url.searchParams.get('error_description') || 'Autorização cancelada.');
+    const saved = JSON.parse((await env.DB.prepare("SELECT value FROM app_config WHERE key = 'ml_oauth_state'").first('value')) || '{}');
+    const state = url.searchParams.get('state') || '';
+    if (!saved.state || saved.exp < Date.now() || !timingSafeEqual(enc.encode(saved.state), enc.encode(state))) {
+      return back('erro', 'Link de conexão expirado. Tente conectar de novo.');
+    }
+    await env.DB.prepare("DELETE FROM app_config WHERE key = 'ml_oauth_state'").run();
+    const code = url.searchParams.get('code');
+    if (!code) return back('erro', 'O Mercado Livre não enviou a autorização.');
+    const data = await mlTokenRequest(env, { grant_type: 'authorization_code', code, redirect_uri: mlRedirectUri(request, env) });
+    await mlSaveTokens(env, data);
+    try {
+      const me = await mlGet(data.access_token, '/users/me');
+      if (me && me.nickname) await setConfig(env, 'ml_nickname', me.nickname);
+    } catch { /* apelido é opcional */ }
+    return back('ok');
+  } catch (err) {
+    return back('erro', err instanceof HttpError ? err.message : 'Falha ao conectar com o Mercado Livre.');
+  }
+}
+
 // Cota do plano básico: buscas automáticas por lojista a cada hora (padrão 5).
 // Conta no banco, então vale para todos os servidores. Resultados do cache não gastam cota.
 const lookupLimit = (env) => clampInt(env.LOOKUP_LIMIT_PER_HOUR, 1, 1000, 5);
@@ -553,7 +749,7 @@ async function lookupProduct(env, rawUrl, { useCache = true, tenantId = null } =
   const link = httpUrl(rawUrl, 'Link', { required: true });
   const url = new URL(link);
   const platform = detectPlatform(url);
-  if (!platform) throw new HttpError(422, 'A busca automática funciona com links da Shopee.');
+  if (!platform) throw new HttpError(422, 'A busca automática funciona com links da Shopee e do Mercado Livre.');
   const cacheKey = `${platform}:${url.toString()}`;
   if (useCache) {
     const hit = await env.DB.prepare('SELECT data, fetched_at FROM product_cache WHERE key = ?').bind(cacheKey).first();
@@ -576,7 +772,9 @@ async function lookupProduct(env, rawUrl, { useCache = true, tenantId = null } =
     if (!creds) throw new HttpError(501, 'A busca automática da Shopee ainda não foi ativada pelo administrador.', { code: 'not_configured' });
     result = await lookupShopee(env, creds, link);
   } else {
-    throw new HttpError(501, 'A busca automática do Mercado Livre chega em breve. Preencha os dados manualmente.', { code: 'not_configured' });
+    const token = await mlAccessToken(env, cfg);
+    if (!token) throw new HttpError(501, 'A busca automática do Mercado Livre ainda não foi ativada pelo administrador.', { code: 'not_configured' });
+    result = await lookupMercadoLivre(env, token, link);
   }
   await env.DB.prepare(
     `INSERT INTO product_cache (key, data, fetched_at) VALUES (?, ?, ?)
@@ -801,7 +999,7 @@ async function handleConfig(request, env) {
     plan_price: env.PLAN_PRICE || '19,90',
     support_whatsapp: String(cfg.support_whatsapp || env.SUPPORT_WHATSAPP || '').replace(/\D/g, ''),
     video: videoEmbed(cfg.landing_video_url),
-    lookup: { shopee: !!(await shopeeCredentials(env, cfg)), mercadolivre: false },
+    lookup: { shopee: !!(await shopeeCredentials(env, cfg)), mercadolivre: mlConfigured(env) && !!cfg.ml_tokens },
     uploads: !!env.IMAGES,
     public_base_url: publicBase(request, env),
   });
@@ -1091,6 +1289,9 @@ async function handleAdminConfigGet(env) {
     shopee_app_id: env.SHOPEE_APP_ID || cfg.shopee_app_id || '',
     shopee_secret_set: !!(env.SHOPEE_SECRET || cfg.shopee_secret),
     shopee_fixed: !!env.SHOPEE_APP_ID,
+    ml_configured: mlConfigured(env),
+    ml_connected: mlConfigured(env) && !!cfg.ml_tokens,
+    ml_nickname: cfg.ml_nickname || null,
   });
 }
 
@@ -1283,8 +1484,15 @@ async function routeApi(request, env, path) {
     throw new HttpError(404, 'Rota não encontrada.');
   }
 
+  if (path === '/api/admin/ml/callback' && method === 'GET') return handleMlCallback(request, env);
+
   if (path === '/api/admin' || path.startsWith('/api/admin/')) {
     await requireMaster(request, env);
+    if (path === '/api/admin/ml/start' && method === 'POST') return handleMlStart(request, env);
+    if (path === '/api/admin/ml/disconnect' && method === 'POST') {
+      await env.DB.prepare("DELETE FROM app_config WHERE key IN ('ml_tokens', 'ml_nickname')").run();
+      return json({ ok: true });
+    }
     if (path === '/api/admin/tenants' && method === 'GET') return handleAdminList(request, env);
     if (path === '/api/admin/tenants' && method === 'POST') return handleAdminCreate(request, env);
     if (path === '/api/admin/config' && method === 'GET') return handleAdminConfigGet(env);
@@ -1388,7 +1596,13 @@ export default {
         response = json({ error: 'Erro interno. Tente novamente em instantes.' }, 500);
       }
     }
-    for (const [k, v] of Object.entries(cors)) response.headers.set(k, v);
+    // Respostas com cabeçalhos imutáveis (ex.: imagens do R2) são copiadas antes de receber o CORS.
+    try {
+      for (const [k, v] of Object.entries(cors)) response.headers.set(k, v);
+    } catch {
+      response = new Response(response.body, response);
+      for (const [k, v] of Object.entries(cors)) response.headers.set(k, v);
+    }
     return response;
   },
 };

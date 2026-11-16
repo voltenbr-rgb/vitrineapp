@@ -668,10 +668,21 @@
             <input class="input" name="shopee_app_id" inputmode="numeric" placeholder="App ID (só números)" value="${esc(cfg.shopee_app_id)}" autocomplete="off">
             <input class="input" name="shopee_secret" type="password" placeholder="${cfg.shopee_secret_set ? 'Secret salvo — deixe vazio para manter' : 'Secret (chave da API)'}" autocomplete="new-password" spellcheck="false">`}
             <div class="input-group" style="margin-top:4px">
-              <input class="input" id="testUrl" type="url" inputmode="url" placeholder="Cole um link da Shopee para testar">
+              <input class="input" id="testUrl" type="url" inputmode="url" placeholder="Cole um link de produto para testar">
               <button type="button" class="btn btn-ghost" id="testBtn">Testar</button>
             </div>
             <div id="testResult" style="font-size:13px"></div>
+            <small style="color:var(--muted);font-size:11.5px;white-space:normal">O teste aceita links da Shopee e do Mercado Livre.</small>
+          </div>
+          <div class="field" style="background:#fffbe6;border-radius:16px;padding:14px;margin-bottom:14px">
+            <span>🤝 Mercado Livre <small>${cfg.ml_connected ? `✅ conectado${cfg.ml_nickname ? ' como ' + esc(cfg.ml_nickname) : ''}` : cfg.ml_configured ? 'falta conectar' : 'desativado'}</small></span>
+            ${!cfg.ml_configured
+              ? '<small style="color:var(--muted);font-size:12px;white-space:normal">Crie os secrets <b>ML_CLIENT_ID</b> e <b>ML_CLIENT_SECRET</b> no Cloudflare e publique de novo. Depois volte aqui para conectar.</small>'
+              : `<small style="color:var(--muted);font-size:12px;white-space:normal">Conecte sua conta uma vez. A conexão é renovada sozinha. O link de teste acima também funciona com links do Mercado Livre.</small>
+                 <div style="display:flex;gap:8px;flex-wrap:wrap">
+                   <button type="button" class="btn btn-dark" id="mlConnect">${cfg.ml_connected ? '🔄 Reconectar' : '🔗 Conectar Mercado Livre'}</button>
+                   ${cfg.ml_connected ? '<button type="button" class="btn btn-ghost" id="mlDisconnect">Desconectar</button>' : ''}
+                 </div>`}
           </div>
           <div class="field"><span>Senha Master</span>
             ${fixed
@@ -681,11 +692,25 @@
           </div>
           <button type="submit" class="btn btn-dark btn-block" id="cfgBtn">Salvar configurações</button>
         </form>`);
+      const mlBtn = $('#mlConnect');
+      if (mlBtn) mlBtn.addEventListener('click', async () => {
+        setBusy(mlBtn, true, 'Abrindo...');
+        try {
+          const { url } = await api('/api/admin/ml/start', { method: 'POST' });
+          location.href = url;
+        } catch (err) { toast(err.message, true); setBusy(mlBtn, false); }
+      });
+      const mlOff = $('#mlDisconnect');
+      if (mlOff) mlOff.addEventListener('click', async () => {
+        try { await api('/api/admin/ml/disconnect', { method: 'POST' }); closeModal(); toast('Mercado Livre desconectado'); }
+        catch (err) { toast(err.message, true); }
+      });
+
       $('#testBtn').addEventListener('click', async () => {
         const f = $('#cfgForm');
         const url = $('#testUrl').value.trim();
         const out = $('#testResult');
-        if (!url) return toast('Cole um link de produto da Shopee.', true);
+        if (!url) return toast('Cole um link de produto.', true);
         const btn = $('#testBtn');
         setBusy(btn, true, '...');
         try {
@@ -775,6 +800,12 @@
 
     /* ---------------- Início ---------------- */
     (async () => {
+      const qs = new URLSearchParams(location.search);
+      if (qs.get('ml')) {
+        const ok = qs.get('ml') === 'ok';
+        history.replaceState(null, '', location.pathname);
+        setTimeout(() => toast(ok ? '✅ Mercado Livre conectado! A busca automática já está ativa.' : `❌ ${qs.get('msg') || 'Não foi possível conectar o Mercado Livre.'}`, !ok), 600);
+      }
       const saved = ss.get(KEY);
       if (!saved) return showLogin();
       state.password = saved;

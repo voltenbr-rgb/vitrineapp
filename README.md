@@ -39,6 +39,13 @@ No Master → ⚙️ Configurações → **API de afiliados da Shopee**, informe
 Com isso, quando o lojista cola um link da Shopee, nome, preço e foto são preenchidos sozinhos. O link de afiliado salvo continua sendo o do lojista.
 O Secret fica cifrado no banco e nunca volta para o navegador. Alternativa: secrets `SHOPEE_APP_ID` e `SHOPEE_SECRET` no Cloudflare.
 
+## Busca automática de produtos (Mercado Livre)
+1. Crie um aplicativo em developers.mercadolivre.com.br com a URL de redirecionamento
+   `https://<seu-dominio>/api/admin/ml/callback` (PKCE desligado).
+2. No Cloudflare, crie os secrets `ML_CLIENT_ID` e `ML_CLIENT_SECRET` e faça um novo deploy.
+3. No Master → ⚙️ → **Conectar Mercado Livre** e autorize uma vez. O token é renovado sozinho.
+Funciona com links de anúncio (`MLB-...`), de catálogo (`/p/MLB...`) e links curtos de afiliado.
+
 ## Fluxo de uso
 1. O lojista se cadastra na **página inicial** ("Começar grátis") e já cai no painel com 7 dias de teste. O Master também pode criar lojas manualmente.
 2. O **lojista** entra em `/dashboard.html`, cadastra os produtos e configura a vitrine.
