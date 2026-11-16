@@ -1082,7 +1082,9 @@
           form.description.value = extras;
           $('#descCount').textContent = `${extras.length}/1500`;
         }
-        toast('✨ Dados do produto preenchidos! Confira e publique.');
+        if (product.source === 'title_match') toast('✨ Encontrei pelo nome. Confira se a foto e o preço batem com o seu anúncio.');
+        else if (product.source === 'preview') toast('✨ Nome e foto preenchidos. Confira e, se quiser, coloque o preço.');
+        else toast('✨ Dados do produto preenchidos! Confira e publique.');
       } catch (err) {
         if (err.code === 'quota') { lastFilled = ''; if (state.quota) { state.quota.remaining = 0; renderQuota(true); } }
         if (manual || err.status !== 501) toast(err.message, true);
