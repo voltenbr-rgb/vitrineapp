@@ -47,6 +47,8 @@
  *   POST   /api/admin/ml/start             gera o link para conectar a conta do Mercado Livre
  *   GET    /api/admin/ml/callback          retorno da autorização do Mercado Livre (público, validado por state)
  *   POST   /api/admin/ml/disconnect
+ *   POST   /api/admin/ml/affiliate         { link } lê os parâmetros de afiliado (matt_*) de um link seu
+ *   POST   /api/admin/ml/search            { query, limit, sort, include, exclude } busca produtos e monta links
  */
 
 const DAY_MS = 86_400_000;
@@ -957,6 +959,182 @@ async function handleMlStart(request, env) {
   return json({ url: auth.toString(), redirect_uri: mlRedirectUri(request, env) });
 }
 
+/* ---------- Buscador de links (Master) ---------- */
+
+// Segue um link de afiliado (meli.la / mercadolivre.com/sec) e guarda os parâmetros matt_* que ele carrega.
+async function resolveAffiliateParams(rawUrl) {
+  const params = {};
+  const collect = (u) => {
+    try {
+      const url = new URL(u);
+      for (const [k, v] of url.searchParams) if (/^matt_/i.test(k) && v) params[k] = v;
+      const hash = new URLSearchParams(url.hash.replace(/^#/, ''));
+      for (const [k, v] of hash) if (/^matt_/i.test(k) && v) params[k] = v;
+    } catch { /* ignora */ }
+  };
+  let current = rawUrl;
+  const trail = [];
+  for (let hop = 0; hop < 8; hop++) {
+    collect(current);
+    trail.push(current.slice(0, 220));
+    let res;
+    try {
+      res = await fetch(current, { redirect: 'manual', headers: { 'User-Agent': UA_BROWSER, Accept: 'text/html' } });
+    } catch {
+      break;
+    }
+    const location = res.headers.get('Location');
+    if (location && res.status >= 300 && res.status < 400) {
+      current = new URL(location, current).toString();
+      continue;
+    }
+    if (res.ok) {
+      const html = (await res.text()).slice(0, 400_000);
+      const meta = readMeta(html);
+      if (meta.url) collect(meta.url);
+      for (const m of html.matchAll(/https?:\/\/[^"'\s<>]+matt_[^"'\s<>]+/gi)) collect(decodeEntities(m[0]));
+    }
+    break;
+  }
+  return { params, trail };
+}
+
+function withAffiliate(url, aff) {
+  try {
+    const u = new URL(url);
+    for (const [k, v] of Object.entries(aff || {})) u.searchParams.set(k, v);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+async function handleMlAffiliate(request, env) {
+  const body = await readJson(request);
+  const link = httpUrl(body.link, 'Link de afiliado', { required: true });
+  const { params, trail } = await resolveAffiliateParams(link);
+  if (!params.matt_tool) {
+    await saveDebug(env, 'debug_ml_affiliate', { input: link, trail, params });
+    throw new HttpError(422, 'Não encontrei o código de afiliado neste link. Abra o seu link no navegador, copie o endereço completo da página do produto (com "matt_tool") e cole aqui.');
+  }
+  await setConfig(env, 'ml_affiliate_params', JSON.stringify(params));
+  return json({ params });
+}
+
+const SEARCH_SORTS = { relevance: 'relevance', price_asc: 'price_asc', price_desc: 'price_desc', discount: 'relevance' };
+
+function splitTerms(value, max = 30) {
+  return String(value || '').split(/[,\n;]+/).map((t) => t.trim()).filter(Boolean).slice(0, max);
+}
+
+async function handleMlSearch(request, env) {
+  const body = await readJson(request);
+  const cfg = await getConfig(env);
+  const token = await mlAccessToken(env, cfg);
+  if (!token) throw new HttpError(400, 'Conecte o Mercado Livre primeiro (⚙️ → Conectar Mercado Livre).');
+  const queries = splitTerms(body.query, 10);
+  if (!queries.length) throw new HttpError(400, 'Digite pelo menos um termo de busca.');
+  const limit = [5, 10, 15, 30].includes(Number(body.limit)) ? Number(body.limit) : 15;
+  const sortKey = SEARCH_SORTS[body.sort] ? body.sort : 'relevance';
+  const include = splitTerms(body.include).map((t) => normalizeWords(t).join(' ')).filter(Boolean);
+  const exclude = splitTerms(body.exclude).map((t) => normalizeWords(t).join(' ')).filter(Boolean);
+  const onlyDiscount = bool01(body.only_discount) === 1 || sortKey === 'discount';
+  const aff = JSON.parse(cfg.ml_affiliate_params || '{}');
+
+  const accepts = (title) => {
+    const norm = ` ${normalizeWords(title).join(' ')} `;
+    if (exclude.some((w) => norm.includes(` ${w} `) || (w.length > 4 && norm.includes(w)))) return false;
+    if (include.length && !include.some((w) => norm.includes(w))) return false;
+    return true;
+  };
+
+  const found = new Map();
+  const exhausted = new Set();
+  let calls = 0;
+  let searchError = null;
+  // Percorre os termos em rodízio, página por página, até juntar o suficiente (máx. 14 consultas).
+  for (let page = 0; page < 4 && found.size < limit * 3 && calls < 14; page++) {
+    for (const q of queries) {
+      if (calls >= 14 || found.size >= limit * 3) break;
+      if (exhausted.has(q)) continue;
+      calls++;
+      let data;
+      try {
+        data = await mlGet(token, `/sites/MLB/search?q=${encodeURIComponent(q)}&limit=50&offset=${page * 50}&sort=${SEARCH_SORTS[sortKey]}`);
+      } catch (err) {
+        searchError = err;
+        break;
+      }
+      const results = (data && data.results) || [];
+      for (const r of results) {
+        if (!r || !r.id || found.has(r.id) || !accepts(r.title)) continue;
+        const price = Number(r.price) || null;
+        const original = Number(r.original_price) > Number(r.price) ? Number(r.original_price) : null;
+        if (onlyDiscount && !original) continue;
+        found.set(r.id, {
+          id: r.id,
+          title: String(r.title || '').slice(0, 160),
+          price,
+          original_price: original,
+          discount: original ? Math.round((1 - price / original) * 100) : null,
+          image: httpsImage(r.thumbnail ? String(r.thumbnail).replace(/-I\.(jpg|webp)$/i, '-O.$1') : null),
+          permalink: r.permalink,
+          link: withAffiliate(r.permalink, aff),
+          free_shipping: !!(r.shipping && r.shipping.free_shipping),
+          query: q,
+        });
+      }
+      if (results.length < 50) exhausted.add(q);
+    }
+    if (exhausted.size === queries.length) break;
+    if (searchError) break;
+  }
+
+  // Busca de anúncios bloqueada: tenta o catálogo de produtos.
+  let source = 'items';
+  if (!found.size && searchError) {
+    source = 'catalog';
+    try {
+      for (const q of queries) {
+        if (found.size >= limit * 2) break;
+        const data = await mlGet(token, `/products/search?status=active&site_id=MLB&q=${encodeURIComponent(q)}&limit=50`);
+        for (const r of (data && data.results) || []) {
+          if (!r || !r.id || found.has(r.id) || !accepts(r.name)) continue;
+          const permalink = `https://www.mercadolivre.com.br/p/${r.id}`;
+          found.set(r.id, {
+            id: r.id, title: String(r.name || '').slice(0, 160), price: null, original_price: null, discount: null,
+            image: httpsImage(r.pictures && r.pictures[0] && (r.pictures[0].url || r.pictures[0].secure_url)),
+            permalink, link: withAffiliate(permalink, aff), free_shipping: false, query: q,
+          });
+        }
+      }
+      // Preço do "vencedor" do catálogo para os primeiros itens.
+      for (const item of [...found.values()].slice(0, limit)) {
+        try {
+          const prod = await mlGet(token, `/products/${item.id}`);
+          const w = prod && prod.buy_box_winner;
+          if (w && Number(w.price) > 0) {
+            item.price = Number(w.price);
+            if (Number(w.original_price) > item.price) {
+              item.original_price = Number(w.original_price);
+              item.discount = Math.round((1 - item.price / item.original_price) * 100);
+            }
+          }
+        } catch { /* sem preço */ }
+      }
+    } catch (err) {
+      throw searchError.extra && searchError.extra.code === 'ml_permission'
+        ? new HttpError(502, 'O Mercado Livre não liberou a busca para o seu aplicativo. Confira as permissões no DevCenter e reconecte.', { code: 'ml_permission' })
+        : searchError;
+    }
+  }
+
+  let items = [...found.values()];
+  if (sortKey === 'discount') items.sort((a, b) => (b.discount || 0) - (a.discount || 0));
+  items = items.slice(0, limit);
+  return json({ items, source, affiliate: aff, affiliate_ok: Object.keys(aff).length > 0, calls });
+}
+
 async function handleMlCallback(request, env) {
   const url = new URL(request.url);
   const back = (status, msg) => new Response(null, {
@@ -1788,6 +1966,12 @@ async function routeApi(request, env, path) {
   if (path === '/api/admin' || path.startsWith('/api/admin/')) {
     await requireMaster(request, env);
     if (path === '/api/admin/ml/start' && method === 'POST') return handleMlStart(request, env);
+    if (path === '/api/admin/ml/affiliate' && method === 'POST') return handleMlAffiliate(request, env);
+    if (path === '/api/admin/ml/affiliate' && method === 'GET') {
+      const cfg = await getConfig(env);
+      return json({ params: JSON.parse(cfg.ml_affiliate_params || '{}'), connected: mlConfigured(env) && !!cfg.ml_tokens });
+    }
+    if (path === '/api/admin/ml/search' && method === 'POST') return handleMlSearch(request, env);
     if (path === '/api/admin/ml/disconnect' && method === 'POST') {
       await env.DB.prepare("DELETE FROM app_config WHERE key IN ('ml_tokens', 'ml_nickname')").run();
       return json({ ok: true });

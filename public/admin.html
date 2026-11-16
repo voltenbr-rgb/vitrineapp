@@ -155,6 +155,25 @@
     .modal-head h3 { margin: 0; font-size: 19px; }
     .modal p.sub { margin: -8px 0 16px; color: var(--muted); font-size: 13px; }
     .modal .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+    .modal.wide { max-width: 760px; }
+    .top .title { min-width: 0; }
+    .top .title strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    @media (max-width: 560px) { .top .mls { width: 40px; height: 40px; padding: 0; } .top .mls .lbl { display: none; } .top { gap: 8px; } }
+    .seg-q { display: flex; gap: 8px; flex-wrap: wrap; }
+    .seg-q button { height: 40px; min-width: 52px; padding: 0 14px; border-radius: 12px; background: var(--field); font-weight: 800; font-size: 14px; color: var(--ink-2); }
+    .seg-q button[aria-pressed="true"] { background: var(--dark); color: #fff; }
+    .res-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 10px; }
+    .res-list { display: grid; gap: 8px; }
+    .res-item { display: flex; gap: 10px; align-items: center; background: var(--field); border-radius: 14px; padding: 8px; }
+    .res-item img { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: #fff; flex-shrink: 0; }
+    .res-item .meta { flex: 1; min-width: 0; }
+    .res-item .meta b { display: block; font-size: 13px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .res-item .meta span { font-size: 12px; color: var(--muted); }
+    .res-item .meta .pr { color: var(--ink); font-weight: 800; }
+    .res-item .meta .off { color: #fff; background: #16a34a; font-weight: 800; padding: 1px 6px; border-radius: 6px; font-size: 11px; }
+    .aff-box { border-radius: 14px; padding: 12px 14px; font-size: 13px; margin-bottom: 14px; }
+    .aff-ok { background: #ecfdf5; color: #14532d; }
+    .aff-warn { background: #fff7e6; color: #7a4f00; }
     .menu { display: grid; gap: 8px; }
     .menu button { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; background: var(--field); font-weight: 700; text-align: left; }
     .menu button.danger { color: var(--danger); background: #fff1f2; }
@@ -196,6 +215,7 @@
         <div class="brand-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg></div>
         <div class="title"><small>Painel Master</small><strong>Vitrine App</strong></div>
         <span class="updated" id="updated"></span>
+        <button type="button" class="btn btn-sm btn-primary mls" data-act="mlsearch" title="Buscar links no Mercado Livre">🔎<span class="lbl"> Links ML</span></button>
         <button type="button" class="icon-btn" data-act="settings" aria-label="Configurações do sistema" title="Configurações"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
         <button type="button" class="icon-btn" data-act="refresh" aria-label="Atualizar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
         <button type="button" class="icon-btn" data-act="logout" aria-label="Sair"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/></svg></button>
@@ -433,6 +453,7 @@
 
     /* ---------------- Modais ---------------- */
     function openModal(html) {
+      $('#modal').classList.remove('wide');
       $('#modal').innerHTML = html;
       $('#overlay').classList.add('open');
       document.body.style.overflow = 'hidden';
@@ -752,6 +773,176 @@
       });
     }
 
+    /* ---------------- Buscador de links do Mercado Livre ---------------- */
+    const PRESETS = {
+      airsoft: {
+        label: '🎯 Airsoft, arma de gel e brinquedos',
+        query: 'airsoft, lançador de gel, arma de gel, pistola de brinquedo, arminha de brinquedo, acessórios airsoft, bbs airsoft 6mm',
+        include: 'airsoft, gel, brinquedo, orbeez, 6mm, bbs, lançador, nerf',
+        exclude: 'pressão, chumbinho, airgun, air gun, carabina, 4,5mm, 5,5mm, espingarda, faca, canivete, punhal, adaga, soco inglês, garrucha, munição, cartucho, pólvora',
+      },
+      custom: { label: '✏️ Personalizado', query: '', include: '', exclude: '' },
+    };
+    const SEARCH_KEY = 'vitrine:mlsearch';
+    let lastResults = [];
+
+    function loadSearchPrefs() {
+      try { return JSON.parse(localStorage.getItem(SEARCH_KEY) || 'null') || {}; } catch { return {}; }
+    }
+    function saveSearchPrefs(v) { try { localStorage.setItem(SEARCH_KEY, JSON.stringify(v)); } catch { /* ok */ } }
+
+    const brlN = (n) => (n ? brl(n) : '');
+    function offerMsg(it) {
+      const lines = ['🔥 DESTAQUE DO DIA 🔥', '', `🎯${it.title}`, ''];
+      if (it.original_price) lines.push(`❌ De ~${brl(it.original_price)}~`);
+      lines.push(it.price ? `✅ Por ${brl(it.price)}` : '✅ Confira o preço no link');
+      if (it.discount) lines.push(`🏷️ ${it.discount}% OFF`);
+      lines.push('', '🛒 COMPRE AQUI:', it.link, '', '⏳ Oferta sujeita à disponibilidade de estoque.');
+      return lines.join('\n');
+    }
+    function csvOf(items) {
+      const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const head = ['titulo', 'preco', 'preco_antigo', 'desconto_%', 'link_afiliado', 'imagem', 'link_original', 'id_ml'];
+      const rows = items.map((it) => [it.title, it.price ? String(it.price).replace('.', ',') : '', it.original_price ? String(it.original_price).replace('.', ',') : '', it.discount || '', it.link, it.image || '', it.permalink, it.id].map(q).join(';'));
+      return '\ufeff' + [head.join(';'), ...rows].join('\r\n');
+    }
+
+    async function searchModal() {
+      let aff = { params: {}, connected: false };
+      try { aff = await api('/api/admin/ml/affiliate'); } catch (err) { return toast(err.message, true); }
+      const prefs = { preset: 'airsoft', limit: 15, sort: 'relevance', only_discount: false, ...loadSearchPrefs() };
+      const pr = PRESETS[prefs.preset] || PRESETS.airsoft;
+      const hasAff = Object.keys(aff.params || {}).length > 0;
+      openModal(`${head('🔎 Buscar links no Mercado Livre', 'Encontra produtos do nicho e monta os links com o seu código de afiliado.')}
+        ${aff.connected ? '' : '<div class="aff-box aff-warn">⚠️ Conecte o Mercado Livre primeiro em ⚙️ Configurações.</div>'}
+        <div class="aff-box ${hasAff ? 'aff-ok' : 'aff-warn'}" id="affBox">
+          ${hasAff
+            ? `✅ Código de afiliado: <b>${esc(Object.entries(aff.params).map(([k, v]) => `${k}=${v}`).join(' · '))}</b> <button type="button" class="btn btn-sm btn-ghost" id="affEdit" style="margin-left:6px">Trocar</button>`
+            : '⚠️ Para os links saírem com o seu código de afiliado, cole aqui <b>um link seu</b> do Mercado Livre (meli.la/... ou mercadolivre.com/sec/...).'}
+          <div class="input-group" id="affForm" style="margin-top:8px" ${hasAff ? 'hidden' : ''}>
+            <input class="input" id="affLink" type="url" inputmode="url" placeholder="https://meli.la/...">
+            <button type="button" class="btn btn-dark" id="affSave">Usar</button>
+          </div>
+        </div>
+        <form id="srchForm" novalidate>
+          <label class="field"><span>Nicho</span>
+            <select class="input" name="preset">${Object.entries(PRESETS).map(([k, v]) => `<option value="${k}" ${k === prefs.preset ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label>
+          <label class="field"><span>Buscar por <small>termos separados por vírgula</small></span>
+            <textarea class="input" name="query" style="height:auto;min-height:70px;padding:12px 14px">${esc(prefs.query ?? pr.query)}</textarea></label>
+          <label class="field"><span>O título precisa ter uma destas <small>opcional</small></span>
+            <input class="input" name="include" value="${esc(prefs.include ?? pr.include)}"></label>
+          <label class="field"><span>Excluir títulos com <small>evita pressão, facas etc.</small></span>
+            <textarea class="input" name="exclude" style="height:auto;min-height:70px;padding:12px 14px">${esc(prefs.exclude ?? pr.exclude)}</textarea></label>
+          <div class="field"><span>Quantidade de links</span>
+            <div class="seg-q" id="qty">${[5, 10, 15, 30].map((n) => `<button type="button" data-qty="${n}" aria-pressed="${n === Number(prefs.limit)}">${n}</button>`).join('')}</div></div>
+          <div class="row two">
+            <label class="field"><span>Ordenar</span>
+              <select class="input" name="sort">
+                <option value="relevance" ${prefs.sort === 'relevance' ? 'selected' : ''}>Mais relevantes</option>
+                <option value="discount" ${prefs.sort === 'discount' ? 'selected' : ''}>Maior desconto</option>
+                <option value="price_asc" ${prefs.sort === 'price_asc' ? 'selected' : ''}>Menor preço</option>
+                <option value="price_desc" ${prefs.sort === 'price_desc' ? 'selected' : ''}>Maior preço</option>
+              </select></label>
+            <label class="field" style="align-self:end"><span style="justify-content:flex-start;gap:10px;align-items:center;height:48px">
+              <input type="checkbox" name="only_discount" ${prefs.only_discount ? 'checked' : ''} style="width:22px;height:22px"> Só com desconto</span></label>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" id="srchBtn" ${aff.connected ? '' : 'disabled'}>🔎 Buscar links</button>
+        </form>
+        <div id="srchOut"></div>`);
+      $('#modal').classList.add('wide');
+      let limit = Number(prefs.limit) || 15;
+      const form = $('#srchForm');
+
+      form.preset.addEventListener('change', () => {
+        const p2 = PRESETS[form.preset.value];
+        if (form.preset.value === 'custom') return;
+        form.query.value = p2.query; form.include.value = p2.include; form.exclude.value = p2.exclude;
+      });
+      $('#qty').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-qty]');
+        if (!b) return;
+        limit = Number(b.dataset.qty);
+        $('#qty').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      });
+      const affEdit = $('#affEdit');
+      if (affEdit) affEdit.addEventListener('click', () => { $('#affForm').hidden = false; $('#affLink').focus(); });
+      $('#affSave').addEventListener('click', async () => {
+        const link = $('#affLink').value.trim();
+        if (!link) return toast('Cole um link de afiliado seu.', true);
+        const btn = $('#affSave');
+        setBusy(btn, true, '...');
+        try {
+          const { params } = await api('/api/admin/ml/affiliate', { method: 'POST', body: { link } });
+          $('#affBox').className = 'aff-box aff-ok';
+          $('#affBox').innerHTML = `✅ Código de afiliado salvo: <b>${esc(Object.entries(params).map(([k, v]) => `${k}=${v}`).join(' · '))}</b>`;
+          toast('Código de afiliado salvo ✓');
+        } catch (err) { toast(err.message, true); setBusy(btn, false); }
+      });
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const body = {
+          query: form.query.value, include: form.include.value, exclude: form.exclude.value,
+          limit, sort: form.sort.value, only_discount: form.only_discount.checked,
+        };
+        saveSearchPrefs({ preset: form.preset.value, ...body });
+        const btn = $('#srchBtn');
+        setBusy(btn, true, 'Buscando no Mercado Livre...');
+        try {
+          const data = await api('/api/admin/ml/search', { method: 'POST', body });
+          lastResults = data.items || [];
+          renderResults(data);
+        } catch (err) {
+          $('#srchOut').innerHTML = `<div class="aff-box aff-warn" style="margin-top:14px">❌ ${esc(err.message)}</div>`;
+        } finally { setBusy(btn, false); }
+      });
+    }
+
+    function renderResults(data) {
+      const out = $('#srchOut');
+      const items = data.items || [];
+      if (!items.length) {
+        out.innerHTML = '<div class="aff-box aff-warn" style="margin-top:14px">Nenhum produto encontrado com esses filtros. Tente outros termos ou remova "Só com desconto".</div>';
+        return;
+      }
+      out.innerHTML = `
+        ${data.affiliate_ok ? '' : '<div class="aff-box aff-warn" style="margin-top:14px">⚠️ Links <b>sem</b> código de afiliado. Cole um link seu no quadro acima e busque de novo.</div>'}
+        ${data.source === 'catalog' ? '<div class="aff-box aff-warn" style="margin-top:8px">ℹ️ Resultados do catálogo do Mercado Livre (a busca de anúncios não foi liberada para o seu aplicativo).</div>' : ''}
+        <div class="res-tools">
+          <b style="align-self:center;margin-right:auto">${items.length} produtos</b>
+          <button type="button" class="btn btn-sm btn-dark" data-out="links">📋 Copiar links</button>
+          <button type="button" class="btn btn-sm btn-soft" data-out="titles">📋 Links + nomes</button>
+          <button type="button" class="btn btn-sm btn-wa" data-out="msgs">🔥 Mensagens prontas</button>
+          <button type="button" class="btn btn-sm btn-ghost" data-out="csv">⬇️ Planilha CSV</button>
+        </div>
+        <div class="res-list">${items.map((it, i) => `
+          <div class="res-item">
+            ${it.image ? `<img src="${esc(it.image)}" alt="" loading="lazy">` : '<img alt="">'}
+            <div class="meta"><b>${esc(it.title)}</b>
+              <span>${it.price ? `<span class="pr">${brl(it.price)}</span>` : 'sem preço'} ${it.original_price ? `<s>${brl(it.original_price)}</s>` : ''} ${it.discount ? `<span class="off">-${it.discount}%</span>` : ''} ${it.free_shipping ? '· frete grátis' : ''}</span></div>
+            <a class="icon-btn" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer" title="Abrir">↗</a>
+            <button type="button" class="icon-btn" data-copy="${i}" title="Copiar link">📋</button>
+          </div>`).join('')}</div>`;
+      out.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', () => copy(lastResults[Number(b.dataset.copy)].link, 'Link copiado!')));
+      out.querySelector('.res-tools').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-out]');
+        if (!b) return;
+        const kind = b.dataset.out;
+        if (kind === 'links') copy(lastResults.map((it) => it.link).join('\n'), `${lastResults.length} links copiados!`);
+        if (kind === 'titles') copy(lastResults.map((it) => `${it.title}${it.price ? ` — ${brl(it.price)}` : ''}\n${it.link}`).join('\n\n'), 'Links com nomes copiados!');
+        if (kind === 'msgs') copy(lastResults.map(offerMsg).join('\n\n━━━━━━━━━━\n\n'), `${lastResults.length} mensagens copiadas!`);
+        if (kind === 'csv') {
+          const blob = new Blob([csvOf(lastResults)], { type: 'text/csv;charset=utf-8' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `links-mercadolivre-${new Date().toISOString().slice(0, 10)}.csv`;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        }
+      });
+      out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     function chargeMessage(t) {
       const lines = [`Olá${t.owner_name ? ', ' + t.owner_name.split(' ')[0] : ''}! Tudo bem? 😊`];
       if (t.status === 'trial') lines.push(`Seu teste grátis da Vitrine *${t.store_name}* termina em ${fmtDate(t.trial_ends_at)}.`);
@@ -787,6 +978,7 @@
         case 'more': if (t) moreModal(t); break;
         case 'password': if (t) passwordModal(t); break;
         case 'settings': settingsModal(); break;
+        case 'mlsearch': searchModal(); break;
         default: break;
       }
     });
