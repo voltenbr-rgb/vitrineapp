@@ -98,6 +98,21 @@
     .perf-skel { height: 230px; border-radius: 14px; background: linear-gradient(90deg, #fff, #eef6fb, #fff); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
     @keyframes shimmer { to { background-position: -200% 0; } }
     @media (max-width: 380px) { .kpi b { font-size: 17px; } .kpis { gap: 6px; } .kpi span { font-size: 10.5px; } .kpi span i { display: none; } }
+    /* Tutorial e dicas (configurados no Master) */
+    .learn { margin: 14px 0; }
+    .yt-cta { display: flex; align-items: center; gap: 12px; width: 100%; text-decoration: none; color: #fff; border-radius: 18px; padding: 12px 14px;
+      background: linear-gradient(135deg, #ff0033, #ff4d4d); box-shadow: 0 10px 24px rgba(255, 0, 51, .28); font-weight: 800; font-size: 15px; }
+    .yt-cta .yt-ic { width: 44px; height: 32px; border-radius: 9px; background: #fff; display: grid; place-items: center; flex-shrink: 0; }
+    .yt-cta small { display: block; font-size: 12px; font-weight: 600; opacity: .9; }
+    .yt-cta .go { margin-left: auto; font-size: 20px; }
+    .tips-row { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 12px 2px 4px; margin: 0 -2px; scrollbar-width: none; }
+    .tips-row::-webkit-scrollbar { display: none; }
+    .tip { flex: 0 0 min(78%, 260px); scroll-snap-align: start; background: #fff; border: 1px solid #e6edf3; border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 2px 8px rgba(15, 23, 42, .04); }
+    .tip .te { font-size: 24px; line-height: 1; }
+    .tip strong { font-size: 14.5px; }
+    .tip p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; flex: 1; }
+    .tip a { align-self: flex-start; margin-top: 4px; text-decoration: none; font-weight: 800; font-size: 12.5px; color: var(--accent-deep); background: var(--accent-soft); border-radius: 999px; padding: 6px 12px; }
+    .tip.only { flex-basis: 100%; }
     /* Instalar app */
     .install-btn { display: inline-flex; align-items: center; gap: 6px; border: 0; cursor: pointer; font: inherit; font-weight: 800; font-size: 12.5px; color: #fff; background: linear-gradient(135deg, #16a6e0, #6d5dfc); border-radius: 999px; padding: 7px 13px 7px 10px; box-shadow: 0 6px 16px rgba(22, 166, 224, .35); }
     .top-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; }
@@ -1227,6 +1242,7 @@
           <p>${esc(planName(a))} · ${Math.min(state.stores.length, p.stores)} de ${p.stores} ${p.stores === 1 ? 'loja' : 'lojas'}${state.stores.length > p.stores ? ` · ${state.stores.length - p.stores} pausada${state.stores.length - p.stores > 1 ? 's' : ''}` : ''}</p></div>
           <div style="display:flex;gap:8px;align-items:center;margin-left:auto">${installBtn()}<button type="button" class="btn btn-sm btn-ghost" data-act="logout">${I.out}Sair</button></div></div>
         ${planBanner()}
+        ${learnBlock()}
         <div style="margin-top:14px">${cards}</div>
         ${canAdd ? `<button type="button" class="store-new" data-act="new-store">+ Nova loja</button>` : ''}
         ${upsell}`;
@@ -1392,6 +1408,22 @@
     }
 
 
+
+    /* ---------------- Tutorial e dicas (o Master edita; aparece no painel) ---------------- */
+    function learnBlock() {
+      const tut = state.config.tutorial;
+      const tips = state.config.tips || [];
+      if (!tut && !tips.length) return '';
+      const safe = (u) => (/^https?:\/\//i.test(u || '') ? u : '');
+      return `<section class="learn" aria-label="Aprenda a usar">
+        ${tut && safe(tut.url) ? `<a class="yt-cta" href="${esc(tut.url)}" target="_blank" rel="noopener">
+          <span class="yt-ic"><svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect width="22" height="16" rx="4" fill="#ff0033"/><path d="M9 4.5v7l6-3.5z" fill="#fff"/></svg></span>
+          <span>${esc(tut.label || 'Conhecer melhor o aplicativo')}<small>Vídeos curtos de como usar no YouTube</small></span><span class="go">›</span></a>` : ''}
+        ${tips.length ? `<div class="tips-row">${tips.map((t) => `<article class="tip ${tips.length === 1 ? 'only' : ''}">
+          <span class="te">${esc(t.emoji || '💡')}</span><strong>${esc(t.title)}</strong>${t.text ? `<p>${esc(t.text)}</p>` : '<p></p>'}
+          ${safe(t.url) ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.button || 'Abrir')} ›</a>` : ''}</article>`).join('')}</div>` : ''}
+      </section>`;
+    }
 
     /* ---------------- Instalar o painel como aplicativo (PWA) ---------------- */
     let installEvent = null;
@@ -1604,6 +1636,7 @@
       const q = state.query.trim().toLowerCase();
       const list = state.products.filter((p) => !q || `${p.title} ${p.description}`.toLowerCase().includes(q));
       return `${header(true)}
+        ${wantsPicker() ? '' : learnBlock()}
         ${offerCard()}
         <div class="section-title"><h2>Seus produtos</h2>
           <button type="button" class="btn btn-sm btn-primary" data-tab="new" ${isExpired() ? 'disabled' : ''}>+ Novo</button></div>

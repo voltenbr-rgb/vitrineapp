@@ -1689,6 +1689,8 @@ async function handleConfig(request, env) {
     payments: mpConfigured(env),
     support_whatsapp: String(cfg.support_whatsapp || env.SUPPORT_WHATSAPP || '').replace(/\D/g, ''),
     video: videoEmbed(cfg.landing_video_url),
+    tutorial: cfg.tutorial_url ? { url: cfg.tutorial_url, label: cfg.tutorial_label || 'Conhecer melhor o aplicativo' } : null,
+    tips: parseTips(cfg.tips).filter((t) => t.active).map(({ active, ...t }) => t),
     lookup: { shopee: !!(await shopeeCredentials(env, cfg)), mercadolivre: mlConfigured(env) && !!cfg.ml_tokens },
     uploads: !!env.IMAGES,
     public_base_url: publicBase(request, env),
@@ -2102,11 +2104,35 @@ async function handleDeleteProduct(env, tenant, rawId) {
 /* Handlers Master                                                     */
 /* ------------------------------------------------------------------ */
 
+// Tutorial (YouTube) e cards de dicas que o Master mostra no painel dos lojistas.
+function parseTips(raw) {
+  try {
+    const list = JSON.parse(raw || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+function cleanTips(list) {
+  if (!Array.isArray(list)) throw new HttpError(400, 'Dicas inválidas.');
+  if (list.length > 8) throw new HttpError(400, 'No máximo 8 cards de dicas.');
+  return list.map((t, i) => ({
+    id: String(t.id || `d${Date.now().toString(36)}${i}`).slice(0, 24),
+    title: text(t.title, 60, `Título do card ${i + 1}`, { required: true }),
+    text: text(t.text, 220, `Texto do card ${i + 1}`),
+    url: httpUrl(t.url, `Link do card ${i + 1}`),
+    button: text(t.button, 24, `Botão do card ${i + 1}`) || 'Abrir',
+    emoji: text(t.emoji, 8, 'Emoji') || '💡',
+    active: t.active === false || t.active === 0 ? 0 : 1,
+  }));
+}
+
 async function handleAdminConfigGet(env) {
   const cfg = await getConfig(env);
   return json({
     landing_video_url: cfg.landing_video_url || '',
     support_whatsapp: cfg.support_whatsapp || env.SUPPORT_WHATSAPP || '',
+    tutorial_url: cfg.tutorial_url || '',
+    tutorial_label: cfg.tutorial_label || '',
+    tips: parseTips(cfg.tips),
     master_password_source: env.MASTER_PASSWORD ? 'secret' : cfg.master_hash ? 'custom' : 'default',
     shopee_app_id: env.SHOPEE_APP_ID || cfg.shopee_app_id || '',
     shopee_secret_set: !!(env.SHOPEE_SECRET || cfg.shopee_secret),
@@ -2126,6 +2152,15 @@ async function handleAdminConfigPut(request, env) {
   }
   if (body.support_whatsapp !== undefined) {
     await setConfig(env, 'support_whatsapp', whatsapp(body.support_whatsapp));
+  }
+  if (body.tutorial_url !== undefined) {
+    await setConfig(env, 'tutorial_url', httpUrl(body.tutorial_url, 'Link do tutorial') || '');
+  }
+  if (body.tutorial_label !== undefined) {
+    await setConfig(env, 'tutorial_label', text(body.tutorial_label, 40, 'Texto do botão do tutorial') || '');
+  }
+  if (body.tips !== undefined) {
+    await setConfig(env, 'tips', JSON.stringify(cleanTips(body.tips)));
   }
   if (body.shopee_app_id !== undefined) {
     const appId = String(body.shopee_app_id || '').trim();

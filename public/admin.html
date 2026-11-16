@@ -193,6 +193,16 @@
     .skeleton { background: linear-gradient(90deg, #e3e6ec 0%, #f2f3f6 50%, #e3e6ec 100%); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: var(--radius); height: 190px; }
     @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+    .yt-btn { background: #ff0033; color: #fff; }
+    .yt-btn:hover { background: #e0002d; }
+    .tip-edit textarea { font: inherit; font-size: 14px; resize: vertical; min-height: 64px; }
+    .tip-edit { border: 1px solid var(--line, #e6e8ee); border-radius: 16px; padding: 12px; margin-bottom: 10px; display: grid; gap: 8px; background: #fafbfc; }
+    .tip-top { display: flex; gap: 8px; }
+    .tip-top .input { flex: 1; min-width: 0; }
+    .tip-emoji { flex: 0 0 56px !important; text-align: center; font-size: 18px; }
+    .tip-btn { flex: 0 0 100px !important; }
+    .tip-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .tip-on { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
   </style>
 </head>
 <body>
@@ -218,6 +228,7 @@
         <div class="title"><small>Painel Master</small><strong>Vitrine App</strong></div>
         <span class="updated" id="updated"></span>
         <button type="button" class="btn btn-sm btn-primary mls" data-act="mlsearch" title="Buscar links no Mercado Livre">🔎<span class="lbl"> Links ML</span></button>
+        <button type="button" class="btn btn-sm mls yt-btn" data-act="tips" title="Tutorial e dicas para os lojistas">▶️<span class="lbl"> Tutorial</span></button>
         <button type="button" class="icon-btn" data-act="settings" aria-label="Configurações do sistema" title="Configurações"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
         <button type="button" class="icon-btn" data-act="refresh" aria-label="Atualizar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
         <button type="button" class="icon-btn" data-act="logout" aria-label="Sair"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/></svg></button>
@@ -690,6 +701,69 @@
       }
     }
 
+    /* ---------------- Tutorial e dicas (aparecem no painel dos lojistas) ---------------- */
+    async function tipsModal() {
+      let cfg;
+      try { cfg = await api('/api/admin/config'); } catch (err) { return toast(err.message, true); }
+      let tips = (cfg.tips || []).map((t) => ({ ...t }));
+      const cardHtml = (t, i) => `
+        <div class="tip-edit" data-i="${i}">
+          <div class="tip-top">
+            <input class="input tip-emoji" data-k="emoji" maxlength="8" value="${esc(t.emoji || '💡')}" aria-label="Emoji">
+            <input class="input" data-k="title" maxlength="60" placeholder="Título (ex.: App de legendas)" value="${esc(t.title || '')}">
+          </div>
+          <textarea class="input" data-k="text" rows="2" maxlength="220" placeholder="O que é a dica, em 1 ou 2 frases">${esc(t.text || '')}</textarea>
+          <div class="tip-top">
+            <input class="input" data-k="url" type="url" inputmode="url" placeholder="https://link-da-dica" value="${esc(t.url || '')}">
+            <input class="input tip-btn" data-k="button" maxlength="24" placeholder="Botão" value="${esc(t.button || 'Abrir')}">
+          </div>
+          <div class="tip-actions">
+            <label class="tip-on"><input type="checkbox" data-k="active" ${t.active === 0 ? '' : 'checked'}> Mostrar para os lojistas</label>
+            <button type="button" class="btn btn-sm btn-ghost" data-tip-del="${i}">🗑 Remover</button>
+          </div>
+        </div>`;
+      const readCards = () => [...document.querySelectorAll('.tip-edit')].map((el, i) => {
+        const v = (k) => el.querySelector(`[data-k="${k}"]`);
+        return { id: tips[i] && tips[i].id, emoji: v('emoji').value.trim(), title: v('title').value.trim(), text: v('text').value.trim(),
+          url: v('url').value.trim(), button: v('button').value.trim(), active: v('active').checked ? 1 : 0 };
+      });
+      const draw = () => {
+        $('#tipList').innerHTML = tips.length ? tips.map(cardHtml).join('') : '<p style="color:var(--muted);font-size:13px;margin:0 0 10px">Nenhum card ainda.</p>';
+        $('#addTip').hidden = tips.length >= 8;
+      };
+      openModal(`${head('▶️ Tutorial e dicas', 'Aparece no painel dos lojistas: em Minhas lojas e, para quem tem 1 loja, no painel da loja.')}
+        <form id="tipsForm" novalidate>
+          <div class="field" style="background:#fff1f1;border-radius:16px;padding:14px;margin-bottom:14px">
+            <span>Botão do YouTube <small>deixe o link vazio para esconder</small></span>
+            <input class="input" name="tutorial_url" type="url" inputmode="url" placeholder="https://youtube.com/@seucanal ou link da playlist" value="${esc(cfg.tutorial_url || '')}">
+            <input class="input" name="tutorial_label" maxlength="40" placeholder="Conhecer melhor o aplicativo" value="${esc(cfg.tutorial_label || '')}" style="margin-top:8px">
+          </div>
+          <div class="field"><span>Cards de dicas <small>até 8</small></span></div>
+          <div id="tipList"></div>
+          <button type="button" class="btn btn-ghost btn-block" id="addTip" style="margin-bottom:12px">+ Adicionar card</button>
+          <button type="submit" class="btn btn-dark btn-block" id="tipsBtn">Salvar e publicar</button>
+        </form>`);
+      draw();
+      $('#addTip').addEventListener('click', () => { tips = readCards(); tips.push({ emoji: '💡', button: 'Abrir', active: 1 }); draw(); });
+      $('#tipList').addEventListener('click', (e) => {
+        const del = e.target.closest('[data-tip-del]');
+        if (!del) return;
+        tips = readCards(); tips.splice(Number(del.dataset.tipDel), 1); draw();
+      });
+      $('#tipsForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const f = e.target;
+        const btn = $('#tipsBtn');
+        const list = readCards().filter((t) => t.title || t.url || t.text);
+        setBusy(btn, true, 'Salvando...');
+        try {
+          await api('/api/admin/config', { method: 'PUT', body: { tutorial_url: f.tutorial_url.value.trim(), tutorial_label: f.tutorial_label.value.trim(), tips: list } });
+          closeModal();
+          toast('Tutorial e dicas publicados ✓');
+        } catch (err) { toast(err.message, true); setBusy(btn, false); }
+      });
+    }
+
     async function settingsModal() {
       let cfg;
       try { cfg = await api('/api/admin/config'); } catch (err) { return toast(err.message, true); }
@@ -1019,6 +1093,7 @@
         case 'password': if (t) passwordModal(t); break;
         case 'settings': settingsModal(); break;
         case 'mlsearch': searchModal(); break;
+        case 'tips': tipsModal(); break;
         default: break;
       }
     });
