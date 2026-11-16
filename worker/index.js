@@ -442,10 +442,24 @@ function ensureSchema(env) {
       await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_accounts_whatsapp ON accounts (whatsapp)').run();
       // Senha provisória: criada pelo Master no suporte; vale até a pessoa criar a dela.
       const acols = await columns('accounts');
-      if (!acols.has('temp_password')) {
-        try { await env.DB.prepare('ALTER TABLE accounts ADD COLUMN temp_password INTEGER NOT NULL DEFAULT 0').run(); }
+      const addAcc = async (col, sql) => {
+        if (acols.has(col)) return;
+        try { await env.DB.prepare(`ALTER TABLE accounts ADD COLUMN ${sql}`).run(); }
         catch (err) { if (!/duplicate column/i.test(String(err && err.message))) throw err; }
-      }
+      };
+      await addAcc('temp_password', 'temp_password INTEGER NOT NULL DEFAULT 0');
+      // De onde veio o cliente (anúncio, Instagram, indicação...): relatório "Origem dos clientes" no Master.
+      await addAcc('source', "source TEXT NOT NULL DEFAULT ''");
+      await addAcc('campaign', "campaign TEXT NOT NULL DEFAULT ''");
+      await env.DB.prepare(
+        `CREATE TABLE IF NOT EXISTS site_daily (
+          day TEXT NOT NULL,
+          source TEXT NOT NULL,
+          visits INTEGER NOT NULL DEFAULT 0,
+          signups INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (day, source)
+        )`,
+      ).run();
       // Pagamentos do Mercado Pago (Pix ou cartão). "applied" garante que cada pagamento ativa o plano uma vez só.
       await env.DB.prepare(
         `CREATE TABLE IF NOT EXISTS payments (
@@ -1851,7 +1865,12 @@ async function handleCheckSlug(env, url) {
 async function handleRegister(request, env) {
   const body = await readJson(request);
   if (String(body.website || '').trim()) throw new HttpError(400, 'Não foi possível concluir o cadastro.'); // campo-isca anti-robô
-  const { account, store } = await createAccountWithStore(env, body);
+  const origin = resolveSource(body);
+  const { account, store } = await createAccountWithStore(env, body, { origin });
+  await env.DB.prepare(
+    `INSERT INTO site_daily (day, source, signups) VALUES (?, ?, 1)
+     ON CONFLICT (day, source) DO UPDATE SET signups = signups + 1`,
+  ).bind(dayKey(), origin.source).run().catch(() => {});
   account.last_seen_at = account.last_login_at = await touchPresence(env, account.id, { login: true });
   return json({
     token: await signToken(env, account),
@@ -2231,7 +2250,7 @@ async function createStore(env, account, body) {
   return { ...data, store_mode: mode, views: 0, product_count: 0, created_at: ts };
 }
 
-async function createAccountWithStore(env, body, { plan = 'basic' } = {}) {
+async function createAccountWithStore(env, body, { plan = 'basic', origin = { source: 'master', campaign: '' } } = {}) {
   const phone = whatsapp(body.whatsapp, { required: true });
   const ownerName = text(body.owner_name, 80, 'Seu nome');
   const hash = await hashPassword(password(body.password));
@@ -2246,9 +2265,9 @@ async function createAccountWithStore(env, body, { plan = 'basic' } = {}) {
   const ts = new Date(createdMs).toISOString();
   const trialEndsAt = addDays(createdMs, trialDays(env)); // 7 dias grátis (com tudo do Completo)
   const res = await env.DB.prepare(
-    `INSERT INTO accounts (owner_name, whatsapp, password_hash, plan, status, trial_ends_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'trial', ?, ?, ?)`,
-  ).bind(ownerName, phone, hash, PLANS[plan] ? plan : 'basic', trialEndsAt, ts, ts).run();
+    `INSERT INTO accounts (owner_name, whatsapp, password_hash, plan, status, trial_ends_at, created_at, updated_at, source, campaign)
+     VALUES (?, ?, ?, ?, 'trial', ?, ?, ?, ?, ?)`,
+  ).bind(ownerName, phone, hash, PLANS[plan] ? plan : 'basic', trialEndsAt, ts, ts, origin.source, origin.campaign).run();
   const accountId = res.meta && res.meta.last_row_id;
   const account = await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(accountId).first();
   try {
@@ -2278,6 +2297,8 @@ async function adminAccountView(env, base, a, storesByAccount) {
     theme_color: first.theme_color || '#16a6e0',
     store_url: first.store_url || '',
     stores,
+    source: a.source || '',
+    campaign: a.campaign || '',
     store_count: stores.length,
     product_count: stores.reduce((n, t) => n + t.product_count, 0),
     views: stores.reduce((n, t) => n + t.views, 0),
@@ -2508,6 +2529,105 @@ async function handleStats(request, env, tenant) {
     products: { total: Number(counts.total || 0), visible: Number(counts.visible || 0) },
     views_all_time: Number(tenant.views || 0),
   });
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Origem dos clientes (de onde vêm visitas e cadastros)              */
+/* ------------------------------------------------------------------ */
+
+const SOURCE_ALIASES = {
+  ig: 'instagram', insta: 'instagram', instagram: 'instagram',
+  fb: 'facebook', facebook: 'facebook', meta: 'facebook',
+  tt: 'tiktok', tiktok: 'tiktok',
+  yt: 'youtube', youtube: 'youtube',
+  wa: 'whatsapp', whatsapp: 'whatsapp', zap: 'whatsapp', grupo: 'whatsapp',
+  google: 'google', indicacao: 'indicacao', amigo: 'indicacao',
+};
+// Nome curto e seguro da origem (ex.: "Instagram Bio" -> "instagram-bio").
+function cleanSource(v) {
+  const raw = String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
+  return SOURCE_ALIASES[raw] || raw;
+}
+// Origem pelo site anterior (quando a pessoa clicou num link sem marcação).
+function sourceFromReferrer(ref) {
+  let host = '';
+  try { host = new URL(String(ref || '')).hostname.replace(/^www\./, ''); } catch { return ''; }
+  if (!host) return '';
+  if (/instagram\./.test(host)) return 'instagram';
+  if (/(^|\.)facebook\.|fb\.com|fb\.me/.test(host)) return 'facebook';
+  if (/tiktok\./.test(host)) return 'tiktok';
+  if (/youtube\.|youtu\.be/.test(host)) return 'youtube';
+  if (/whatsapp\.|wa\.me/.test(host)) return 'whatsapp';
+  if (/google\./.test(host)) return 'google';
+  if (/vitrineapp\.pages\.dev/.test(host)) return '';
+  return cleanSource(host.split('.').slice(-2, -1)[0] || host);
+}
+function resolveSource(body) {
+  const s = body && typeof body.source === 'object' ? body.source : {};
+  return {
+    source: cleanSource(s.utm_source) || cleanSource(body.heard) || sourceFromReferrer(s.referrer) || 'direto',
+    campaign: cleanSource(s.utm_campaign).slice(0, 40),
+  };
+}
+
+const trackWindow = { minute: 0, ips: new Map() };
+// Visita na página inicial (uma por sessão do visitante).
+async function handleTrackVisit(request, env) {
+  const minute = Math.floor(Date.now() / 60_000);
+  if (trackWindow.minute !== minute) { trackWindow.minute = minute; trackWindow.ips.clear(); }
+  const ip = clientIp(request);
+  const n = (trackWindow.ips.get(ip) || 0) + 1;
+  trackWindow.ips.set(ip, n);
+  if (n > 20) return json({ ok: true });
+  const body = await readJson(request).catch(() => ({}));
+  const { source } = resolveSource({ source: body });
+  await env.DB.prepare(
+    `INSERT INTO site_daily (day, source, visits) VALUES (?, ?, 1)
+     ON CONFLICT (day, source) DO UPDATE SET visits = visits + 1`,
+  ).bind(dayKey(), source).run();
+  return json({ ok: true });
+}
+
+// Relatório do Master: visitas -> cadastros -> pagantes, por origem e por dia.
+async function handleAdminAcquisition(request, env) {
+  const q = Number(new URL(request.url).searchParams.get('days'));
+  const days = [7, 30, 90].includes(q) ? q : 30;
+  const list = lastDays(days);
+  const since = list[0];
+  const sinceIso = new Date(Date.parse(`${since}T03:00:00Z`)).toISOString();
+  const [{ results: visits }, { results: accs }] = await Promise.all([
+    env.DB.prepare('SELECT day, source, visits FROM site_daily WHERE day >= ?').bind(since).all(),
+    env.DB.prepare(
+      `SELECT a.id, a.source, a.campaign, a.created_at, a.status,
+              (SELECT COUNT(*) FROM payments p WHERE p.account_id = a.id AND p.applied = 1) AS paid_count
+         FROM accounts a WHERE a.created_at >= ?`,
+    ).bind(sinceIso).all(),
+  ]);
+  const by = new Map();
+  const row = (src) => {
+    const k = src || 'sem-registro'; // contas criadas antes do rastreio
+    if (!by.has(k)) by.set(k, { source: k, visits: 0, signups: 0, paying: 0, campaigns: {} });
+    return by.get(k);
+  };
+  const daily = new Map(list.map((d) => [d, { day: d, visits: 0, signups: 0, paying: 0 }]));
+  for (const v of visits || []) {
+    row(v.source).visits += Number(v.visits || 0);
+    if (daily.has(v.day)) daily.get(v.day).visits += Number(v.visits || 0);
+  }
+  for (const a of accs || []) {
+    const r = row(a.source);
+    const paying = a.status === 'active' || Number(a.paid_count || 0) > 0;
+    r.signups += 1;
+    if (paying) r.paying += 1;
+    if (a.campaign) r.campaigns[a.campaign] = (r.campaigns[a.campaign] || 0) + 1;
+    const d = dayKey(Date.parse(a.created_at));
+    if (daily.has(d)) { daily.get(d).signups += 1; if (paying) daily.get(d).paying += 1; }
+  }
+  const sources = [...by.values()].sort((x, y) => y.signups - x.signups || y.visits - x.visits);
+  const totals = sources.reduce((t, r) => ({ visits: t.visits + r.visits, signups: t.signups + r.signups, paying: t.paying + r.paying }), { visits: 0, signups: 0, paying: 0 });
+  return json({ days, totals, sources, daily: [...daily.values()] });
 }
 
 /* ------------------------------------------------------------------ */
@@ -2750,6 +2870,7 @@ async function routeApi(request, env, path) {
 
   if (path === '/api/admin/ml/callback' && method === 'GET') return handleMlCallback(request, env);
   if (path === '/api/mp/webhook' && (method === 'POST' || method === 'GET')) return handleMpWebhook(request, env);
+  if (path === '/api/track' && method === 'POST') return handleTrackVisit(request, env);
 
   if (path === '/api/admin' || path.startsWith('/api/admin/')) {
     await requireMaster(request, env);
@@ -2765,6 +2886,7 @@ async function routeApi(request, env, path) {
       return json({ ok: true });
     }
     if ((path === '/api/admin/tenants' || path === '/api/admin/accounts') && method === 'GET') return handleAdminList(request, env);
+    if (path === '/api/admin/acquisition' && method === 'GET') return handleAdminAcquisition(request, env);
     if ((path === '/api/admin/tenants' || path === '/api/admin/accounts') && method === 'POST') return handleAdminCreate(request, env);
     if (path === '/api/admin/config' && method === 'GET') return handleAdminConfigGet(env);
     if (path === '/api/admin/config' && method === 'PUT') return handleAdminConfigPut(request, env);

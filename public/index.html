@@ -635,6 +635,18 @@
         <label class="field"><span>Crie uma senha <small>mínimo 4 dígitos</small></span>
           <div class="group"><input class="input" name="password" type="password" inputmode="numeric" minlength="4" maxlength="32" required autocomplete="new-password" placeholder="Ex.: 4 números fáceis de lembrar" style="padding-left:15px">
           <button type="button" class="eye" data-eye aria-label="Mostrar senha">👁</button></div></label>
+        <label class="field" id="heardField"><span>Como conheceu o Vitrine App? <small>opcional</small></span>
+          <select class="input" name="heard">
+            <option value="">Escolha...</option>
+            <option value="instagram">Instagram</option>
+            <option value="tiktok">TikTok</option>
+            <option value="youtube">YouTube</option>
+            <option value="facebook">Facebook</option>
+            <option value="whatsapp">WhatsApp / grupo</option>
+            <option value="indicacao">Indicação de amigo</option>
+            <option value="google">Google</option>
+            <option value="outro">Outro</option>
+          </select></label>
         <div class="hp" aria-hidden="true"><label>Site <input name="website" tabindex="-1" autocomplete="off"></label></div>
         <button type="submit" class="btn btn-primary btn-block" id="signupBtn">Criar minha vitrine</button>
         <p class="fine">Já tem conta? <a href="/dashboard.html">Entrar no painel</a></p>
@@ -657,6 +669,34 @@
     const save = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sem storage */ } };
 
     $('#year').textContent = new Date().getFullYear();
+
+    /* ---------- De onde veio o visitante (para o relatório do Master) ---------- */
+    // Guarda a 1ª origem por 30 dias: links com ?utm_source=... (ou ?ref=...) e o site anterior.
+    const ORIGIN_KEY = 'vitrine:origin';
+    const origin = (() => {
+      const q = new URLSearchParams(location.search);
+      const fresh = {
+        utm_source: q.get('utm_source') || q.get('ref') || q.get('src') || '',
+        utm_campaign: q.get('utm_campaign') || '',
+        referrer: document.referrer && !document.referrer.startsWith(location.origin) ? document.referrer : '',
+        at: Date.now(),
+      };
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(ORIGIN_KEY) || 'null'); } catch { saved = null; }
+      const valid = saved && Date.now() - (saved.at || 0) < 30 * 86400000;
+      const pick = fresh.utm_source || (!valid && fresh.referrer) ? fresh : (valid ? saved : fresh);
+      try { localStorage.setItem(ORIGIN_KEY, JSON.stringify(pick)); } catch { /* sem storage */ }
+      return pick;
+    })();
+    // Quem já veio de um link marcado não precisa responder "como conheceu".
+    if (origin.utm_source) { const hf = document.getElementById('heardField'); if (hf) hf.hidden = true; }
+    try {
+      if (!sessionStorage.getItem('vitrine:visit')) {
+        sessionStorage.setItem('vitrine:visit', '1');
+        const payload = JSON.stringify({ utm_source: origin.utm_source, utm_campaign: origin.utm_campaign, referrer: origin.referrer });
+        if (navigator.sendBeacon) navigator.sendBeacon(API + '/api/track', new Blob([payload], { type: 'application/json' }));
+      }
+    } catch { /* métrica não é crítica */ }
 
     /* ---------- Configurações do sistema (preço, teste, vídeo, suporte) ---------- */
     fetch(API + '/api/config').then((r) => (r.ok ? r.json() : null)).then((cfg) => {
@@ -783,6 +823,7 @@
       e.preventDefault();
       showError('');
       const body = Object.fromEntries(new FormData(form));
+      body.source = { utm_source: origin.utm_source, utm_campaign: origin.utm_campaign, referrer: origin.referrer };
       if (!body.store_name.trim()) return showError('Digite o nome da sua loja.');
       if (!body.id || body.id.length < 3) return showError('Escolha o endereço da sua vitrine (mínimo 3 letras).');
       if (slugOk === false) return showError('Esse endereço já está em uso. Escolha outro.');
