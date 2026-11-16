@@ -745,7 +745,9 @@
     }
 
     function renderForm() {
-      const p = state.editing || { title: '', description: '', price: null, image_url: '', affiliate_link: '', platform: 'mercadolivre', is_physical: 0, delivery_cities: '', sort_order: 0, show_price: 1 };
+      // Afiliado começa com o preço oculto (o sistema não atualiza preços sozinho); produto próprio começa visível.
+      const p = state.editing || { title: '', description: '', price: null, image_url: '', affiliate_link: '', platform: 'mercadolivre', is_physical: 0, delivery_cities: '', sort_order: 0, show_price: 0 };
+      priceTouched = !!state.editing;
       const img = safeImg(p.image_url);
       const locked = isExpired();
       const platOpt = (k) => {
@@ -762,6 +764,11 @@
           <div class="card">
             <h2>Origem do produto</h2><p class="sub">De onde vem o link de compra?</p>
             <div class="seg">${platOpt('mercadolivre')}${platOpt('shopee')}${platOpt('proprio')}</div>
+            <label class="field" style="margin:16px 0 0"><span id="linkLabel">Link</span>
+              <input class="input" name="affiliate_link" type="url" inputmode="url" placeholder="Cole o link aqui: https://..." value="${esc(p.affiliate_link || '')}">
+              <small id="linkHint"></small></label>
+            <small class="hint" id="quotaHint" style="display:block;text-align:center;margin:10px 0 6px"></small>
+            <button type="button" class="btn btn-soft btn-block" data-act="autofill" id="autofillBtn" hidden style="white-space:normal;height:auto;min-height:48px;padding:10px 14px">✨ Preencher automaticamente</button>
           </div>
 
           <div class="card">
@@ -783,21 +790,16 @@
               <input class="input" name="title" maxlength="120" required value="${esc(p.title)}" placeholder="Ex.: Tênis de corrida leve"></label>
             <label class="field"><span>Descrição <small id="descCount">${(p.description || '').length}/1500</small></span>
               <textarea class="textarea" name="description" maxlength="1500" placeholder="Destaque benefícios, tamanhos, cores...">${esc(p.description)}</textarea></label>
-            <div class="row two">
+            <div class="row">
               <label class="field"><span id="priceLabel">Preço</span>
                 <div class="input-group"><span class="prefix">R$</span>
                   <input class="input" name="price" inputmode="decimal" placeholder="Opcional" value="${esc(priceInput(p.price))}"></div>
                 <small id="priceHint"></small>
                 <span style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px">
                   <small style="font-size:13px;font-weight:700;color:var(--ink-2)">Mostrar preço na vitrine</small>
-                  <span class="switch"><input type="checkbox" name="show_price" ${Number(p.show_price) !== 0 ? 'checked' : ''} aria-label="Mostrar preço deste produto na vitrine"><span class="track"></span></span>
+                  <span class="switch"><input type="checkbox" name="show_price" id="showPrice" ${Number(p.show_price) !== 0 ? 'checked' : ''} aria-label="Mostrar preço deste produto na vitrine"><span class="track"></span></span>
                 </span></label>
-              <label class="field"><span id="linkLabel">Link</span>
-                <input class="input" name="affiliate_link" type="url" inputmode="url" placeholder="https://..." value="${esc(p.affiliate_link || '')}">
-                <small id="linkHint"></small></label>
             </div>
-            <small class="hint" id="quotaHint" style="display:block;text-align:center;margin-bottom:6px"></small>
-            <button type="button" class="btn btn-soft btn-block" data-act="autofill" id="autofillBtn" hidden style="white-space:normal;height:auto;min-height:48px;padding:10px 14px">✨ Preencher automaticamente</button>
           </div>
 
           <div class="card">
@@ -1054,6 +1056,27 @@
         : `Buscas automáticas esgotadas nesta hora · libera em ${q.reset_minutes} min`;
     }
 
+    // Preço visível: afiliado começa desligado; produto próprio, ligado (até o lojista mexer na chave).
+    let priceTouched = false;
+    function syncPriceDefault() {
+      const form = $('#productForm');
+      if (!form || priceTouched || state.editing) return;
+      $('#showPrice').checked = form.platform.value === 'proprio';
+    }
+
+    async function onShowPriceChange(el) {
+      const form = $('#productForm');
+      priceTouched = true;
+      if (!el.checked || !form || form.platform.value === 'proprio') return;
+      el.checked = false;
+      const ok = await confirmDialog({
+        title: 'Mostrar o preço deste produto?',
+        text: 'O sistema não atualiza os preços sozinho. Se o preço mudar no Mercado Livre ou na Shopee, você precisa editar aqui para corrigir. Tem certeza que quer mostrar o preço?',
+        ok: 'Sim, mostrar',
+      });
+      el.checked = ok;
+    }
+
     // Busca nome, preço e foto pelo link (API de afiliados configurada no Master).
     let lastFilled = '';
     async function autoFill(manual) {
@@ -1150,7 +1173,8 @@
 
     document.addEventListener('change', async (e) => {
       const el = e.target;
-      if (el.name === 'platform') updatePlatformHints();
+      if (el.name === 'platform') { updatePlatformHints(); syncPriceDefault(); }
+      if (el.id === 'showPrice') onShowPriceChange(el);
       if (el.name === 'affiliate_link' && !state.editing) autoFill(false);
       if (el.id === 'isPhysical') $('#citiesField').hidden = !el.checked;
       if (el.dataset && el.dataset.setting) saveSettings();
