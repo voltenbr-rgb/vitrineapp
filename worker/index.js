@@ -339,11 +339,9 @@ async function clearFails(env, keys) {
   for (const key of keys) await env.DB.prepare('DELETE FROM login_attempts WHERE key = ?').bind(key).run();
 }
 
-async function assertPhoneFree(env, phone, exceptId = null) {
-  if (!phone) return;
-  const other = await env.DB.prepare('SELECT id FROM tenants WHERE whatsapp = ? AND id <> ? LIMIT 1')
-    .bind(phone, exceptId || '').first();
-  if (other) throw new HttpError(409, 'Já existe uma conta com este WhatsApp. Use "Entrar" ou fale com o suporte.', { code: 'phone_taken' });
+async function assertPhoneFree(env, phone, exceptAccountId = null) {
+  const row = await env.DB.prepare('SELECT id FROM accounts WHERE whatsapp = ? AND id IS NOT ?').bind(phone, exceptAccountId).first();
+  if (row) throw new HttpError(409, 'Este WhatsApp já tem uma conta. Entre com ele ou use a opção "Esqueci a senha".', { code: 'phone_taken' });
 }
 
 async function pbkdf2(pw, salt, iterations) {
@@ -409,12 +407,53 @@ function ensureSchema(env) {
       if (!sc.has('show_banner')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_banner INTEGER NOT NULL DEFAULT 1');
       if (!sc.has('share_message')) alters.push("ALTER TABLE tenant_settings ADD COLUMN share_message TEXT NOT NULL DEFAULT ''");
       if (!sc.has('offer_template')) alters.push('ALTER TABLE tenant_settings ADD COLUMN offer_template INTEGER NOT NULL DEFAULT 1');
+      if (!tc.has('account_id')) alters.push('ALTER TABLE tenants ADD COLUMN account_id INTEGER');
+      if (!sc.has('theme_mode')) alters.push("ALTER TABLE tenant_settings ADD COLUMN theme_mode TEXT NOT NULL DEFAULT 'light'");
+      if (!sc.has('card_tone')) alters.push("ALTER TABLE tenant_settings ADD COLUMN card_tone TEXT NOT NULL DEFAULT 'white'");
+      if (!sc.has('offer_templates')) alters.push("ALTER TABLE tenant_settings ADD COLUMN offer_templates TEXT NOT NULL DEFAULT ''");
       for (const sql of alters) {
         try {
           await env.DB.prepare(sql).run();
         } catch (err) {
           if (!/duplicate column/i.test(String(err && err.message))) throw err;
         }
+      }
+      // Conta (dono, login, plano e pagamento) separada das lojas: uma conta pode ter várias lojas.
+      await env.DB.prepare(
+        `CREATE TABLE IF NOT EXISTS accounts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          owner_name TEXT NOT NULL DEFAULT '',
+          whatsapp TEXT NOT NULL DEFAULT '',
+          password_hash TEXT NOT NULL,
+          plan TEXT NOT NULL DEFAULT 'basic',
+          status TEXT NOT NULL DEFAULT 'trial',
+          trial_ends_at TEXT NOT NULL,
+          paid_until TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          last_seen_at TEXT,
+          last_login_at TEXT,
+          legacy_tenant_id TEXT
+        )`,
+      ).run();
+      await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_accounts_whatsapp ON accounts (whatsapp)').run();
+      await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_legacy ON accounts (legacy_tenant_id) WHERE legacy_tenant_id IS NOT NULL').run();
+      await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_tenants_account ON tenants (account_id)').run();
+      // Migração: cada loja antiga vira "conta + 1 loja" (sem mudar link, senha ou produtos).
+      const orphan = await env.DB.prepare('SELECT 1 FROM tenants WHERE account_id IS NULL LIMIT 1').first();
+      if (orphan) {
+        await env.DB.batch([
+          env.DB.prepare(
+            `INSERT OR IGNORE INTO accounts (owner_name, whatsapp, password_hash, plan, status, trial_ends_at, paid_until,
+                                             created_at, updated_at, last_seen_at, last_login_at, legacy_tenant_id)
+             SELECT owner_name, whatsapp, password_hash, 'basic', status, trial_ends_at, paid_until,
+                    created_at, updated_at, last_seen_at, last_login_at, id
+               FROM tenants WHERE account_id IS NULL`,
+          ),
+          env.DB.prepare(
+            'UPDATE tenants SET account_id = (SELECT a.id FROM accounts a WHERE a.legacy_tenant_id = tenants.id) WHERE account_id IS NULL',
+          ),
+        ]);
       }
     })().catch((err) => {
       schemaReady = null;
@@ -1204,18 +1243,18 @@ async function handleMlCallback(request, env) {
 // Conta no banco, então vale para todos os servidores. Resultados do cache não gastam cota.
 const lookupLimit = (env) => clampInt(env.LOOKUP_LIMIT_PER_HOUR, 1, 1000, 15);
 
-async function lookupQuota(env, tenantId) {
+async function lookupQuota(env, tenantId, limitOverride = null) {
   const since = new Date(Date.now() - 3_600_000).toISOString();
   const row = await env.DB.prepare(
     'SELECT COUNT(*) AS used, MIN(at) AS oldest FROM lookup_usage WHERE tenant_id = ? AND at > ?',
   ).bind(tenantId, since).first();
-  const limit = lookupLimit(env);
+  const limit = limitOverride || lookupLimit(env);
   const used = Number(row && row.used) || 0;
   const resetMin = row && row.oldest ? Math.max(1, Math.ceil((Date.parse(row.oldest) + 3_600_000 - Date.now()) / 60_000)) : 60;
   return { limit, used, remaining: Math.max(0, limit - used), reset_minutes: used ? resetMin : null };
 }
 
-async function lookupProduct(env, rawUrl, { useCache = true, tenantId = null } = {}) {
+async function lookupProduct(env, rawUrl, { useCache = true, tenantId = null, limit = null } = {}) {
   const link = httpUrl(rawUrl, 'Link', { required: true });
   const url = new URL(link);
   const platform = detectPlatform(url);
@@ -1226,7 +1265,7 @@ async function lookupProduct(env, rawUrl, { useCache = true, tenantId = null } =
     if (hit && Date.now() - Date.parse(hit.fetched_at) < 6 * 3_600_000) return { ...JSON.parse(hit.data), cached: true };
   }
   if (tenantId) {
-    const quota = await lookupQuota(env, tenantId);
+    const quota = await lookupQuota(env, tenantId, limit);
     if (quota.remaining <= 0) {
       throw new HttpError(429, `Você usou as ${quota.limit} buscas automáticas desta hora. Libera de novo em ${quota.reset_minutes} min — enquanto isso, preencha manualmente.`, { code: 'quota', quota });
     }
@@ -1278,10 +1317,11 @@ async function hmacKey(env) {
 // "pv" amarra o token ao hash atual da senha: trocar a senha encerra as sessões antigas.
 const passwordVersion = (hash) => String(hash).slice(-16);
 
-async function signToken(env, tenant) {
+// O token identifica a CONTA (que pode ter várias lojas).
+async function signToken(env, account) {
   const body = b64u(enc.encode(JSON.stringify({
-    tid: tenant.id,
-    pv: passwordVersion(tenant.password_hash),
+    aid: account.id,
+    pv: passwordVersion(account.password_hash),
     exp: Date.now() + TOKEN_TTL_MS,
   })));
   const sig = b64u(await crypto.subtle.sign('HMAC', await hmacKey(env), enc.encode(body)));
@@ -1295,7 +1335,7 @@ async function verifyToken(env, token) {
     const ok = await crypto.subtle.verify('HMAC', await hmacKey(env), unb64u(sig), enc.encode(body));
     if (!ok) return null;
     const payload = JSON.parse(dec.decode(unb64u(body)));
-    if (!payload.exp || payload.exp < Date.now() || !payload.tid) return null;
+    if (!payload.exp || payload.exp < Date.now() || !(payload.aid || payload.tid)) return null;
     return payload;
   } catch {
     return null;
@@ -1323,19 +1363,142 @@ async function requireMaster(request, env) {
   }
 }
 
-async function requireTenant(request, env) {
+/* ------------------------------------------------------------------ */
+/* Planos                                                              */
+/* ------------------------------------------------------------------ */
+
+const PLANS = {
+  basic: { id: 'basic', name: 'Básico', stores: 1, templates: [1], customTemplates: false },
+  complete: { id: 'complete', name: 'Completo', stores: 3, templates: [1, 2, 3], customTemplates: true },
+};
+const planPrice = (env, plan) => (plan === 'complete' ? env.PLAN_PRICE_COMPLETE || '29,90' : env.PLAN_PRICE || '19,90');
+const lookupLimitFor = (env, plan) => (plan === 'complete'
+  ? clampInt(env.LOOKUP_LIMIT_COMPLETE, 1, 1000, 30)
+  : clampInt(env.LOOKUP_LIMIT_PER_HOUR, 1, 1000, 15));
+// Durante o teste grátis a conta usa tudo do plano Completo.
+const effectivePlan = (acc) => (acc.status === 'trial' ? 'complete' : PLANS[acc.plan] ? acc.plan : 'basic');
+
+function planInfo(env, acc) {
+  const id = effectivePlan(acc);
+  const p = PLANS[id];
+  return {
+    id, name: p.name, stores: p.stores, templates: p.templates, custom_templates: p.customTemplates,
+    lookups: lookupLimitFor(env, id), price: planPrice(env, id), contracted: PLANS[acc.plan] ? acc.plan : 'basic',
+    trial: acc.status === 'trial',
+  };
+}
+
+function plansCatalog(env) {
+  return Object.values(PLANS).map((p) => ({
+    id: p.id, name: p.name, stores: p.stores, templates: p.templates.length, custom_templates: p.customTemplates,
+    lookups: lookupLimitFor(env, p.id), price: planPrice(env, p.id),
+  }));
+}
+
+function accountPrivate(env, a) {
+  return {
+    id: a.id,
+    owner_name: a.owner_name,
+    whatsapp: a.whatsapp,
+    plan: PLANS[a.plan] ? a.plan : 'basic',
+    status: a.status,
+    trial_ends_at: a.trial_ends_at,
+    trial_days_left: a.status === 'trial' ? daysLeft(a.trial_ends_at) : 0,
+    paid_until: a.paid_until,
+    paid_days_left: a.status === 'active' ? (a.paid_until ? daysLeft(a.paid_until) : null) : 0,
+    created_at: a.created_at,
+    last_seen_at: a.last_seen_at || null,
+    last_login_at: a.last_login_at || null,
+    online: !!a.last_seen_at && Date.now() - Date.parse(a.last_seen_at) < ONLINE_WINDOW_MS,
+    plan_info: planInfo(env, a),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Sessão do lojista: conta + loja selecionada                         */
+/* ------------------------------------------------------------------ */
+
+async function requireAccount(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
   const payload = await verifyToken(env, token);
   if (!payload) throw new HttpError(401, 'Sessão expirada. Entre novamente.');
-  const tenant = await env.DB.prepare('SELECT * FROM tenants WHERE id = ?').bind(payload.tid).first();
-  if (!tenant || passwordVersion(tenant.password_hash) !== payload.pv) {
+  const account = payload.aid
+    ? await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(payload.aid).first()
+    // Tokens antigos (antes das contas) apontavam para a loja.
+    : await env.DB.prepare('SELECT a.* FROM accounts a JOIN tenants t ON t.account_id = a.id WHERE t.id = ?').bind(payload.tid).first();
+  if (!account || passwordVersion(account.password_hash) !== payload.pv) {
     throw new HttpError(401, 'Sessão expirada. Entre novamente.');
   }
-  return refreshStatus(env, tenant);
+  return refreshAccount(env, account);
+}
+
+// Loja "vestida" com o status da conta (status, teste e vencimento vêm da conta).
+function mergeStore(t, a) {
+  return {
+    ...t,
+    account_id: a.id,
+    status: a.status,
+    trial_ends_at: a.trial_ends_at,
+    paid_until: a.paid_until,
+    last_seen_at: a.last_seen_at,
+    last_login_at: a.last_login_at,
+    account: a,
+  };
+}
+
+// Lojas além do limite do plano (ex.: criou 3 no teste e assinou o Básico) ficam pausadas, sem apagar nada.
+async function storeOverLimit(env, account, storeId) {
+  const max = PLANS[effectivePlan(account)].stores;
+  const { results } = await env.DB.prepare('SELECT id FROM tenants WHERE account_id = ? ORDER BY created_at ASC, id ASC LIMIT ?')
+    .bind(account.id, max).all();
+  return !(results || []).some((r) => r.id === storeId);
+}
+
+async function requireStore(request, env, account) {
+  const wanted = String(request.headers.get('X-Store') || new URL(request.url).searchParams.get('store') || '').trim().toLowerCase();
+  let t = null;
+  if (wanted) t = await env.DB.prepare('SELECT * FROM tenants WHERE id = ? AND account_id = ?').bind(wanted, account.id).first();
+  if (!t) t = await env.DB.prepare('SELECT * FROM tenants WHERE account_id = ? ORDER BY created_at ASC LIMIT 1').bind(account.id).first();
+  if (!t) throw new HttpError(404, 'Nenhuma loja nesta conta. Crie a sua primeira loja.', { code: 'no_store' });
+  const merged = mergeStore(t, account);
+  merged.paused = await storeOverLimit(env, account, t.id);
+  return merged;
+}
+
+async function loadAccountStores(env, accountId) {
+  const { results } = await env.DB.prepare(
+    `SELECT t.id, t.store_name, t.avatar_url, t.theme_color, t.views, t.created_at,
+            (SELECT COUNT(*) FROM products p WHERE p.tenant_id = t.id) AS product_count
+       FROM tenants t WHERE t.account_id = ? ORDER BY t.created_at ASC, t.id ASC`,
+  ).bind(accountId).all();
+  return results || [];
+}
+
+async function loadAccountStoresFor(env, account) {
+  const max = PLANS[effectivePlan(account)].stores;
+  return (await loadAccountStores(env, account.id)).map((r, i) => ({
+    ...r, views: Number(r.views || 0), product_count: Number(r.product_count || 0), paused: i >= max,
+  }));
+}
+
+// Loja pública com o status da conta dona.
+async function loadPublicStore(env, id) {
+  const t = await env.DB.prepare('SELECT * FROM tenants WHERE id = ?').bind(id).first();
+  if (!t) return null;
+  let a = t.account_id ? await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(t.account_id).first() : null;
+  if (!a) return t; // banco ainda não migrado: usa os campos da própria loja
+  a = await refreshAccount(env, a);
+  const merged = mergeStore(t, a);
+  // Loja pausada pelo limite do plano aparece como indisponível.
+  if (merged.status !== 'expired' && await storeOverLimit(env, a, t.id)) merged.status = 'expired';
+  return merged;
 }
 
 function assertCanEdit(tenant) {
+  if (tenant.paused) {
+    throw new HttpError(403, 'Esta loja está pausada porque o seu plano permite menos lojas. Mude para o Completo para reativá-la.', { code: 'store_paused' });
+  }
   if (tenant.status === 'expired') {
     throw new HttpError(402, 'Seu período de teste terminou. Assine o plano para voltar a editar sua vitrine.', { code: 'expired' });
   }
@@ -1351,22 +1514,22 @@ function isLapsed(tenant, now = Date.now()) {
   return false;
 }
 
-async function refreshStatus(env, tenant) {
-  if (tenant && isLapsed(tenant)) {
+async function refreshAccount(env, account) {
+  if (account && isLapsed(account)) {
     const ts = nowIso();
     await env.DB.prepare(
-      "UPDATE tenants SET status = 'expired', updated_at = ? WHERE id = ? AND status IN ('trial', 'active')",
-    ).bind(ts, tenant.id).run();
-    tenant.status = 'expired';
-    tenant.updated_at = ts;
+      "UPDATE accounts SET status = 'expired', updated_at = ? WHERE id = ? AND status IN ('trial', 'active')",
+    ).bind(ts, account.id).run();
+    account.status = 'expired';
+    account.updated_at = ts;
   }
-  return tenant;
+  return account;
 }
 
-async function expireLapsedTenants(env) {
+async function expireLapsedAccounts(env) {
   const ts = nowIso();
   await env.DB.prepare(
-    `UPDATE tenants SET status = 'expired', updated_at = ?
+    `UPDATE accounts SET status = 'expired', updated_at = ?
      WHERE (status = 'trial' AND trial_ends_at <= ?)
         OR (status = 'active' AND paid_until IS NOT NULL AND paid_until <= ?)`,
   ).bind(ts, ts, ts).run();
@@ -1402,11 +1565,15 @@ function tenantPrivate(t) {
   };
 }
 
-const DEFAULT_SETTINGS = { show_prices: 1, show_stock_warning: 1, view_mode: 'grid', show_banner: 1, share_message: '', offer_template: 1 };
+const DEFAULT_SETTINGS = {
+  show_prices: 1, show_stock_warning: 1, view_mode: 'grid', show_banner: 1, share_message: '', offer_template: 1,
+  theme_mode: 'light', card_tone: 'white', offer_templates: '',
+};
 
 async function loadSettings(env, tenantId) {
   const row = await env.DB.prepare(
-    'SELECT show_prices, show_stock_warning, view_mode, show_banner, share_message, offer_template FROM tenant_settings WHERE tenant_id = ?',
+    `SELECT show_prices, show_stock_warning, view_mode, show_banner, share_message, offer_template,
+            theme_mode, card_tone, offer_templates FROM tenant_settings WHERE tenant_id = ?`,
   ).bind(tenantId).first();
   return row ? { ...DEFAULT_SETTINGS, ...row } : { ...DEFAULT_SETTINGS };
 }
@@ -1421,13 +1588,13 @@ async function loadProducts(env, tenantId, { onlyVisible = false } = {}) {
   return results || [];
 }
 
-async function touchPresence(env, tenantId, { login = false } = {}) {
+async function touchPresence(env, accountId, { login = false } = {}) {
   const ts = nowIso();
   await env.DB.prepare(
     login
-      ? 'UPDATE tenants SET last_seen_at = ?, last_login_at = ? WHERE id = ?'
-      : 'UPDATE tenants SET last_seen_at = ? WHERE id = ?',
-  ).bind(...(login ? [ts, ts, tenantId] : [ts, tenantId])).run();
+      ? 'UPDATE accounts SET last_seen_at = ?, last_login_at = ? WHERE id = ?'
+      : 'UPDATE accounts SET last_seen_at = ? WHERE id = ?',
+  ).bind(...(login ? [ts, ts, accountId] : [ts, accountId])).run();
   return ts;
 }
 
@@ -1475,6 +1642,8 @@ async function handleConfig(request, env) {
     app_name: 'Vitrine App',
     trial_days: trialDays(env),
     plan_price: env.PLAN_PRICE || '19,90',
+    plan_price_complete: env.PLAN_PRICE_COMPLETE || '29,90',
+    plans: plansCatalog(env),
     support_whatsapp: String(cfg.support_whatsapp || env.SUPPORT_WHATSAPP || '').replace(/\D/g, ''),
     video: videoEmbed(cfg.landing_video_url),
     lookup: { shopee: !!(await shopeeCredentials(env, cfg)), mercadolivre: mlConfigured(env) && !!cfg.ml_tokens },
@@ -1486,9 +1655,8 @@ async function handleConfig(request, env) {
 async function handleStore(env, rawId) {
   const id = String(rawId || '').toLowerCase();
   if (!SLUG_RE.test(id)) throw new HttpError(404, 'Vitrine não encontrada.');
-  let tenant = await env.DB.prepare('SELECT * FROM tenants WHERE id = ?').bind(id).first();
+  const tenant = await loadPublicStore(env, id);
   if (!tenant) throw new HttpError(404, 'Vitrine não encontrada.');
-  tenant = await refreshStatus(env, tenant);
 
   const [settings, products] = await Promise.all([
     loadSettings(env, id),
@@ -1501,6 +1669,7 @@ async function handleStore(env, rawId) {
   }
   delete settings.share_message;
   delete settings.offer_template;
+  delete settings.offer_templates;
 
   // Preço oculto (geral ou do produto): o valor nem sai do servidor.
   const visibleProducts = products.map((p) => (settings.show_prices && Number(p.show_price) !== 0 ? p : { ...p, price: null, original_price: null }));
@@ -1520,7 +1689,7 @@ async function handleImage(env, key) {
   return new Response(object.body, { headers });
 }
 
-// Entrada do lojista: pelo WhatsApp cadastrado (ou pelo endereço da loja) + senha.
+// Entrada do lojista: pelo WhatsApp da conta (ou pelo endereço de uma das lojas) + senha.
 async function handleLogin(request, env) {
   const body = await readJson(request);
   const raw = String(body.login ?? body.store_id ?? '').trim();
@@ -1528,27 +1697,29 @@ async function handleLogin(request, env) {
   const ip = clientIp(request);
   await checkLocked(env, [`ip:${ip}`]);
 
-  let tenant = null;
+  let account = null;
   if (/[a-z]/i.test(raw)) {
     const id = raw.toLowerCase().replace(/^.*\/s\//, '').replace(/[^a-z0-9-]/g, '');
-    if (SLUG_RE.test(id)) tenant = await env.DB.prepare('SELECT * FROM tenants WHERE id = ?').bind(id).first();
+    if (SLUG_RE.test(id)) {
+      account = await env.DB.prepare('SELECT a.* FROM accounts a JOIN tenants t ON t.account_id = a.id WHERE t.id = ?').bind(id).first();
+    }
   } else {
     let phone = '';
     try { phone = whatsapp(raw); } catch { phone = ''; }
     if (phone) {
-      const { results } = await env.DB.prepare('SELECT * FROM tenants WHERE whatsapp = ? ORDER BY created_at LIMIT 2').bind(phone).all();
+      const { results } = await env.DB.prepare('SELECT * FROM accounts WHERE whatsapp = ? ORDER BY created_at LIMIT 2').bind(phone).all();
       if (results && results.length > 1) {
-        throw new HttpError(409, 'Há mais de uma loja com este WhatsApp. Entre com o endereço da loja (ex.: loja-do-joao).', { code: 'phone_multiple' });
+        throw new HttpError(409, 'Há mais de uma conta com este WhatsApp. Entre com o endereço de uma das suas lojas (ex.: loja-do-joao).', { code: 'phone_multiple' });
       }
-      tenant = results && results[0] ? results[0] : null;
+      account = results && results[0] ? results[0] : null;
     }
   }
 
-  const keys = tenant ? [`t:${tenant.id}:${ip}`, `t:${tenant.id}`] : [];
+  const keys = account ? [`a:${account.id}:${ip}`, `a:${account.id}`] : [];
   if (keys.length) await checkLocked(env, keys);
-  const ok = await verifyPassword(pw, tenant ? tenant.password_hash : DUMMY_HASH);
-  if (!tenant || !ok) {
-    if (tenant) {
+  const ok = await verifyPassword(pw, account ? account.password_hash : DUMMY_HASH);
+  if (!account || !ok) {
+    if (account) {
       await registerFail(env, keys[0], { max: 5, windowMin: 15, lockMin: 15 });
       await registerFail(env, keys[1], { max: 20, windowMin: 60, lockMin: 30 });
     } else {
@@ -1557,9 +1728,13 @@ async function handleLogin(request, env) {
     throw new HttpError(401, 'WhatsApp ou senha incorretos.');
   }
   await clearFails(env, keys);
-  await refreshStatus(env, tenant);
-  tenant.last_seen_at = tenant.last_login_at = await touchPresence(env, tenant.id, { login: true });
-  return json({ token: await signToken(env, tenant), tenant: tenantPrivate(tenant) });
+  await refreshAccount(env, account);
+  account.last_seen_at = account.last_login_at = await touchPresence(env, account.id, { login: true });
+  return json({
+    token: await signToken(env, account),
+    account: accountPrivate(env, account),
+    stores: await loadAccountStoresFor(env, account),
+  });
 }
 
 async function handleCheckSlug(env, url) {
@@ -1577,17 +1752,18 @@ async function handleCheckSlug(env, url) {
   return json({ id, available: false, reason: 'Este endereço já está em uso.', suggestion });
 }
 
-// Cadastro aberto: cria a loja com 7 dias grátis e já entra no painel.
+// Cadastro aberto: cria a conta (7 dias grátis com tudo do plano Completo) + a primeira loja.
 async function handleRegister(request, env) {
   const body = await readJson(request);
   if (String(body.website || '').trim()) throw new HttpError(400, 'Não foi possível concluir o cadastro.'); // campo-isca anti-robô
-  const tenant = await createTenant(request, env, body);
-  tenant.last_seen_at = tenant.last_login_at = await touchPresence(env, tenant.id, { login: true });
-  const full = await env.DB.prepare('SELECT * FROM tenants WHERE id = ?').bind(tenant.id).first();
+  const { account, store } = await createAccountWithStore(env, body);
+  account.last_seen_at = account.last_login_at = await touchPresence(env, account.id, { login: true });
   return json({
-    token: await signToken(env, full),
-    tenant: tenantPrivate(full),
-    store_url: `${publicBase(request, env)}/s/${tenant.id}`,
+    token: await signToken(env, account),
+    account: accountPrivate(env, account),
+    stores: await loadAccountStoresFor(env, account),
+    store_id: store.id,
+    store_url: `${publicBase(request, env)}/s/${store.id}`,
   }, 201);
 }
 
@@ -1598,13 +1774,15 @@ async function handleRegister(request, env) {
 async function handleLookup(request, env, tenant) {
   assertCanEdit(tenant);
   const body = await readJson(request);
-  const product = await lookupProduct(env, body.url, { tenantId: tenant.id });
-  return json({ product, quota: await lookupQuota(env, tenant.id) });
+  const quotaKey = `acc:${tenant.account_id}`;
+  const limit = lookupLimitFor(env, effectivePlan(tenant.account));
+  const product = await lookupProduct(env, body.url, { tenantId: quotaKey, limit });
+  return json({ product, quota: await lookupQuota(env, quotaKey, limit) });
 }
 
-async function handlePing(env, tenant) {
-  await touchPresence(env, tenant.id);
-  return json({ ok: true, status: tenant.status });
+async function handlePing(env, account) {
+  await touchPresence(env, account.id);
+  return json({ ok: true, status: account.status });
 }
 
 async function handleVisibility(request, env, tenant, rawId) {
@@ -1618,15 +1796,57 @@ async function handleVisibility(request, env, tenant, rawId) {
 }
 
 async function handleMe(request, env, tenant) {
-  await touchPresence(env, tenant.id).catch(() => {});
-  const [settings, products] = await Promise.all([loadSettings(env, tenant.id), loadProducts(env, tenant.id)]);
+  await touchPresence(env, tenant.account_id).catch(() => {});
+  const plan = effectivePlan(tenant.account);
+  const [settings, products, stores] = await Promise.all([
+    loadSettings(env, tenant.id), loadProducts(env, tenant.id), loadAccountStoresFor(env, tenant.account),
+  ]);
   return json({
-    tenant: tenantPrivate(tenant),
+    tenant: { ...tenantPrivate(tenant), paused: !!tenant.paused },
+    account: accountPrivate(env, tenant.account),
+    stores,
     settings,
     products,
     store_url: `${publicBase(request, env)}/s/${tenant.id}`,
-    lookup_quota: await lookupQuota(env, tenant.id),
+    lookup_quota: await lookupQuota(env, `acc:${tenant.account_id}`, lookupLimitFor(env, plan)),
   });
+}
+
+// Lista de lojas da conta (tela "Minhas lojas").
+async function handleStores(request, env, account) {
+  await touchPresence(env, account.id).catch(() => {});
+  const base = publicBase(request, env);
+  const stores = (await loadAccountStoresFor(env, account)).map((st) => ({ ...st, store_url: `${base}/s/${st.id}` }));
+  return json({ account: accountPrivate(env, account), stores, plans: plansCatalog(env) });
+}
+
+async function handleCreateStore(request, env, account) {
+  assertCanEdit(account);
+  const max = PLANS[effectivePlan(account)].stores;
+  const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM tenants WHERE account_id = ?').bind(account.id).first('n');
+  if (Number(count) >= max) {
+    throw new HttpError(403, max === 1
+      ? 'Seu plano Básico permite 1 loja. Mude para o plano Completo para ter até 3 lojas.'
+      : `Seu plano permite até ${max} lojas.`, { code: 'store_limit' });
+  }
+  const body = await readJson(request);
+  const store = await createStore(env, account, { ...body, whatsapp: body.whatsapp || account.whatsapp, owner_name: body.owner_name || account.owner_name });
+  return json({ store: { ...store, store_url: `${publicBase(request, env)}/s/${store.id}` } }, 201);
+}
+
+async function handleDeleteStore(env, account, rawId) {
+  const id = String(rawId || '').toLowerCase();
+  const t = await env.DB.prepare('SELECT id FROM tenants WHERE id = ? AND account_id = ?').bind(id, account.id).first();
+  if (!t) throw new HttpError(404, 'Loja não encontrada.');
+  const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM tenants WHERE account_id = ?').bind(account.id).first('n');
+  if (Number(count) <= 1) throw new HttpError(400, 'Esta é a sua única loja e não pode ser excluída.');
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM products WHERE tenant_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM tenant_settings WHERE tenant_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM tenants WHERE id = ?').bind(id),
+  ]);
+  await deleteAllTenantImages(env, id);
+  return json({ ok: true });
 }
 
 async function handleProfile(request, env, tenant) {
@@ -1639,7 +1859,6 @@ async function handleProfile(request, env, tenant) {
     avatar_url: httpUrl(body.avatar_url, 'Foto/logo', { allowData: true }),
     theme_color: color(body.theme_color, tenant.theme_color),
   };
-  await assertPhoneFree(env, data.whatsapp, tenant.id);
   const ts = nowIso();
   await env.DB.prepare(
     `UPDATE tenants SET store_name = ?, owner_name = ?, whatsapp = ?, avatar_url = ?, theme_color = ?, updated_at = ?
@@ -1661,30 +1880,54 @@ async function handleSettings(request, env, tenant) {
     show_banner: bool01(pick('show_banner')),
     share_message: text(pick('share_message'), 600, 'Mensagem pronta'),
     offer_template: clampInt(pick('offer_template'), 1, 3, 1),
+    theme_mode: pick('theme_mode') === 'dark' ? 'dark' : 'light',
+    card_tone: pick('card_tone') === 'tinted' ? 'tinted' : 'white',
+    offer_templates: current.offer_templates || '',
   };
+  // Recursos do plano: modelos 2 e 3 e edição dos modelos são do plano Completo (e do teste grátis).
+  const plan = PLANS[effectivePlan(tenant.account)];
+  if (!plan.templates.includes(settings.offer_template)) settings.offer_template = 1;
+  if (body.offer_templates !== undefined) {
+    if (!plan.customTemplates) throw new HttpError(403, 'Editar os modelos de mensagem é um recurso do plano Completo.', { code: 'plan_feature' });
+    const tpl = body.offer_templates && typeof body.offer_templates === 'object' ? body.offer_templates : {};
+    const clean = {};
+    for (const k of ['1', '2', '3']) {
+      if (typeof tpl[k] === 'string' && tpl[k].trim()) clean[k] = text(tpl[k], 1200, `Modelo ${k}`);
+    }
+    settings.offer_templates = Object.keys(clean).length ? JSON.stringify(clean) : '';
+  }
   await env.DB.prepare(
-    `INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, show_banner, share_message, offer_template)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, show_banner, share_message,
+                                  offer_template, theme_mode, card_tone, offer_templates)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (tenant_id) DO UPDATE SET
        show_prices = excluded.show_prices,
        show_stock_warning = excluded.show_stock_warning,
        view_mode = excluded.view_mode,
        show_banner = excluded.show_banner,
        share_message = excluded.share_message,
-       offer_template = excluded.offer_template`,
-  ).bind(tenant.id, settings.show_prices, settings.show_stock_warning, settings.view_mode, settings.show_banner, settings.share_message, settings.offer_template).run();
+       offer_template = excluded.offer_template,
+       theme_mode = excluded.theme_mode,
+       card_tone = excluded.card_tone,
+       offer_templates = excluded.offer_templates`,
+  ).bind(tenant.id, settings.show_prices, settings.show_stock_warning, settings.view_mode, settings.show_banner, settings.share_message,
+    settings.offer_template, settings.theme_mode, settings.card_tone, settings.offer_templates).run();
   return json({ settings });
 }
 
 async function handlePassword(request, env, tenant) {
   const body = await readJson(request);
-  if (!(await verifyPassword(String(body.current_password || ''), tenant.password_hash))) {
+  const account = tenant;
+  if (!(await verifyPassword(String(body.current_password || ''), account.password_hash))) {
     throw new HttpError(400, 'A senha atual está incorreta.');
   }
   const hash = await hashPassword(password(body.new_password, 'Nova senha'));
-  await env.DB.prepare('UPDATE tenants SET password_hash = ?, updated_at = ? WHERE id = ?')
-    .bind(hash, nowIso(), tenant.id).run();
-  return json({ ok: true, token: await signToken(env, { ...tenant, password_hash: hash }) });
+  const ts = nowIso();
+  await env.DB.batch([
+    env.DB.prepare('UPDATE accounts SET password_hash = ?, updated_at = ? WHERE id = ?').bind(hash, ts, account.id),
+    env.DB.prepare('UPDATE tenants SET password_hash = ?, updated_at = ? WHERE account_id = ?').bind(hash, ts, account.id),
+  ]);
+  return json({ ok: true, token: await signToken(env, { ...account, password_hash: hash }) });
 }
 
 async function handleUpload(request, env, tenant) {
@@ -1760,34 +2003,6 @@ async function handleDeleteProduct(env, tenant, rawId) {
 /* Handlers Master                                                     */
 /* ------------------------------------------------------------------ */
 
-async function handleAdminList(request, env) {
-  await expireLapsedTenants(env);
-  const { results } = await env.DB.prepare(
-    `SELECT t.*, (SELECT COUNT(*) FROM products p WHERE p.tenant_id = t.id) AS product_count
-       FROM tenants t ORDER BY t.created_at DESC`,
-  ).all();
-  const base = publicBase(request, env);
-  const tenants = (results || []).map((t) => ({
-    ...tenantPrivate(t),
-    product_count: Number(t.product_count || 0),
-    store_url: `${base}/s/${t.id}`,
-  }));
-  const dayAgo = Date.now() - DAY_MS;
-  const stats = {
-    total: tenants.length,
-    trial: tenants.filter((t) => t.status === 'trial').length,
-    active: tenants.filter((t) => t.status === 'active').length,
-    expired: tenants.filter((t) => t.status === 'expired').length,
-    online: tenants.filter((t) => t.online).length,
-    active_today: tenants.filter((t) => t.last_seen_at && Date.parse(t.last_seen_at) >= dayAgo).length,
-    with_products: tenants.filter((t) => t.product_count > 0).length,
-    products: tenants.reduce((sum, t) => sum + t.product_count, 0),
-    views: tenants.reduce((sum, t) => sum + t.views, 0),
-    new_7d: tenants.filter((t) => Date.parse(t.created_at) >= Date.now() - 7 * DAY_MS).length,
-  };
-  return json({ tenants, stats, plan_price: env.PLAN_PRICE || '19,90', trial_days: trialDays(env), server_time: nowIso() });
-}
-
 async function handleAdminConfigGet(env) {
   const cfg = await getConfig(env);
   return json({
@@ -1835,7 +2050,8 @@ async function handleAdminConfigPut(request, env) {
   return handleAdminConfigGet(env);
 }
 
-async function createTenant(request, env, body) {
+// Cria uma loja dentro de uma conta (o status/plano vem da conta).
+async function createStore(env, account, body) {
   const storeName = text(body.store_name, 80, 'Nome da loja', { required: true });
   const id = storeSlug(body.id ? slugify(body.id) : slugify(storeName));
   const data = {
@@ -1845,25 +2061,19 @@ async function createTenant(request, env, body) {
     whatsapp: whatsapp(body.whatsapp, { required: true }),
     avatar_url: httpUrl(body.avatar_url, 'Foto/logo'),
     theme_color: color(body.theme_color),
-    password_hash: await hashPassword(password(body.password)),
   };
   const exists = await env.DB.prepare('SELECT 1 FROM tenants WHERE id = ?').bind(id).first();
   if (exists) throw new HttpError(409, `O endereço "${id}" já está em uso. Escolha outro.`, { code: 'slug_taken' });
-  await assertPhoneFree(env, data.whatsapp);
-
-  const createdMs = Date.now();
-  const createdAt = new Date(createdMs).toISOString();
-  const trialEndsAt = addDays(createdMs, trialDays(env)); // 7 dias grátis automáticos
-
+  const ts = nowIso();
   try {
     await env.DB.batch([
       env.DB.prepare(
-        `INSERT INTO tenants (id, store_name, owner_name, whatsapp, avatar_url, theme_color, password_hash,
+        `INSERT INTO tenants (id, account_id, store_name, owner_name, whatsapp, avatar_url, theme_color, password_hash,
                               status, trial_ends_at, paid_until, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'trial', ?, NULL, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
-        data.id, data.store_name, data.owner_name, data.whatsapp, data.avatar_url, data.theme_color,
-        data.password_hash, trialEndsAt, createdAt, createdAt,
+        data.id, account.id, data.store_name, data.owner_name, data.whatsapp, data.avatar_url, data.theme_color,
+        account.password_hash, account.status, account.trial_ends_at, account.paid_until || null, ts, ts,
       ),
       env.DB.prepare(
         'INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode) VALUES (?, 1, 1, ?)',
@@ -1875,86 +2085,205 @@ async function createTenant(request, env, body) {
     }
     throw err;
   }
-  return env.DB.prepare('SELECT * FROM tenants WHERE id = ?').bind(id).first();
+  return { ...data, views: 0, product_count: 0, created_at: ts };
+}
+
+async function createAccountWithStore(env, body, { plan = 'basic' } = {}) {
+  const phone = whatsapp(body.whatsapp, { required: true });
+  const ownerName = text(body.owner_name, 80, 'Seu nome');
+  const hash = await hashPassword(password(body.password));
+  // Valida a loja antes de criar a conta (evita conta sem loja).
+  const storeName = text(body.store_name, 80, 'Nome da loja', { required: true });
+  const slug = storeSlug(body.id ? slugify(body.id) : slugify(storeName));
+  if (await env.DB.prepare('SELECT 1 FROM tenants WHERE id = ?').bind(slug).first()) {
+    throw new HttpError(409, `O endereço "${slug}" já está em uso. Escolha outro.`, { code: 'slug_taken' });
+  }
+  await assertPhoneFree(env, phone);
+  const createdMs = Date.now();
+  const ts = new Date(createdMs).toISOString();
+  const trialEndsAt = addDays(createdMs, trialDays(env)); // 7 dias grátis (com tudo do Completo)
+  const res = await env.DB.prepare(
+    `INSERT INTO accounts (owner_name, whatsapp, password_hash, plan, status, trial_ends_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'trial', ?, ?, ?)`,
+  ).bind(ownerName, phone, hash, PLANS[plan] ? plan : 'basic', trialEndsAt, ts, ts).run();
+  const accountId = res.meta && res.meta.last_row_id;
+  const account = await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(accountId).first();
+  try {
+    const store = await createStore(env, account, { ...body, id: slug, store_name: storeName, whatsapp: phone, owner_name: ownerName });
+    return { account, store };
+  } catch (err) {
+    await env.DB.prepare('DELETE FROM accounts WHERE id = ?').bind(accountId).run();
+    throw err;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Master: contas                                                      */
+/* ------------------------------------------------------------------ */
+
+async function adminAccountView(env, base, a, storesByAccount) {
+  const stores = (storesByAccount.get(a.id) || []).map((t) => ({
+    id: t.id, store_name: t.store_name, avatar_url: t.avatar_url, theme_color: t.theme_color,
+    views: Number(t.views || 0), product_count: Number(t.product_count || 0), store_url: `${base}/s/${t.id}`,
+  }));
+  const first = stores[0] || {};
+  return {
+    ...accountPrivate(env, a),
+    // Campos da 1ª loja para manter o painel simples
+    store_name: first.store_name || '(sem loja)',
+    avatar_url: first.avatar_url || '',
+    theme_color: first.theme_color || '#16a6e0',
+    store_url: first.store_url || '',
+    stores,
+    store_count: stores.length,
+    product_count: stores.reduce((n, t) => n + t.product_count, 0),
+    views: stores.reduce((n, t) => n + t.views, 0),
+  };
+}
+
+async function loadAdminAccounts(env, base, onlyId = null) {
+  const accs = onlyId
+    ? (await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(onlyId).all()).results || []
+    : (await env.DB.prepare('SELECT * FROM accounts ORDER BY created_at DESC').all()).results || [];
+  const { results: stores } = await env.DB.prepare(
+    `SELECT t.id, t.account_id, t.store_name, t.avatar_url, t.theme_color, t.views, t.created_at,
+            (SELECT COUNT(*) FROM products p WHERE p.tenant_id = t.id) AS product_count
+       FROM tenants t ${onlyId ? 'WHERE t.account_id = ?' : ''} ORDER BY t.created_at ASC`,
+  ).bind(...(onlyId ? [onlyId] : [])).all();
+  const map = new Map();
+  for (const t of stores || []) {
+    if (!map.has(t.account_id)) map.set(t.account_id, []);
+    map.get(t.account_id).push(t);
+  }
+  return Promise.all(accs.map((a) => adminAccountView(env, base, a, map)));
+}
+
+async function handleAdminList(request, env) {
+  await expireLapsedAccounts(env);
+  const accounts = await loadAdminAccounts(env, publicBase(request, env));
+  const dayAgo = Date.now() - DAY_MS;
+  const toNum = (v) => Number(String(v).replace(/\./g, '').replace(',', '.')) || 0;
+  const active = accounts.filter((a) => a.status === 'active');
+  const stats = {
+    total: accounts.length,
+    trial: accounts.filter((a) => a.status === 'trial').length,
+    active: active.length,
+    expired: accounts.filter((a) => a.status === 'expired').length,
+    online: accounts.filter((a) => a.online).length,
+    active_today: accounts.filter((a) => a.last_seen_at && Date.parse(a.last_seen_at) >= dayAgo).length,
+    with_products: accounts.filter((a) => a.product_count > 0).length,
+    products: accounts.reduce((sum, a) => sum + a.product_count, 0),
+    views: accounts.reduce((sum, a) => sum + a.views, 0),
+    stores: accounts.reduce((sum, a) => sum + a.store_count, 0),
+    new_7d: accounts.filter((a) => Date.parse(a.created_at) >= Date.now() - 7 * DAY_MS).length,
+    active_basic: active.filter((a) => a.plan === 'basic').length,
+    active_complete: active.filter((a) => a.plan === 'complete').length,
+  };
+  stats.mrr = Math.round((stats.active_basic * toNum(planPrice(env, 'basic')) + stats.active_complete * toNum(planPrice(env, 'complete'))) * 100) / 100;
+  return json({
+    accounts, tenants: accounts, stats, plans: plansCatalog(env),
+    plan_price: planPrice(env, 'basic'), plan_price_complete: planPrice(env, 'complete'),
+    trial_days: trialDays(env), server_time: nowIso(),
+  });
 }
 
 async function handleAdminCreate(request, env) {
-  const tenant = await createTenant(request, env, await readJson(request));
-  return json({
-    tenant: { ...tenantPrivate(tenant), product_count: 0, store_url: `${publicBase(request, env)}/s/${tenant.id}` },
-  }, 201);
+  const body = await readJson(request);
+  const { account } = await createAccountWithStore(env, body, { plan: body.plan });
+  const [view] = await loadAdminAccounts(env, publicBase(request, env), account.id);
+  return json({ account: view, tenant: view }, 201);
+}
+
+// Aceita o id numérico da conta ou o endereço de uma das lojas.
+async function findAccount(env, rawId) {
+  const id = String(rawId || '').trim().toLowerCase();
+  if (/^\d+$/.test(id)) {
+    const a = await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(Number(id)).first();
+    if (a) return a;
+  }
+  return env.DB.prepare('SELECT a.* FROM accounts a JOIN tenants t ON t.account_id = a.id WHERE t.id = ?').bind(id).first();
 }
 
 async function handleAdminPatch(request, env, rawId) {
-  const id = String(rawId || '').toLowerCase();
-  const tenant = await env.DB.prepare('SELECT * FROM tenants WHERE id = ?').bind(id).first();
-  if (!tenant) throw new HttpError(404, 'Loja não encontrada.');
+  const acc = await findAccount(env, rawId);
+  if (!acc) throw new HttpError(404, 'Conta não encontrada.');
+  const id = acc.id;
   const body = await readJson(request);
   const ts = nowIso();
   const now = Date.now();
+  const planOf = (v) => (PLANS[v] ? v : null);
 
   switch (body.action) {
     case 'activate': {
       // Soma os dias ao que ainda resta do plano pago (renovação não perde dias).
       const days = clampInt(body.days, 1, 3650, 30);
-      const current = tenant.status === 'active' && tenant.paid_until ? Date.parse(tenant.paid_until) : 0;
+      const plan = planOf(body.plan) || acc.plan || 'basic';
+      const current = acc.status === 'active' && acc.paid_until ? Date.parse(acc.paid_until) : 0;
       const paidUntil = addDays(Math.max(now, current), days);
-      await env.DB.prepare("UPDATE tenants SET status = 'active', paid_until = ?, updated_at = ? WHERE id = ?")
-        .bind(paidUntil, ts, id).run();
+      await env.DB.prepare("UPDATE accounts SET status = 'active', plan = ?, paid_until = ?, updated_at = ? WHERE id = ?")
+        .bind(plan, paidUntil, ts, id).run();
+      break;
+    }
+    case 'set_plan': {
+      const plan = planOf(body.plan);
+      if (!plan) throw new HttpError(400, 'Plano inválido.');
+      await env.DB.prepare('UPDATE accounts SET plan = ?, updated_at = ? WHERE id = ?').bind(plan, ts, id).run();
       break;
     }
     case 'extend_trial': {
       const days = clampInt(body.days, 1, 365, 7);
-      const current = Date.parse(tenant.trial_ends_at) || 0;
+      const current = Date.parse(acc.trial_ends_at) || 0;
       const trialEndsAt = addDays(Math.max(now, current), days);
-      await env.DB.prepare("UPDATE tenants SET status = 'trial', trial_ends_at = ?, updated_at = ? WHERE id = ?")
+      await env.DB.prepare("UPDATE accounts SET status = 'trial', trial_ends_at = ?, updated_at = ? WHERE id = ?")
         .bind(trialEndsAt, ts, id).run();
       break;
     }
     case 'expire':
-      await env.DB.prepare("UPDATE tenants SET status = 'expired', updated_at = ? WHERE id = ?").bind(ts, id).run();
+      await env.DB.prepare("UPDATE accounts SET status = 'expired', updated_at = ? WHERE id = ?").bind(ts, id).run();
       break;
     case 'reset_password': {
       const hash = await hashPassword(password(body.password, 'Nova senha'));
-      await env.DB.prepare('UPDATE tenants SET password_hash = ?, updated_at = ? WHERE id = ?').bind(hash, ts, id).run();
-      await env.DB.prepare("DELETE FROM login_attempts WHERE key = ? OR key LIKE ?").bind(`t:${id}`, `t:${id}:%`).run();
+      await env.DB.batch([
+        env.DB.prepare('UPDATE accounts SET password_hash = ?, updated_at = ? WHERE id = ?').bind(hash, ts, id),
+        env.DB.prepare('UPDATE tenants SET password_hash = ? WHERE account_id = ?').bind(hash, id),
+        env.DB.prepare('DELETE FROM login_attempts WHERE key = ? OR key LIKE ?').bind(`a:${id}`, `a:${id}:%`),
+      ]);
       break;
     }
     case 'update': {
-      const storeName = text(body.store_name ?? tenant.store_name, 80, 'Nome da loja', { required: true });
-      const ownerName = text(body.owner_name ?? tenant.owner_name, 80, 'Nome do responsável');
-      const phone = whatsapp(body.whatsapp ?? tenant.whatsapp, { required: true });
+      const ownerName = text(body.owner_name ?? acc.owner_name, 80, 'Nome do responsável');
+      const phone = whatsapp(body.whatsapp ?? acc.whatsapp, { required: true });
       await assertPhoneFree(env, phone, id);
-      await env.DB.prepare('UPDATE tenants SET store_name = ?, owner_name = ?, whatsapp = ?, updated_at = ? WHERE id = ?')
-        .bind(storeName, ownerName, phone, ts, id).run();
+      await env.DB.prepare('UPDATE accounts SET owner_name = ?, whatsapp = ?, updated_at = ? WHERE id = ?')
+        .bind(ownerName, phone, ts, id).run();
+      if (body.store_name !== undefined && body.store_id) {
+        const storeName = text(body.store_name, 80, 'Nome da loja', { required: true });
+        await env.DB.prepare('UPDATE tenants SET store_name = ?, updated_at = ? WHERE id = ? AND account_id = ?')
+          .bind(storeName, ts, String(body.store_id).toLowerCase(), id).run();
+      }
       break;
     }
     default:
       throw new HttpError(400, 'Ação inválida.');
   }
-
-  const updated = await env.DB.prepare(
-    'SELECT t.*, (SELECT COUNT(*) FROM products p WHERE p.tenant_id = t.id) AS product_count FROM tenants t WHERE t.id = ?',
-  ).bind(id).first();
-  return json({
-    tenant: {
-      ...tenantPrivate(updated),
-      product_count: Number(updated.product_count || 0),
-      store_url: `${publicBase(request, env)}/s/${id}`,
-    },
-  });
+  const [view] = await loadAdminAccounts(env, publicBase(request, env), id);
+  return json({ account: view, tenant: view });
 }
 
 async function handleAdminDelete(env, rawId) {
-  const id = String(rawId || '').toLowerCase();
-  const exists = await env.DB.prepare('SELECT 1 FROM tenants WHERE id = ?').bind(id).first();
-  if (!exists) throw new HttpError(404, 'Loja não encontrada.');
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM products WHERE tenant_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM tenant_settings WHERE tenant_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM tenants WHERE id = ?').bind(id),
-  ]);
-  await deleteAllTenantImages(env, id);
+  const acc = await findAccount(env, rawId);
+  if (!acc) throw new HttpError(404, 'Conta não encontrada.');
+  const { results } = await env.DB.prepare('SELECT id FROM tenants WHERE account_id = ?').bind(acc.id).all();
+  const ids = (results || []).map((r) => r.id);
+  const stmts = [];
+  for (const sid of ids) {
+    stmts.push(env.DB.prepare('DELETE FROM products WHERE tenant_id = ?').bind(sid));
+    stmts.push(env.DB.prepare('DELETE FROM tenant_settings WHERE tenant_id = ?').bind(sid));
+  }
+  stmts.push(env.DB.prepare('DELETE FROM tenants WHERE account_id = ?').bind(acc.id));
+  stmts.push(env.DB.prepare('DELETE FROM accounts WHERE id = ?').bind(acc.id));
+  await env.DB.batch(stmts);
+  for (const sid of ids) await deleteAllTenantImages(env, sid);
   return json({ ok: true });
 }
 
@@ -1976,13 +2305,19 @@ async function routeApi(request, env, path) {
   if (path === '/api/auth/check-slug' && method === 'GET') return handleCheckSlug(env, new URL(request.url));
 
   if (path === '/api/me' || path.startsWith('/api/me/')) {
-    const tenant = await requireTenant(request, env);
+    const account = await requireAccount(request, env);
+    if (path === '/api/me/ping' && method === 'POST') return handlePing(env, account);
+    if (path === '/api/me/password' && method === 'PUT') return handlePassword(request, env, account);
+    if (path === '/api/me/stores' && method === 'GET') return handleStores(request, env, account);
+    if (path === '/api/me/stores' && method === 'POST') return handleCreateStore(request, env, account);
+    if ((m = path.match(/^\/api\/me\/stores\/([^/]+)$/)) && method === 'DELETE') {
+      return handleDeleteStore(env, account, decodeURIComponent(m[1]));
+    }
+    const tenant = await requireStore(request, env, account);
     if (path === '/api/me' && method === 'GET') return handleMe(request, env, tenant);
-    if (path === '/api/me/ping' && method === 'POST') return handlePing(env, tenant);
     if (path === '/api/me/lookup' && method === 'POST') return handleLookup(request, env, tenant);
     if (path === '/api/me/profile' && method === 'PUT') return handleProfile(request, env, tenant);
     if (path === '/api/me/settings' && method === 'PUT') return handleSettings(request, env, tenant);
-    if (path === '/api/me/password' && method === 'PUT') return handlePassword(request, env, tenant);
     if (path === '/api/me/upload' && method === 'POST') return handleUpload(request, env, tenant);
     if (path === '/api/me/products' && method === 'POST') return handleCreateProduct(request, env, tenant);
     if ((m = path.match(/^\/api\/me\/products\/(\d+)\/visibility$/)) && method === 'PATCH') {
@@ -2010,15 +2345,15 @@ async function routeApi(request, env, path) {
       await env.DB.prepare("DELETE FROM app_config WHERE key IN ('ml_tokens', 'ml_nickname')").run();
       return json({ ok: true });
     }
-    if (path === '/api/admin/tenants' && method === 'GET') return handleAdminList(request, env);
-    if (path === '/api/admin/tenants' && method === 'POST') return handleAdminCreate(request, env);
+    if ((path === '/api/admin/tenants' || path === '/api/admin/accounts') && method === 'GET') return handleAdminList(request, env);
+    if ((path === '/api/admin/tenants' || path === '/api/admin/accounts') && method === 'POST') return handleAdminCreate(request, env);
     if (path === '/api/admin/config' && method === 'GET') return handleAdminConfigGet(env);
     if (path === '/api/admin/config' && method === 'PUT') return handleAdminConfigPut(request, env);
     if (path === '/api/admin/integrations/test' && method === 'POST') {
       const body = await readJson(request);
       return json({ product: await lookupProduct(env, body.url, { useCache: false }) });
     }
-    if ((m = path.match(/^\/api\/admin\/tenants\/([^/]+)$/))) {
+    if ((m = path.match(/^\/api\/admin\/(?:tenants|accounts)\/([^/]+)$/))) {
       if (method === 'PATCH') return handleAdminPatch(request, env, decodeURIComponent(m[1]));
       if (method === 'DELETE') return handleAdminDelete(env, decodeURIComponent(m[1]));
     }
@@ -2034,7 +2369,10 @@ const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || ''));
 
 async function storeMeta(env, slug, productId) {
   const t = await env.DB.prepare(
-    'SELECT id, store_name, owner_name, avatar_url, theme_color, status, trial_ends_at, paid_until FROM tenants WHERE id = ?',
+    `SELECT t.id, t.store_name, t.owner_name, t.avatar_url, t.theme_color,
+            COALESCE(a.status, t.status) AS status, COALESCE(a.trial_ends_at, t.trial_ends_at) AS trial_ends_at,
+            COALESCE(a.paid_until, t.paid_until) AS paid_until
+       FROM tenants t LEFT JOIN accounts a ON a.id = t.account_id WHERE t.id = ?`,
   ).bind(slug).first();
   if (!t) return null;
   const meta = {

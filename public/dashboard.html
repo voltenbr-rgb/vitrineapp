@@ -54,6 +54,33 @@
     /* ---------- Componentes ---------- */
     .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
     .card + .card { margin-top: 14px; }
+    /* Minhas lojas */
+    .stores-head { display: flex; align-items: center; gap: 12px; margin: 6px 2px 14px; }
+    .stores-head h1 { margin: 0; font-size: 22px; }
+    .stores-head p { margin: 2px 0 0; color: var(--muted, #6b7280); font-size: 13.5px; }
+    .stores-head .btn { margin-left: auto; }
+    .store-pick { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 2px solid transparent; background: var(--card, #fff); border-radius: 18px; padding: 14px; box-shadow: var(--shadow); cursor: pointer; font: inherit; color: inherit; }
+    .store-pick + .store-pick { margin-top: 10px; }
+    .store-pick:hover { border-color: var(--accent); }
+    .store-pick .sav { width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; color: #fff; flex-shrink: 0; overflow: hidden; }
+    .store-pick .sav img { width: 100%; height: 100%; object-fit: cover; }
+    .store-pick .sinfo { flex: 1; min-width: 0; }
+    .store-pick .sinfo strong { display: block; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .store-pick .sinfo small { color: var(--muted, #6b7280); font-size: 12.5px; }
+    .store-pick .go { font-weight: 800; color: var(--accent-deep); font-size: 13px; white-space: nowrap; }
+    .store-new { margin-top: 12px; width: 100%; border: 2px dashed color-mix(in srgb, var(--accent) 45%, #d1d5db); background: transparent; border-radius: 18px; padding: 16px; font: inherit; font-weight: 800; color: var(--accent-deep); cursor: pointer; }
+    .upsell { margin-top: 14px; border-radius: 18px; padding: 16px; background: linear-gradient(135deg, #fff7e6, #fff); border: 1px solid #f6d58f; }
+    .upsell strong { display: block; margin-bottom: 4px; }
+    .upsell p { margin: 0 0 10px; font-size: 13.5px; color: #6b5a2e; }
+    .back-stores { display: inline-flex; align-items: center; gap: 4px; border: 0; background: var(--accent-soft); color: var(--accent-deep); font: inherit; font-weight: 800; font-size: 12.5px; border-radius: 999px; padding: 6px 12px 6px 8px; margin: 0 0 10px; cursor: pointer; }
+    .plan-tag { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .02em; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-deep); vertical-align: middle; }
+    .plan-tag.gold { background: #fff1c7; color: #8a5a00; }
+    .models button.locked { opacity: .6; }
+    .tpl-edit { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tpl-help { font-size: 12px; color: var(--muted, #6b7280); margin: 6px 0 0; line-height: 1.5; }
+    .tpl-help code { background: #f1f5f9; padding: 1px 5px; border-radius: 6px; }
+    .tone-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .tone-prev { display: block; height: 46px; border-radius: 12px; margin-bottom: 6px; border: 1px solid #e5e7eb; }
     .card h2 { margin: 0 0 4px; font-size: 18px; letter-spacing: -.01em; }
     .card .sub { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
     .btn {
@@ -197,6 +224,8 @@
     .plan strong { display: block; font-size: 14px; margin-bottom: 2px; }
     .plan .plan-body { flex: 1; min-width: 0; }
     .plan .btn { margin-top: 10px; }
+    .plan .pay-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .plan .pay-row .btn { margin-top: 0; }
     .plan.trial { background: #fff8e6; color: #7a4f00; }
     .plan.active { background: #e9fbef; color: #14532d; }
     .plan.expired { background: #fff1f2; color: #881337; }
@@ -376,6 +405,10 @@
       token: null,
       config: { plan_price: '19,90', trial_days: 7, support_whatsapp: '', uploads: false },
       tenant: null,
+      account: null,
+      stores: [],
+      storeId: null,
+      view: 'app',     // 'stores' = tela Minhas lojas
       settings: null,
       products: [],
       storeUrl: '',
@@ -401,7 +434,10 @@
       return s;
     };
     const priceInput = (v) => (v === null || v === undefined || v === '' ? '' : Number(v).toFixed(2).replace('.', ','));
-    const isExpired = () => state.tenant && state.tenant.status === 'expired';
+    const isExpired = () => (state.view !== 'stores' && state.tenant && state.tenant.paused) || (state.account ? state.account.status === 'expired' : !!(state.tenant && state.tenant.status === 'expired'));
+    const plan = () => (state.account && state.account.plan_info) || { id: 'basic', name: 'Básico', stores: 1, templates: [1], custom_templates: false, lookups: 15, trial: false };
+    const STORE_KEY = 'vitrine:store';
+    const priceOf = (id) => (id === 'complete' ? state.config.plan_price_complete || '29,90' : state.config.plan_price || '19,90');
     const ls = {
       get(k) { try { return localStorage.getItem(k); } catch { return null; } },
       set(k, v) { try { localStorage.setItem(k, v); } catch { /* sem storage */ } },
@@ -441,6 +477,7 @@
     async function api(path, { method = 'GET', body, raw, contentType } = {}) {
       const headers = { Accept: 'application/json' };
       if (state.token) headers.Authorization = `Bearer ${state.token}`;
+      if (state.storeId) headers['X-Store'] = state.storeId;
       const opts = { method, headers };
       if (raw) { opts.body = raw; headers['Content-Type'] = contentType; }
       else if (body !== undefined) { opts.body = JSON.stringify(body); headers['Content-Type'] = 'application/json'; }
@@ -459,6 +496,7 @@
     function handleError(err) {
       if (err.status === 402) {
         if (state.tenant) state.tenant.status = 'expired';
+        if (state.account) state.account.status = 'expired';
         render();
       }
       toast(err.message || 'Algo deu errado.', true);
@@ -530,7 +568,43 @@
       return Number.isFinite(n) && n > 0 ? n : null;
     };
 
+    // Modelos editáveis (plano Completo): {titulo} {de} {por} {desconto} {link}
+    const TEMPLATE_DEFAULTS = {
+      1: '🔥 DESTAQUE DO DIA 🔥\n\n🎯{titulo}\n\n❌ De ~{de}~\n✅ Por {por}\n🏷️ {desconto}% OFF\n\n🛒 COMPRE AQUI:\n{link}\n\n⏳ Oferta sujeita à disponibilidade de estoque.',
+      2: '✨ ACHADINHO DO DIA ✨\n\n🛍️ *{titulo}*\n\n💸 De ~{de}~ por apenas *{por}*\n🏷️ Economize {desconto}%\n\n👉 Garanta o seu aqui:\n{link}\n\n⚠️ Preço e estoque podem mudar a qualquer momento.',
+      3: '⚡ OFERTA RELÂMPAGO ⚡\n\n📦 {titulo}\n\n🔻 {desconto}% OFF\n💰 Só {por}\n\n🔗 Aproveite:\n{link}\n\n⏰ Corre que pode acabar a qualquer momento!',
+    };
+    function customTemplates() {
+      try { return JSON.parse((state.settings && state.settings.offer_templates) || '{}') || {}; } catch { return {}; }
+    }
+    function fillTemplate(tpl, data) {
+      const price = parseMoney(data.price);
+      let original = parseMoney(data.original);
+      if (!(price && original && original > price)) original = null;
+      const vals = {
+        titulo: String(data.title || '').trim() || 'Produto em oferta',
+        de: original ? brl(original) : '',
+        por: price ? brl(price) : '',
+        desconto: original ? String(Math.round((1 - price / original) * 100)) : '',
+        link: String(data.link || '').trim(),
+      };
+      const out = [];
+      for (const line of String(tpl).split('\n')) {
+        const keys = [...line.matchAll(/\{(titulo|de|por|desconto|link)\}/g)].map((m) => m[1]);
+        // Linha com valor que falta: some (ex.: sem preço antigo, some o "De").
+        if (keys.some((k) => !vals[k])) {
+          if (keys.includes('por') && !vals.por && !keys.includes('de')) out.push('Confira o preço no link');
+          else if (keys.includes('por') && !vals.por) out.push('Confira o preço no link');
+          continue;
+        }
+        out.push(line.replace(/\{(titulo|de|por|desconto|link)\}/g, (_, k) => vals[k]));
+      }
+      return out.filter((l, i, a) => !(l === '' && (i === 0 || a[i - 1] === ''))).join('\n').replace(/\n{3,}/g, '\n\n').replace(/\n+$/, '');
+    }
+
     function offerText(model, data) {
+      const custom = plan().custom_templates ? customTemplates()[model] : null;
+      if (custom) return fillTemplate(custom, data);
       const title = String(data.title || '').trim() || 'Produto em oferta';
       const price = parseMoney(data.price);
       let original = parseMoney(data.original);
@@ -557,9 +631,60 @@
         .join('\n').replace(/\n{3,}/g, '\n\n').replace(/\n+$/, '');
     }
 
-    const currentModel = () => Number(state.settings && state.settings.offer_template) || 1;
-    const modelsHtml = () => `<div class="models" role="group" aria-label="Modelo da mensagem">${OFFER_MODELS.map((m) =>
-      `<button type="button" data-model="${m.id}" aria-pressed="${m.id === currentModel()}">${esc(m.name)}</button>`).join('')}</div>`;
+    const currentModel = () => {
+      const m = Number(state.settings && state.settings.offer_template) || 1;
+      return plan().templates.includes(m) ? m : 1;
+    };
+    const modelsHtml = () => `<div class="models" role="group" aria-label="Modelo da mensagem">${OFFER_MODELS.map((m) => {
+      const locked = !plan().templates.includes(m.id);
+      return `<button type="button" data-model="${m.id}" class="${locked ? 'locked' : ''}" aria-pressed="${m.id === currentModel()}">${locked ? '🔒 ' : ''}${esc(m.name)}</button>`;
+    }).join('')}</div>${plan().custom_templates ? `<div class="tpl-edit"><button type="button" class="btn btn-sm btn-ghost" data-act="tpl-edit">✏️ Editar este modelo</button></div>` : ''}`;
+
+    function upgradeDialog(feature) {
+      const msg = `Olá! Quero mudar para o plano Completo da Vitrine (R$ ${priceOf('complete')}/mês). Conta: ${state.account ? fmtPhone(state.account.whatsapp) : ''}.`;
+      const dlg = $('#dialog');
+      dlg.innerHTML = `<h3 id="dlgTitle">⭐ Recurso do plano Completo</h3>
+        <p>${esc(feature)}</p>
+        <p style="font-size:13.5px">No <b>Completo (R$ ${esc(priceOf('complete'))}/mês)</b> você tem até 3 lojas, os 3 modelos de mensagem editáveis e 30 buscas automáticas por hora.</p>
+        <div class="grid-2">
+          <button type="button" class="btn btn-ghost" data-dlg="close">Agora não</button>
+          ${state.config.support_whatsapp ? `<a class="btn btn-wa" href="${esc(waLink(state.config.support_whatsapp, msg))}" target="_blank" rel="noopener">${I.wa}Quero o Completo</a>` : ''}
+        </div>`;
+      $('#dialogOverlay').classList.add('open');
+      dlg.querySelector('[data-dlg="close"]').onclick = () => $('#dialogOverlay').classList.remove('open');
+    }
+
+    function openTemplateEditor() {
+      const id = currentModel();
+      const current = customTemplates()[id] || TEMPLATE_DEFAULTS[id];
+      const name = (OFFER_MODELS.find((m) => m.id === id) || {}).name || '';
+      const dlg = $('#dialog');
+      dlg.innerHTML = `<h3 id="dlgTitle">✏️ Editar modelo ${esc(name)}</h3>
+        <textarea class="msg-area" id="tplText" style="min-height:240px">${esc(current)}</textarea>
+        <p class="tpl-help">Use: <code>{titulo}</code> <code>{de}</code> <code>{por}</code> <code>{desconto}</code> <code>{link}</code>. Linha com valor que não existe (ex.: sem preço antigo) some sozinha.</p>
+        <div class="grid-2">
+          <button type="button" class="btn btn-ghost" data-dlg="reset">Voltar ao original</button>
+          <button type="button" class="btn btn-ghost" data-dlg="close">Cancelar</button>
+          <button type="button" class="btn btn-primary" data-dlg="save">Salvar modelo</button>
+        </div>`;
+      $('#dialogOverlay').classList.add('open');
+      const close = () => $('#dialogOverlay').classList.remove('open');
+      const persist = async (value) => {
+        const all = customTemplates();
+        if (value && value.trim() && value.trim() !== TEMPLATE_DEFAULTS[id]) all[id] = value; else delete all[id];
+        try {
+          const { settings } = await api('/api/me/settings', { method: 'PUT', body: { offer_templates: all } });
+          state.settings = settings;
+          close();
+          updateOfferPreview();
+          if (state.offerProduct && $('#offerText')) $('#offerText').value = offerText(id, state.offerProduct);
+          toast('Modelo salvo ✓');
+        } catch (err) { handleError(err); }
+      };
+      dlg.querySelector('[data-dlg="close"]').onclick = close;
+      dlg.querySelector('[data-dlg="reset"]').onclick = () => persist('');
+      dlg.querySelector('[data-dlg="save"]').onclick = () => persist($('#tplText').value);
+    }
 
     function offerCard() {
       const o = state.offer;
@@ -595,6 +720,7 @@
     }
 
     async function setOfferModel(id) {
+      if (!plan().templates.includes(id)) return upgradeDialog('No plano Básico você usa o modelo 🔥 Destaque do dia. Os modelos ✨ Achadinho e ⚡ Relâmpago (e a edição dos textos) fazem parte do plano Completo.');
       state.settings.offer_template = id;
       document.querySelectorAll('[data-model]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.model) === id)));
       if (state.offerProduct) $('#offerText').value = offerText(id, state.offerProduct);
@@ -802,6 +928,9 @@
       clearInterval(pingTimer);
       state.token = null;
       state.tenant = null;
+      state.account = null;
+      state.stores = [];
+      state.storeId = null;
       ls.del(TOKEN_KEY);
       showLogin();
     }
@@ -809,12 +938,131 @@
     async function loadMe() {
       const data = await api('/api/me');
       state.tenant = data.tenant;
+      state.account = data.account || null;
+      state.stores = data.stores || state.stores;
+      state.storeId = data.tenant.id;
+      ls.set(STORE_KEY, data.tenant.id);
       state.settings = data.settings;
       state.products = data.products;
       state.storeUrl = data.store_url;
       state.quota = data.lookup_quota || null;
       applyTheme(state.tenant.theme_color);
-      ls.set('vitrine:last-login', fmtPhone(state.tenant.whatsapp) || state.tenant.id);
+      ls.set('vitrine:last-login', fmtPhone((state.account || state.tenant).whatsapp) || state.tenant.id);
+    }
+
+    async function loadStores() {
+      const data = await api('/api/me/stores');
+      state.account = data.account;
+      state.stores = data.stores || [];
+    }
+
+    // Plano com mais de 1 loja (ou conta que já tem várias) começa pela tela "Minhas lojas".
+    const wantsPicker = () => plan().stores > 1 || state.stores.length > 1;
+
+    async function openStore(id) {
+      state.storeId = id;
+      ls.set(STORE_KEY, id);
+      state.offer = null; state.offerProduct = null; state.editing = null; state.query = '';
+      try {
+        await loadMe();
+        state.view = 'app';
+        state.tab = 'products';
+        render();
+        window.scrollTo({ top: 0 });
+      } catch (err) { handleError(err); }
+    }
+
+    async function showStores() {
+      try { await loadStores(); } catch (err) { return handleError(err); }
+      state.view = 'stores';
+      applyTheme('#16a6e0');
+      render();
+      window.scrollTo({ top: 0 });
+    }
+
+    function planName(a) {
+      const p = a.plan_info || {};
+      if (a.status === 'trial') return 'Teste grátis do Completo';
+      return `Plano ${p.name || 'Básico'}`;
+    }
+
+    function renderStores() {
+      const a = state.account || {};
+      const p = plan();
+      const canAdd = state.stores.length < p.stores && !isExpired();
+      const colors = (c) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '#16a6e0');
+      const cards = state.stores.map((st) => {
+        const img = safeImg(st.avatar_url);
+        return `<button type="button" class="store-pick" data-act="open-store" data-id="${esc(st.id)}">
+          <span class="sav" style="background:${colors(st.theme_color)}">${img ? `<img src="${esc(img)}" alt="">` : esc(initials(st.store_name))}</span>
+          <span class="sinfo"><strong>${esc(st.store_name)}${st.paused ? ' <span class="plan-tag gold">⏸ Pausada</span>' : ''}</strong><small>/s/${esc(st.id)} · ${st.product_count} ${st.product_count === 1 ? 'produto' : 'produtos'} · ${st.views} visitas</small></span>
+          <span class="go">Abrir ›</span></button>`;
+      }).join('');
+      const upsell = !canAdd && p.id === 'basic' && !isExpired()
+        ? `<div class="upsell"><strong>⭐ Quer mais lojas?</strong><p>No plano Completo (R$ ${esc(priceOf('complete'))}/mês) você tem até 3 lojas, os 3 modelos de mensagem editáveis e 30 buscas automáticas por hora.</p>
+            <button type="button" class="btn btn-sm btn-primary" data-act="upgrade">Quero o Completo</button></div>` : '';
+      return `<div class="stores-head"><div><h1>Minhas lojas</h1>
+          <p>${esc(planName(a))} · ${Math.min(state.stores.length, p.stores)} de ${p.stores} ${p.stores === 1 ? 'loja' : 'lojas'}${state.stores.length > p.stores ? ` · ${state.stores.length - p.stores} pausada${state.stores.length - p.stores > 1 ? 's' : ''}` : ''}</p></div>
+          <button type="button" class="btn btn-sm btn-ghost" data-act="logout">${I.out}Sair</button></div>
+        ${planBanner()}
+        <div style="margin-top:14px">${cards}</div>
+        ${canAdd ? `<button type="button" class="store-new" data-act="new-store">+ Nova loja</button>` : ''}
+        ${upsell}`;
+    }
+
+    function openNewStore() {
+      const ov = $('#dialogOverlay');
+      const dlg = $('#dialog');
+      dlg.innerHTML = `<h3 id="dlgTitle">🏪 Nova loja</h3>
+        <p>Cada loja tem o próprio link, produtos, cores e configurações. A conta, a senha e o plano são os mesmos.</p>
+        <label class="field"><span>Nome da loja</span><input class="input" id="nsName" maxlength="80" placeholder="Ex.: Achadinhos da Casa"></label>
+        <label class="field"><span>Endereço <small>vitrineapp.pages.dev/s/...</small></span><input class="input" id="nsSlug" maxlength="40" placeholder="achadinhos-da-casa" spellcheck="false" autocapitalize="off"></label>
+        <div class="grid-2">
+          <button type="button" class="btn btn-ghost" data-s="close">Cancelar</button>
+          <button type="button" class="btn btn-primary" data-s="create">Criar loja</button>
+        </div>`;
+      ov.classList.add('open');
+      const name = $('#nsName'), slug = $('#nsSlug');
+      let touched = false;
+      const slugify = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+      name.addEventListener('input', () => { if (!touched) slug.value = slugify(name.value); });
+      slug.addEventListener('input', () => { touched = true; });
+      const close = () => { ov.classList.remove('open'); ov.onclick = null; };
+      ov.onclick = async (e) => {
+        if (e.target === ov) return close();
+        const b = e.target.closest('[data-s]');
+        if (!b) return;
+        if (b.dataset.s === 'close') return close();
+        if (!name.value.trim()) { toast('Dê um nome para a loja.', true); return name.focus(); }
+        setBusy(b, true, 'Criando...');
+        try {
+          const { store } = await api('/api/me/stores', { method: 'POST', body: { store_name: name.value.trim(), id: slugify(slug.value || name.value) } });
+          close();
+          toast('Loja criada! 🎉');
+          await openStore(store.id);
+        } catch (err) {
+          if (err.code === 'store_limit') { close(); upgradeDialog(err.message); } else toast(err.message, true);
+        } finally { setBusy(b, false); }
+      };
+      setTimeout(() => name.focus(), 80);
+    }
+
+    async function afterLogin() {
+      const saved = ls.get(STORE_KEY);
+      if (wantsPicker()) {
+        state.view = 'stores';
+        $('#appView').hidden = false;
+        applyTheme('#16a6e0');
+        render();
+      } else {
+        state.storeId = (state.stores.find((x) => x.id === saved) || state.stores[0] || {}).id || null;
+        await loadMe();
+        state.view = 'app';
+        state.tab = 'products';
+        $('#appView').hidden = false;
+        render();
+      }
+      startPing();
     }
 
     $('#loginForm').addEventListener('submit', async (e) => {
@@ -828,13 +1076,11 @@
         const data = await api('/api/auth/login', { method: 'POST', body: { login: store, password } });
         state.token = data.token;
         ls.set(TOKEN_KEY, data.token);
-        await loadMe();
+        state.account = data.account;
+        state.stores = data.stores || [];
         $('#loginPass').value = '';
         $('#loginView').hidden = true;
-        $('#appView').hidden = false;
-        state.tab = 'products';
-        render();
-        startPing();
+        await afterLogin();
       } catch (err) {
         showLogin(err.message);
       } finally {
@@ -856,37 +1102,51 @@
 
     /* ---------------- Renderização ---------------- */
     function planBanner() {
-      const t = state.tenant;
-      const price = esc(state.config.plan_price);
-      const msg = `Olá! Quero assinar o plano da Vitrine (R$ ${state.config.plan_price}/mês) para a loja "${t.store_name}" (${t.id}).`;
-      const payBtn = state.config.support_whatsapp
-        ? `<a class="btn btn-sm ${t.status === 'expired' ? 'btn-primary' : 'btn-wa'}" href="${esc(waLink(state.config.support_whatsapp, msg))}" target="_blank" rel="noopener noreferrer">${I.wa}Assinar por R$ ${price}/mês</a>`
+      const a = state.account || state.tenant;
+      if (state.view !== 'stores' && state.tenant && state.tenant.paused && a.status !== 'expired') {
+        return `<div class="plan expired"><div class="plan-icon">${I.lock}</div><div class="plan-body">
+          <strong>⏸ Esta loja está pausada</strong>
+          Seu plano ${esc(plan().name)} permite ${plan().stores} ${plan().stores === 1 ? 'loja' : 'lojas'}. Os produtos continuam salvos; mude para o Completo para reativá-la.
+          <br><button type="button" class="btn btn-sm btn-primary" style="margin-top:10px" data-act="upgrade">⭐ Quero o Completo</button></div></div>`;
+      }
+      const p = plan();
+      const contracted = (state.account && state.account.plan) || 'basic';
+      const price = esc(priceOf(contracted));
+      const who = state.tenant ? `"${state.tenant.store_name}" (${state.tenant.id})` : fmtPhone(a.whatsapp);
+      const msgFor = (id) => `Olá! Quero assinar o plano ${id === 'complete' ? 'Completo' : 'Básico'} da Vitrine (R$ ${priceOf(id)}/mês). Conta: ${who}.`;
+      const wa = state.config.support_whatsapp;
+      const payBtns = wa
+        ? `<div class="pay-row">
+            <a class="btn btn-sm btn-wa" href="${esc(waLink(wa, msgFor('complete')))}" target="_blank" rel="noopener noreferrer">${I.wa}Completo R$ ${esc(priceOf('complete'))}</a>
+            <a class="btn btn-sm btn-ghost" href="${esc(waLink(wa, msgFor('basic')))}" target="_blank" rel="noopener noreferrer">Básico R$ ${esc(priceOf('basic'))}</a></div>`
         : '';
-      if (t.status === 'trial') {
+      if (a.status === 'trial') {
         const total = Number(state.config.trial_days) || 7;
-        const left = t.trial_days_left;
+        const left = a.trial_days_left;
         const pct = Math.max(4, Math.min(100, Math.round((left / total) * 100)));
         return `<div class="plan trial"><div class="plan-icon">${I.clock}</div><div class="plan-body">
-          <strong>Teste grátis: ${left} ${left === 1 ? 'dia restante' : 'dias restantes'}</strong>
-          Termina em ${fmtDate(t.trial_ends_at)}. Depois, continue por apenas <b>R$ ${price}/mês</b>.
-          <div class="progress" aria-hidden="true"><i style="width:${pct}%"></i></div>${payBtn}</div></div>`;
+          <strong>🎁 Você está no teste grátis · ${left === 0 ? 'último dia' : `faltam ${left} ${left === 1 ? 'dia' : 'dias'}`}</strong>
+          Está tudo liberado do plano <b>Completo</b> (até 3 lojas, 3 modelos editáveis, 30 buscas/h) até ${fmtDate(a.trial_ends_at)}. Depois, escolha seu plano.
+          <div class="progress" aria-hidden="true"><i style="width:${pct}%"></i></div>${payBtns}</div></div>`;
       }
-      if (t.status === 'active') {
+      if (a.status === 'active') {
         return `<div class="plan active"><div class="plan-icon">${I.check}</div><div class="plan-body">
-          <strong>Plano ativo · R$ ${price}/mês</strong>
-          ${t.paid_until ? `Válido até ${fmtDate(t.paid_until)} (${t.paid_days_left} ${t.paid_days_left === 1 ? 'dia' : 'dias'}).` : 'Sua vitrine está no ar.'}</div></div>`;
+          <strong>Plano ${esc(p.name)} ativo · R$ ${price}/mês</strong>
+          ${a.paid_until ? `Válido até ${fmtDate(a.paid_until)} (${a.paid_days_left} ${a.paid_days_left === 1 ? 'dia' : 'dias'}).` : 'Sua vitrine está no ar.'}</div></div>`;
       }
       return `<div class="plan expired"><div class="plan-icon">${I.lock}</div><div class="plan-body">
-        <strong>Seu teste grátis terminou</strong>
-        Sua vitrine está fora do ar e a edição foi pausada. Assine por <b>R$ ${price}/mês</b> para reativar tudo na hora — seus produtos continuam salvos.
-        ${payBtn || '<br>Fale com o administrador da Vitrine para assinar.'}</div></div>`;
+        <strong>Seu acesso terminou</strong>
+        Suas vitrines estão fora do ar e a edição foi pausada. Assine para reativar tudo na hora — seus produtos continuam salvos.
+        ${payBtns || '<br>Fale com o administrador da Vitrine para assinar.'}</div></div>`;
     }
 
     function header() {
       const t = state.tenant;
       const avatar = safeImg(t.avatar_url);
       const statusLabel = { trial: 'Teste grátis', active: 'Ativo', expired: 'Expirado' }[t.status] || t.status;
+      const showBack = plan().stores > 1 || state.stores.length > 1;
       return `
+        ${showBack ? `<button type="button" class="back-stores" data-act="stores">${I.back}Minhas lojas${state.stores.length > 1 ? ` (${state.stores.length})` : ''}</button>` : ''}
         <header class="top">
           ${avatar ? `<img class="avatar" src="${esc(avatar)}" alt="">` : `<div class="avatar">${esc(initials(t.store_name))}</div>`}
           <div class="who"><small>Olá, ${esc(String(t.owner_name || '').split(' ')[0] || 'lojista')} 👋</small><strong>${esc(t.store_name)}</strong></div>
@@ -1079,6 +1339,24 @@
           </div>
         </div>
 
+        <div class="card">
+          <h2>Aparência</h2><p class="sub">Tema da vitrine e cor dos cards dos produtos.</p>
+          <div class="switch-row" style="display:block;padding-top:0">
+            <div style="margin-bottom:10px"><strong>Tema</strong></div>
+            <div class="seg two">
+              <label><input type="radio" name="theme_mode" value="light" data-setting="theme_mode" ${s.theme_mode !== 'dark' ? 'checked' : ''}><span class="opt">☀️ Claro</span></label>
+              <label><input type="radio" name="theme_mode" value="dark" data-setting="theme_mode" ${s.theme_mode === 'dark' ? 'checked' : ''}><span class="opt">🌙 Escuro</span></label>
+            </div>
+          </div>
+          <div class="switch-row" style="display:block">
+            <div style="margin-bottom:10px"><strong>Cor dos cards</strong><small>Tingido usa um tom suave da cor da sua loja.</small></div>
+            <div class="seg two">
+              <label><input type="radio" name="card_tone" value="white" data-setting="card_tone" ${s.card_tone !== 'tinted' ? 'checked' : ''}><span class="opt">⬜ Neutro</span></label>
+              <label><input type="radio" name="card_tone" value="tinted" data-setting="card_tone" ${s.card_tone === 'tinted' ? 'checked' : ''}><span class="opt">🎨 Tingido</span></label>
+            </div>
+          </div>
+        </div>
+
         <form class="card" id="profileForm" novalidate>
           <h2>Perfil da loja</h2><p class="sub">Nome, foto, contato e cor da sua vitrine.</p>
           <div class="avatar-edit">
@@ -1107,14 +1385,19 @@
     }
 
     function renderAccount() {
-      const t = state.tenant;
+      const t = state.account || state.tenant;
+      const p = plan();
       return `${header()}
         <div class="card">
-          <h2>Assinatura</h2><p class="sub">Plano único Vitrine: tudo liberado por R$ ${esc(state.config.plan_price)}/mês.</p>
-          <div class="switch-row" style="padding-top:0"><div><strong>Status</strong><small>${{ trial: 'Teste grátis', active: 'Plano ativo', expired: 'Expirado' }[t.status]}</small></div></div>
-          <div class="switch-row"><div><strong>Fim do teste grátis</strong><small>${fmtDate(t.trial_ends_at)}</small></div></div>
+          <h2>Assinatura</h2><p class="sub">A conta, a senha e o plano valem para todas as suas lojas.</p>
+          <div class="switch-row" style="padding-top:0"><div><strong>Plano</strong><small>${t.status === 'trial' ? 'Teste grátis (tudo do Completo liberado)' : `${esc(p.name)} · R$ ${esc(priceOf(p.id))}/mês`}</small></div>
+            <span class="plan-tag ${p.id === 'complete' ? 'gold' : ''}">${esc(p.name)}</span></div>
+          <div class="switch-row"><div><strong>O que está incluído</strong><small>${p.stores} ${p.stores === 1 ? 'loja' : 'lojas'} · ${p.templates.length === 1 ? 'modelo 🔥 Destaque do dia' : '3 modelos de mensagem editáveis'} · ${p.lookups} buscas automáticas/hora · tema claro/escuro</small></div></div>
+          <div class="switch-row"><div><strong>Status</strong><small>${{ trial: 'Teste grátis', active: 'Plano ativo', expired: 'Expirado' }[t.status]}</small></div></div>
+          ${t.status === 'trial' ? `<div class="switch-row"><div><strong>Fim do teste grátis</strong><small>${fmtDate(t.trial_ends_at)} (${t.trial_days_left} ${t.trial_days_left === 1 ? 'dia' : 'dias'})</small></div></div>` : ''}
           ${t.paid_until ? `<div class="switch-row"><div><strong>Plano pago até</strong><small>${fmtDate(t.paid_until)}</small></div></div>` : ''}
           <div class="switch-row"><div><strong>Cliente desde</strong><small>${fmtDate(t.created_at)}</small></div></div>
+          ${p.id === 'basic' && t.status !== 'trial' ? `<button type="button" class="btn btn-soft btn-block" style="margin-top:10px" data-act="upgrade">⭐ Mudar para o Completo</button>` : ''}
         </div>
         <form class="card" id="passForm" novalidate>
           <h2>Trocar senha</h2><p class="sub">Ao trocar, os outros aparelhos conectados saem da conta.</p>
@@ -1126,6 +1409,8 @@
     }
 
     function render() {
+      document.querySelector('.tabbar').hidden = state.view === 'stores';
+      if (state.view === 'stores') { main.innerHTML = renderStores(); return; }
       if (!state.tenant) return;
       document.querySelectorAll('.tabbar [data-tab]').forEach((b) => {
         const current = b.dataset.tab === state.tab || (b.dataset.tab === 'new' && state.tab === 'form');
@@ -1208,6 +1493,8 @@
         show_prices: get('show_prices').checked ? 1 : 0,
         show_stock_warning: get('show_stock_warning').checked ? 1 : 0,
         view_mode: ($('[data-setting="view_mode"]:checked') || {}).value || 'grid',
+        theme_mode: ($('[data-setting="theme_mode"]:checked') || {}).value || 'light',
+        card_tone: ($('[data-setting="card_tone"]:checked') || {}).value || 'white',
       };
       try {
         const { settings } = await api('/api/me/settings', { method: 'PUT', body });
@@ -1393,6 +1680,11 @@
       if (act === 'offer') return openProductOffer(Number(t.dataset.id));
       if (act === 'model') return setOfferModel(Number(t.dataset.model));
       if (act === 'clear-avatar') return setAvatar('');
+      if (act === 'stores') return showStores();
+      if (act === 'open-store') return openStore(t.dataset.id);
+      if (act === 'new-store') return openNewStore();
+      if (act === 'upgrade') return upgradeDialog('Libere mais lojas e todos os modelos de mensagem.');
+      if (act === 'tpl-edit') return openTemplateEditor();
     });
 
     document.addEventListener('submit', (e) => {
@@ -1468,13 +1760,29 @@
       state.token = ls.get(TOKEN_KEY);
       if (!state.token) return showLogin();
       try {
-        await loadMe();
-        $('#appView').hidden = false;
-        render();
-        startPing();
-        if (new URLSearchParams(location.search).get('bemvindo')) {
+        const welcome = new URLSearchParams(location.search).get('bemvindo');
+        state.storeId = ls.get(STORE_KEY);
+        if (welcome) {
+          await loadMe();
+          state.view = 'app';
+          $('#appView').hidden = false;
+          render();
+          startPing();
           history.replaceState(null, '', location.pathname);
-          toast(`🎉 Vitrine criada! Você tem ${state.tenant.trial_days_left} dias grátis. Cadastre seu 1º produto.`);
+          toast(`🎉 Vitrine criada! Teste grátis do plano Completo por ${state.account ? state.account.trial_days_left : 7} dias. Cadastre seu 1º produto.`);
+        } else {
+          await loadStores();
+          if (state.storeId && !state.stores.some((x) => x.id === state.storeId)) state.storeId = null;
+          // Recarregar a página volta para a loja que estava aberta.
+          if (state.storeId || !wantsPicker()) {
+            await loadMe();
+            state.view = 'app';
+            $('#appView').hidden = false;
+            render();
+            startPing();
+          } else {
+            await afterLogin();
+          }
         }
       } catch (err) {
         if (err.status !== 401) showLogin(err.message);

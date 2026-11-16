@@ -84,3 +84,19 @@ Rotas do Master (`X-Master-Password`):
 - Cobrança automática (Pix ou assinatura do Mercado Pago com webhook), para a ativação deixar de ser manual.
 - Cadastro self-service dos lojistas, com teste automático.
 - Contagem de cliques por produto, para mostrar no painel.
+
+
+## Planos e várias lojas por conta
+
+| | Básico (R$ 19,90) | Completo (R$ 29,90) |
+|---|---|---|
+| Lojas | 1 | até 3 |
+| Modelos de oferta | 🔥 Destaque do dia | 3 modelos, textos editáveis |
+| Buscas automáticas | 15/hora (`LOOKUP_LIMIT_PER_HOUR`) | 30/hora (`LOOKUP_LIMIT_COMPLETE`) |
+| Tema claro/escuro e cor dos cards | ✅ | ✅ |
+
+- **Conta** (`accounts`): dono, WhatsApp de login, senha, plano, teste e vencimento. **Loja** (`tenants.account_id`): link, produtos e aparência.
+- O teste grátis libera tudo do Completo. Lojas além do limite do plano ficam pausadas (nada é apagado).
+- A cota de buscas é por conta. Preços: `PLAN_PRICE` e `PLAN_PRICE_COMPLETE`.
+- Bancos antigos migram sozinhos: cada loja vira "conta + 1 loja", sem mudar link, senha ou produtos.
+- Para um plano maior no futuro, acrescente-o em `PLANS` no `worker/index.js`.

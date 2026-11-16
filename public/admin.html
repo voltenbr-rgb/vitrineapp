@@ -227,7 +227,7 @@
       <div class="toolbar">
         <label class="search"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="search" type="search" placeholder="Buscar loja, dono, WhatsApp..." autocomplete="off"></label>
-        <button type="button" class="btn btn-primary" data-act="new">+ Nova loja</button>
+        <button type="button" class="btn btn-primary" data-act="new">+ Nova conta</button>
       </div>
       <nav class="chips" id="chips" aria-label="Filtrar por status"></nav>
       <section class="list" id="list" aria-live="polite"></section>
@@ -252,6 +252,8 @@
       { id: 'ending', label: 'Vencendo (≤ 2 dias)' },
       { id: 'active', label: 'Ativas' },
       { id: 'expired', label: 'Expiradas' },
+      { id: 'basic', label: 'Básico' },
+      { id: 'complete', label: '⭐ Completo' },
     ];
     const CLOSE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>';
     const WA = '<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.6 11.6 0 0 0 4.4 3.9c1.6.7 2.3.8 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.2-.3-.3-.5-.4z"/></svg>';
@@ -290,7 +292,10 @@
       return d === 1 ? 'ontem' : `há ${d} dias`;
     };
     const num = (n) => Number(n || 0).toLocaleString('pt-BR');
-    const dashboardUrl = (t) => `${location.origin}/dashboard.html?loja=${encodeURIComponent(t.id)}`;
+    const slugOf = (t) => (t.stores && t.stores[0] ? t.stores[0].id : String(t.id));
+    const dashboardUrl = (t) => `${location.origin}/dashboard.html?loja=${encodeURIComponent(slugOf(t))}`;
+    const PLAN_NAME = { basic: 'Básico', complete: 'Completo' };
+    const planPriceOf = (id) => (id === 'complete' ? state.planPriceComplete : state.planPrice);
     const ss = {
       get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
       set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* sem storage */ } },
@@ -366,10 +371,11 @@
 
     /* ---------------- Dados ---------------- */
     async function load() {
-      const data = await api('/api/admin/tenants');
-      state.tenants = data.tenants;
+      const data = await api('/api/admin/accounts');
+      state.tenants = data.accounts || data.tenants;
       state.stats = data.stats;
       state.planPrice = data.plan_price || '19,90';
+      state.planPriceComplete = data.plan_price_complete || '29,90';
       state.trialDays = data.trial_days || 7;
       render();
     }
@@ -383,8 +389,10 @@
         if (state.filter === 'ending' && !isEnding(t)) return false;
         if (state.filter === 'online' && !t.online) return false;
         if (['trial', 'active', 'expired'].includes(state.filter) && t.status !== state.filter) return false;
+        if (['basic', 'complete'].includes(state.filter) && !(t.status === 'active' && t.plan === state.filter)) return false;
         if (!q) return true;
-        return `${t.id} ${t.store_name} ${t.owner_name}`.toLowerCase().includes(q) || (qDigits.length >= 3 && String(t.whatsapp).includes(qDigits));
+        const names = (t.stores || []).map((x) => `${x.id} ${x.store_name}`).join(' ');
+        return `${names} ${t.store_name} ${t.owner_name}`.toLowerCase().includes(q) || (qDigits.length >= 3 && String(t.whatsapp).includes(qDigits));
       });
     }
 
@@ -395,11 +403,11 @@
         <div class="stat"><i style="background:#94a3b8"></i><span>Cadastrados</span><b>${num(s.total)}</b><small>+${num(s.new_7d)} nos últimos 7 dias</small></div>
         <div class="stat online"><span class="live"></span><span>Online agora</span><b>${num(s.online)}</b><small>com o painel aberto</small></div>
         <div class="stat"><i style="background:#0ea5e9"></i><span>Usando (24h)</span><b>${num(s.active_today)}</b><small>${num(s.with_products)} lojas com produtos</small></div>
-        <div class="stat revenue"><span>Receita mensal estimada</span><b>${brl((s.active || 0) * priceNumber())}</b><small>${num(s.active)} pagantes × R$ ${esc(state.planPrice)}</small></div>
+        <div class="stat revenue"><span>Receita mensal estimada</span><b>${brl(s.mrr != null ? s.mrr : (s.active || 0) * priceNumber())}</b><small>${num(s.active_basic)} Básico × R$ ${esc(state.planPrice)} · ${num(s.active_complete)} Completo × R$ ${esc(state.planPriceComplete)}</small></div>
         <div class="stat"><i style="background:#f59e0b"></i><span>Em teste</span><b>${num(s.trial)}</b><small>${num(ending)} vencendo em até 2 dias</small></div>
         <div class="stat"><i style="background:#16a34a"></i><span>Ativas (pagantes)</span><b>${num(s.active)}</b></div>
         <div class="stat"><i style="background:#e11d48"></i><span>Expiradas</span><b>${num(s.expired)}</b></div>
-        <div class="stat"><i style="background:#8b5cf6"></i><span>Visitas às vitrines</span><b>${num(s.views)}</b><small>${num(s.products)} produtos cadastrados</small></div>`;
+        <div class="stat"><i style="background:#8b5cf6"></i><span>Visitas às vitrines</span><b>${num(s.views)}</b><small>${num(s.stores)} lojas · ${num(s.products)} produtos</small></div>`;
 
       const online = state.tenants.filter((t) => t.online);
       $('#onlineBox').innerHTML = `<h3><span class="live" style="position:static"></span>Quem está online agora</h3>
@@ -407,7 +415,7 @@
           : '<div class="none">Nenhum lojista com o painel aberto neste momento.</div>'}`;
       $('#updated').textContent = 'Atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-      const counts = { online: online.length, all: state.tenants.length, trial: s.trial || 0, ending, active: s.active || 0, expired: s.expired || 0 };
+      const counts = { online: online.length, all: state.tenants.length, trial: s.trial || 0, ending, active: s.active || 0, expired: s.expired || 0, basic: s.active_basic || 0, complete: s.active_complete || 0 };
       $('#chips').innerHTML = FILTERS.map((f) => `<button type="button" class="chip" data-filter="${f.id}" aria-pressed="${state.filter === f.id}">${esc(f.label)}<b>${counts[f.id]}</b></button>`).join('');
 
       const list = filtered();
@@ -430,7 +438,8 @@
       return `<article class="tcard">
         <div class="thead">
           <div class="tavatar" style="background:${esc(t.theme_color)}">${img ? `<img src="${esc(img)}" alt="">` : esc(initials(t.store_name))}${t.online ? '<span class="on" title="Online agora"></span>' : ''}</div>
-          <div class="tname"><strong>${esc(t.store_name)}</strong><a href="${esc(t.store_url)}" target="_blank" rel="noopener">/s/${esc(t.id)} ↗</a></div>
+          <div class="tname"><strong>${esc(t.store_name)}${t.store_count > 1 ? ` <small style="color:var(--muted)">+${t.store_count - 1}</small>` : ''}</strong><a href="${esc(t.store_url)}" target="_blank" rel="noopener">/s/${esc(slugOf(t))} ↗</a></div>
+          <span class="pill" style="background:${t.plan === 'complete' ? '#fff1c7' : '#eef2ff'};color:${t.plan === 'complete' ? '#8a5a00' : '#3730a3'}">${t.status === 'trial' ? 'Teste (Completo)' : esc(PLAN_NAME[t.plan] || 'Básico')}</span>
           <span class="pill ${esc(t.status)}"><span class="dot"></span>${esc(STATUS[t.status] || t.status)}</span>
         </div>
         <div class="tinfo">
@@ -441,6 +450,7 @@
           <div><small>Último acesso</small><span class="${t.online ? 'on-text' : ''}">${t.online ? '● Online agora' : esc(ago(t.last_seen_at))}</span></div>
           <div><small>Visitas na vitrine</small><span>${num(t.views)}</span></div>
         </div>
+        ${t.store_count > 1 ? `<div class="tinfo" style="grid-template-columns:1fr"><div><small>Lojas da conta (${t.store_count})</small><span>${t.stores.map((x, i) => `<a href="${esc(x.store_url)}" target="_blank" rel="noopener">${esc(x.store_name)}</a>${i >= (t.plan_info ? t.plan_info.stores : 1) ? ' (pausada)' : ''}`).join(' · ')}</span></div></div>` : ''}
         <div class="tacts">
           <button type="button" class="btn btn-sm btn-ok" data-act="activate" data-id="${esc(t.id)}">✓ ${t.status === 'active' ? 'Renovar' : 'Ativar'} plano</button>
           <button type="button" class="btn btn-sm btn-soft" data-act="trial" data-id="${esc(t.id)}">+7 dias teste</button>
@@ -494,7 +504,7 @@
         `📱 Entrar com o WhatsApp: ${fmtPhone(t.whatsapp)}`,
         password ? `🔒 Senha: ${password}` : '',
         '',
-        t.status === 'trial' ? `Você tem ${t.trial_days_left} dias grátis para testar. Depois, apenas R$ ${state.planPrice}/mês.` : '',
+        t.status === 'trial' ? `Você tem ${t.trial_days_left} dias grátis com tudo do plano Completo liberado. Depois, planos a partir de R$ ${state.planPrice}/mês.` : '',
         'Você pode trocar a senha no painel, na aba Conta.',
       ].filter((l, i, arr) => l !== '' || arr[i - 1] !== '').join('\n');
     }
@@ -532,6 +542,8 @@
           <div class="field"><span>Cor da vitrine</span>
             <div class="colors">${PALETTE.map((c) => `<button type="button" data-color="${c}" style="background:${c}" aria-label="Cor ${c}" aria-pressed="${c === color}"></button>`).join('')}</div>
             <input type="hidden" name="theme_color" value="${color}"></div>
+          <div class="field"><span>Plano depois do teste</span>
+            <select class="input" name="plan"><option value="basic">Básico · R$ ${esc(state.planPrice)}</option><option value="complete">Completo · R$ ${esc(state.planPriceComplete)}</option></select></div>
           <button type="submit" class="btn btn-primary btn-block" id="createBtn">Criar loja com ${state.trialDays} dias grátis</button>
         </form>`);
 
@@ -556,7 +568,7 @@
         const btn = $('#createBtn');
         setBusy(btn, true, 'Criando...');
         try {
-          const { tenant } = await api('/api/admin/tenants', { method: 'POST', body });
+          const { tenant } = await api('/api/admin/accounts', { method: 'POST', body });
           state.tenants.unshift(tenant);
           state.stats.total = (state.stats.total || 0) + 1;
           state.stats.trial = (state.stats.trial || 0) + 1;
@@ -571,25 +583,33 @@
 
     function activateModal(t) {
       const opts = [[30, '1 mês'], [90, '3 meses'], [180, '6 meses'], [365, '12 meses']];
-      openModal(`${head(`${t.status === 'active' ? 'Renovar' : 'Ativar'} plano`, `${t.store_name} · R$ ${state.planPrice}/mês. Os dias são somados ao que ainda resta.`)}
+      let chosen = t.plan === 'complete' ? 'complete' : (t.status === 'trial' && t.store_count > 1 ? 'complete' : 'basic');
+      const planBtns = () => ['basic', 'complete'].map((id) => `<button type="button" class="chip" data-plan="${id}" aria-pressed="${chosen === id}">${PLAN_NAME[id]} · R$ ${esc(planPriceOf(id))}</button>`).join(' ');
+      openModal(`${head(`${t.status === 'active' ? 'Renovar' : 'Ativar'} plano`, `${t.store_name} · os dias são somados ao que ainda resta.`)}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px" id="planPick">${planBtns()}</div>
+        ${t.store_count > 1 ? `<p style="font-size:13px;color:var(--muted);margin:0 0 10px">Esta conta tem ${t.store_count} lojas. No Básico, só a primeira fica no ar (as outras pausam, sem apagar).</p>` : ''}
         <div class="menu">${opts.map(([d, l]) => `<button type="button" data-days="${d}">✓ ${l} <span style="margin-left:auto;color:var(--muted);font-weight:600">${d} dias</span></button>`).join('')}</div>`);
-      $('#modal').querySelectorAll('[data-days]').forEach((b) => b.addEventListener('click', () => patch(t.id, { action: 'activate', days: Number(b.dataset.days) }, 'Plano ativado ✓')));
+      const pick = $('#planPick');
+      pick.addEventListener('click', (e) => { const b = e.target.closest('[data-plan]'); if (b) { chosen = b.dataset.plan; pick.innerHTML = planBtns(); } });
+      $('#modal').querySelectorAll('[data-days]').forEach((b) => b.addEventListener('click', () => patch(t.id, { action: 'activate', days: Number(b.dataset.days), plan: chosen }, `Plano ${PLAN_NAME[chosen]} ativado ✓`)));
     }
 
     function moreModal(t) {
-      openModal(`${head(t.store_name, `/s/${t.id}`)}
+      openModal(`${head(t.store_name, `/s/${slugOf(t)} · ${t.store_count} ${t.store_count === 1 ? 'loja' : 'lojas'}`)}
         <div class="menu">
-          <button type="button" data-m="edit">✏️ Editar dados da loja</button>
+          <button type="button" data-m="plan">⭐ Mudar para ${t.plan === 'complete' ? 'Básico' : 'Completo'} (sem mexer na validade)</button>
+          <button type="button" data-m="edit">✏️ Editar dados da conta</button>
           <button type="button" data-m="password">🔑 Redefinir senha</button>
           <button type="button" data-m="access">📤 Reenviar link de acesso</button>
           <button type="button" data-m="expire" ${t.status === 'expired' ? 'disabled' : ''}>⏸ Expirar agora (tirar do ar)</button>
-          <button type="button" data-m="delete" class="danger">🗑 Excluir loja e produtos</button>
+          <button type="button" data-m="delete" class="danger">🗑 Excluir conta, lojas e produtos</button>
         </div>`);
       $('#modal').querySelector('.menu').addEventListener('click', async (e) => {
         const b = e.target.closest('[data-m]');
         if (!b || b.disabled) return;
         const m = b.dataset.m;
         if (m === 'edit') return editModal(t);
+        if (m === 'plan') return patch(t.id, { action: 'set_plan', plan: t.plan === 'complete' ? 'basic' : 'complete' }, 'Plano alterado ✓');
         if (m === 'password') return passwordModal(t);
         if (m === 'access') { closeModal(); return window.open(waLink(t.whatsapp, accessMessage(t, '')), '_blank', 'noopener'); }
         if (m === 'expire') {
@@ -598,9 +618,9 @@
           }
         }
         if (m === 'delete') {
-          if (await confirmBox('Excluir definitivamente?', `"${t.store_name}" e todos os seus produtos serão apagados. Não dá para desfazer.`, 'Excluir', true)) {
+          if (await confirmBox('Excluir definitivamente?', `A conta de ${t.owner_name || fmtPhone(t.whatsapp)}, ${t.store_count} ${t.store_count === 1 ? 'loja' : 'lojas'} e todos os produtos serão apagados. Não dá para desfazer.`, 'Excluir', true)) {
             try {
-              await api(`/api/admin/tenants/${encodeURIComponent(t.id)}`, { method: 'DELETE' });
+              await api(`/api/admin/accounts/${encodeURIComponent(t.id)}`, { method: 'DELETE' });
               toast('Loja excluída');
               await load();
             } catch (err) { toast(err.message, true); }
@@ -610,9 +630,10 @@
     }
 
     function editModal(t) {
-      openModal(`${head('Editar loja', `/s/${t.id}`)}
+      openModal(`${head('Editar conta', `/s/${slugOf(t)}`)}
         <form id="editForm" novalidate>
-          <label class="field"><span>Nome da loja</span><input class="input" name="store_name" maxlength="80" required value="${esc(t.store_name)}"></label>
+          <input type="hidden" name="store_id" value="${esc(slugOf(t))}">
+          <label class="field"><span>Nome da 1ª loja</span><input class="input" name="store_name" maxlength="80" required value="${esc(t.store_name)}"></label>
           <label class="field"><span>Responsável</span><input class="input" name="owner_name" maxlength="80" value="${esc(t.owner_name)}"></label>
           <label class="field"><span>WhatsApp</span><input class="input" name="whatsapp" inputmode="tel" required value="${esc(fmtPhone(t.whatsapp))}"></label>
           <button type="submit" class="btn btn-dark btn-block" id="editBtn">Salvar</button>
@@ -641,7 +662,7 @@
         const btn = $('#pwBtn');
         setBusy(btn, true);
         try {
-          const { tenant } = await api(`/api/admin/tenants/${encodeURIComponent(t.id)}`, { method: 'PATCH', body: { action: 'reset_password', password } });
+          const { tenant } = await api(`/api/admin/accounts/${encodeURIComponent(t.id)}`, { method: 'PATCH', body: { action: 'reset_password', password } });
           replaceTenant(tenant);
           credentialsView(tenant, password, 'Senha redefinida!');
         } catch (err) { toast(err.message, true); setBusy(btn, false); }
@@ -649,20 +670,15 @@
     }
 
     function replaceTenant(tenant) {
-      state.tenants = state.tenants.map((x) => (x.id === tenant.id ? tenant : x));
-      state.stats = {
-        total: state.tenants.length,
-        trial: state.tenants.filter((x) => x.status === 'trial').length,
-        active: state.tenants.filter((x) => x.status === 'active').length,
-        expired: state.tenants.filter((x) => x.status === 'expired').length,
-      };
+      state.tenants = state.tenants.map((x) => (String(x.id) === String(tenant.id) ? tenant : x));
       render();
+      load().catch(() => {}); // recalcula números (receita, planos)
     }
 
     async function patch(id, body, okMsg, btn) {
       if (btn) setBusy(btn, true);
       try {
-        const { tenant } = await api(`/api/admin/tenants/${encodeURIComponent(id)}`, { method: 'PATCH', body });
+        const { tenant } = await api(`/api/admin/accounts/${encodeURIComponent(id)}`, { method: 'PATCH', body });
         replaceTenant(tenant);
         closeModal();
         toast(okMsg);
@@ -968,7 +984,9 @@
       if (t.status === 'trial') lines.push(`Seu teste grátis da Vitrine *${t.store_name}* termina em ${fmtDate(t.trial_ends_at)}.`);
       else if (t.status === 'expired') lines.push(`Sua Vitrine *${t.store_name}* está fora do ar porque o período terminou.`);
       else lines.push(`Sua assinatura da Vitrine *${t.store_name}* vence em ${fmtDate(t.paid_until)}.`);
-      lines.push(`Para manter sua vitrine no ar é só R$ ${state.planPrice}/mês. Posso te enviar o Pix?`, '', `🛍️ ${t.store_url}`);
+      lines.push(t.status === 'trial'
+        ? `Para continuar: Básico (1 loja) R$ ${state.planPrice}/mês ou Completo (até 3 lojas, 3 modelos) R$ ${state.planPriceComplete}/mês. Qual prefere? Te envio o Pix 😉`
+        : `Para manter sua vitrine no ar é só R$ ${planPriceOf(t.plan)}/mês (plano ${PLAN_NAME[t.plan] || 'Básico'}). Posso te enviar o Pix?`, '', `🛍️ ${t.store_url}`);
       return lines.join('\n');
     }
 
@@ -983,7 +1001,7 @@
       if (f) { state.filter = f.dataset.filter; return render(); }
       const b = e.target.closest('[data-act]');
       if (!b || b.closest('#modal')) return;
-      const t = state.tenants.find((x) => x.id === b.dataset.id);
+      const t = state.tenants.find((x) => String(x.id) === b.dataset.id);
       switch (b.dataset.act) {
         case 'refresh': try { await load(); toast('Atualizado'); } catch (err) { toast(err.message, true); } break;
         case 'logout': logout(); break;
