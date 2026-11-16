@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS products (
   sort_order       INTEGER NOT NULL DEFAULT 0,
   is_visible       INTEGER NOT NULL DEFAULT 1 CHECK (is_visible IN (0, 1)),  -- 0 = oculto para os clientes
   show_price       INTEGER NOT NULL DEFAULT 1 CHECK (show_price IN (0, 1)),  -- 0 = preço deste produto oculto
+  original_price   REAL,                              -- preço antigo ("De"), para mostrar o desconto
   created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -74,7 +75,8 @@ CREATE TABLE IF NOT EXISTS tenant_settings (
   show_stock_warning  INTEGER NOT NULL DEFAULT 1 CHECK (show_stock_warning IN (0, 1)),
   view_mode           TEXT NOT NULL DEFAULT 'grid' CHECK (view_mode IN ('grid', 'list')),
   show_banner         INTEGER NOT NULL DEFAULT 1,     -- 0 = cliente vê só os produtos
-  share_message       TEXT NOT NULL DEFAULT ''        -- mensagem pronta personalizada ({loja} e {link})
+  share_message       TEXT NOT NULL DEFAULT '',       -- mensagem pronta personalizada ({loja} e {link})
+  offer_template      INTEGER NOT NULL DEFAULT 1      -- modelo de mensagem de oferta (1 a 3)
 );
 
 -- ---------------------------------------------------------------------

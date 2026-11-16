@@ -279,7 +279,10 @@ function productInput(body) {
     delivery_cities: isPhysical ? text(body.delivery_cities, 500, 'Cidades atendidas') : '',
     sort_order: clampInt(body.sort_order, -100000, 100000, 0),
     show_price: body.show_price === undefined ? 1 : bool01(body.show_price),
+    original_price: price(body.original_price),
   };
+  // Preço antigo (De) só faz sentido se for maior que o preço atual.
+  if (product.original_price !== null && (product.price === null || product.original_price <= product.price)) product.original_price = null;
   if (platform === 'proprio' && isPhysical && !product.delivery_cities) {
     throw new HttpError(400, 'Informe as cidades onde você entrega este produto.');
   }
@@ -394,8 +397,10 @@ function ensureSchema(env) {
       if (!tc.has('views')) alters.push('ALTER TABLE tenants ADD COLUMN views INTEGER NOT NULL DEFAULT 0');
       if (!pc.has('is_visible')) alters.push('ALTER TABLE products ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1');
       if (!pc.has('show_price')) alters.push('ALTER TABLE products ADD COLUMN show_price INTEGER NOT NULL DEFAULT 1');
+      if (!pc.has('original_price')) alters.push('ALTER TABLE products ADD COLUMN original_price REAL');
       if (!sc.has('show_banner')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_banner INTEGER NOT NULL DEFAULT 1');
       if (!sc.has('share_message')) alters.push("ALTER TABLE tenant_settings ADD COLUMN share_message TEXT NOT NULL DEFAULT ''");
+      if (!sc.has('offer_template')) alters.push('ALTER TABLE tenant_settings ADD COLUMN offer_template INTEGER NOT NULL DEFAULT 1');
       for (const sql of alters) {
         try {
           await env.DB.prepare(sql).run();
@@ -645,9 +650,17 @@ function titleSimilarity(a, b) {
   return hit / Math.min(wa.size, wb.size);
 }
 
+function originalFromDiscount(price, rate) {
+  const r = Number(rate);
+  if (!(price > 0) || !(r > 0 && r < 95)) return null;
+  return Math.round((price / (1 - r / 100)) * 100) / 100;
+}
+
 function shopeeNodeToProduct(node) {
   const priceValue = Number(node.priceMin || node.price);
+  const priceFinal = Number.isFinite(priceValue) && priceValue > 0 ? Math.round(priceValue * 100) / 100 : null;
   return {
+    original_price: originalFromDiscount(priceFinal, node.priceDiscountRate),
     platform: 'shopee',
     title: String(node.productName || '').slice(0, 120),
     price: Number.isFinite(priceValue) && priceValue > 0 ? Math.round(priceValue * 100) / 100 : null,
@@ -663,7 +676,7 @@ async function shopeeSearchByTitle(creds, title) {
   const keyword = normalizeWords(title).slice(0, 10).join(' ');
   if (!keyword) return null;
   const query = `{ productOfferV2(keyword: ${JSON.stringify(keyword)}, page: 1, limit: 10) {
-    nodes { itemId shopId productName price priceMin priceMax imageUrl shopName ratingStar sales } } }`;
+    nodes { itemId shopId productName price priceMin priceMax imageUrl shopName ratingStar sales priceDiscountRate } } }`;
   const data = await shopeeGraphql(creds, query);
   const nodes = ((data.productOfferV2 || {}).nodes) || [];
   let best = null;
@@ -704,17 +717,7 @@ async function lookupShopee(env, creds, url) {
     }
     throw new HttpError(404, 'A Shopee não retornou este produto. Ele pode não participar do programa de afiliados.');
   }
-  const priceValue = Number(node.priceMin || node.price);
-  return {
-    platform: 'shopee',
-    title: String(node.productName || '').slice(0, 120),
-    price: Number.isFinite(priceValue) && priceValue > 0 ? Math.round(priceValue * 100) / 100 : null,
-    price_max: Number(node.priceMax) || null,
-    image_url: /^https?:\/\//.test(node.imageUrl || '') ? node.imageUrl : null,
-    shop_name: node.shopName || null,
-    rating: node.ratingStar ? Number(node.ratingStar) : null,
-    sales: node.sales ? Number(node.sales) : null,
-  };
+  return shopeeNodeToProduct(node);
 }
 
 /* ---------- Mercado Livre (OAuth: ML_CLIENT_ID / ML_CLIENT_SECRET) ---------- */
@@ -893,6 +896,7 @@ async function lookupMercadoLivre(env, token, url) {
           platform: 'mercadolivre',
           title: String(item.title).slice(0, 120),
           price: Number(item.price) > 0 ? Number(item.price) : null,
+          original_price: Number(item.original_price) > Number(item.price) ? Number(item.original_price) : null,
           image_url: httpsImage((item.pictures && item.pictures[0] && (item.pictures[0].secure_url || item.pictures[0].url)) || item.thumbnail),
           shop_name: null,
         };
@@ -906,6 +910,7 @@ async function lookupMercadoLivre(env, token, url) {
           platform: 'mercadolivre',
           title: String(prod.name).slice(0, 120),
           price: price > 0 ? price : null,
+          original_price: prod.buy_box_winner && Number(prod.buy_box_winner.original_price) > price ? Number(prod.buy_box_winner.original_price) : null,
           image_url: httpsImage(prod.pictures && prod.pictures[0] && (prod.pictures[0].secure_url || prod.pictures[0].url)),
           shop_name: null,
         };
@@ -1179,11 +1184,11 @@ function tenantPrivate(t) {
   };
 }
 
-const DEFAULT_SETTINGS = { show_prices: 1, show_stock_warning: 1, view_mode: 'grid', show_banner: 1, share_message: '' };
+const DEFAULT_SETTINGS = { show_prices: 1, show_stock_warning: 1, view_mode: 'grid', show_banner: 1, share_message: '', offer_template: 1 };
 
 async function loadSettings(env, tenantId) {
   const row = await env.DB.prepare(
-    'SELECT show_prices, show_stock_warning, view_mode, show_banner, share_message FROM tenant_settings WHERE tenant_id = ?',
+    'SELECT show_prices, show_stock_warning, view_mode, show_banner, share_message, offer_template FROM tenant_settings WHERE tenant_id = ?',
   ).bind(tenantId).first();
   return row ? { ...DEFAULT_SETTINGS, ...row } : { ...DEFAULT_SETTINGS };
 }
@@ -1191,7 +1196,7 @@ async function loadSettings(env, tenantId) {
 async function loadProducts(env, tenantId, { onlyVisible = false } = {}) {
   const { results } = await env.DB.prepare(
     `SELECT id, title, description, price, image_url, affiliate_link, platform,
-            is_physical, delivery_cities, sort_order, is_visible, show_price, created_at, updated_at
+            is_physical, delivery_cities, sort_order, is_visible, show_price, original_price, created_at, updated_at
        FROM products WHERE tenant_id = ? ${onlyVisible ? 'AND is_visible = 1' : ''}
       ORDER BY sort_order ASC, id DESC`,
   ).bind(tenantId).all();
@@ -1277,9 +1282,10 @@ async function handleStore(env, rawId) {
     } catch { /* contador não é crítico */ }
   }
   delete settings.share_message;
+  delete settings.offer_template;
 
   // Preço oculto (geral ou do produto): o valor nem sai do servidor.
-  const visibleProducts = products.map((p) => (settings.show_prices && Number(p.show_price) !== 0 ? p : { ...p, price: null }));
+  const visibleProducts = products.map((p) => (settings.show_prices && Number(p.show_price) !== 0 ? p : { ...p, price: null, original_price: null }));
 
   return json({ store: tenantPublic(tenant), settings, products: visibleProducts });
 }
@@ -1436,17 +1442,19 @@ async function handleSettings(request, env, tenant) {
     view_mode: pick('view_mode') === 'list' ? 'list' : 'grid',
     show_banner: bool01(pick('show_banner')),
     share_message: text(pick('share_message'), 600, 'Mensagem pronta'),
+    offer_template: clampInt(pick('offer_template'), 1, 3, 1),
   };
   await env.DB.prepare(
-    `INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, show_banner, share_message)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, show_banner, share_message, offer_template)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (tenant_id) DO UPDATE SET
        show_prices = excluded.show_prices,
        show_stock_warning = excluded.show_stock_warning,
        view_mode = excluded.view_mode,
        show_banner = excluded.show_banner,
-       share_message = excluded.share_message`,
-  ).bind(tenant.id, settings.show_prices, settings.show_stock_warning, settings.view_mode, settings.show_banner, settings.share_message).run();
+       share_message = excluded.share_message,
+       offer_template = excluded.offer_template`,
+  ).bind(tenant.id, settings.show_prices, settings.show_stock_warning, settings.view_mode, settings.show_banner, settings.share_message, settings.offer_template).run();
   return json({ settings });
 }
 
@@ -1495,12 +1503,12 @@ async function handleCreateProduct(request, env, tenant) {
   const ts = nowIso();
   const row = await env.DB.prepare(
     `INSERT INTO products (tenant_id, title, description, price, image_url, affiliate_link, platform,
-                           is_physical, delivery_cities, sort_order, show_price, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           is_physical, delivery_cities, sort_order, show_price, original_price, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`,
   ).bind(
     tenant.id, p.title, p.description, p.price, p.image_url, p.affiliate_link, p.platform,
-    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, ts, ts,
+    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, p.original_price, ts, ts,
   ).first();
   return json({ product: row }, 201);
 }
@@ -1511,12 +1519,12 @@ async function handleUpdateProduct(request, env, tenant, rawId) {
   const p = productInput(await readJson(request));
   const row = await env.DB.prepare(
     `UPDATE products SET title = ?, description = ?, price = ?, image_url = ?, affiliate_link = ?, platform = ?,
-                         is_physical = ?, delivery_cities = ?, sort_order = ?, show_price = ?, updated_at = ?
+                         is_physical = ?, delivery_cities = ?, sort_order = ?, show_price = ?, original_price = ?, updated_at = ?
      WHERE id = ? AND tenant_id = ?
      RETURNING *`,
   ).bind(
     p.title, p.description, p.price, p.image_url, p.affiliate_link, p.platform,
-    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, nowIso(), current.id, tenant.id,
+    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, p.original_price, nowIso(), current.id, tenant.id,
   ).first();
   if (current.image_url && current.image_url !== p.image_url) await deleteImage(env, current.image_url, tenant.id);
   return json({ product: row });

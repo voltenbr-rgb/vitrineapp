@@ -100,7 +100,7 @@
       font-size: 12px; font-weight: 700; color: var(--ink-2); cursor: pointer;
       border: 1.5px solid transparent; transition: all .15s;
     }
-    .seg .opt .dot { width: 26px; height: 26px; border-radius: 9px; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 800; }
+    .seg .opt .dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 800; box-shadow: 0 3px 8px rgba(0, 0, 0, .12); }
     .seg input:checked + .opt { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-deep); }
     .seg input:focus-visible + .opt { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); }
 
@@ -157,6 +157,25 @@
     .msg-area { width: 100%; min-height: 150px; border: 1.5px solid transparent; background: var(--field); border-radius: 14px; padding: 12px 14px; font-size: 15px; line-height: 1.45; resize: vertical; outline: none; }
     .msg-area:focus { border-color: var(--accent); background: #fff; }
     .dialog .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+    .offer-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; margin-bottom: 14px; border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent); }
+    .offer-card h2 { margin: 0 0 2px; font-size: 17px; }
+    .offer-card .sub { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+    .offer-row { display: flex; gap: 8px; }
+    .offer-row .input { flex: 1; min-width: 0; }
+    .offer-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0 8px; }
+    .offer-fields .full { grid-column: 1 / -1; }
+    .offer-fields label { display: grid; gap: 4px; font-size: 12px; font-weight: 700; color: var(--ink-2); }
+    .offer-fields .input { height: 44px; font-size: 14px; }
+    .models { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 4px 0 10px; padding: 2px; }
+    .models::-webkit-scrollbar { display: none; }
+    .models button { flex-shrink: 0; height: 38px; padding: 0 12px; border-radius: 11px; background: var(--field); font-size: 13px; font-weight: 700; color: var(--ink-2); }
+    .models button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+    .offer-preview { width: 100%; min-height: 230px; border: 0; border-radius: 14px; padding: 14px; font-size: 14px; line-height: 1.45; background: #e7fbe9; color: #12301d; resize: vertical; outline: none; font-family: inherit; }
+    .offer-preview:focus { box-shadow: 0 0 0 2px var(--accent); }
+    .offer-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .offer-actions .full { grid-column: 1 / -1; }
+    .offer-thumb { display: flex; gap: 10px; align-items: center; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+    .offer-thumb img { width: 46px; height: 46px; border-radius: 10px; object-fit: cover; background: var(--field); }
     .pitem.hidden-item { opacity: .6; }
     .pitem.hidden-item .thumb { filter: grayscale(1); }
     .tag-hidden { font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 3px 7px; border-radius: 7px; background: #e5e7eb; color: #4b5563; }
@@ -318,10 +337,15 @@
 
     const API = String(window.VITRINE_API_BASE || '').replace(/\/+$/, '');
     const TOKEN_KEY = 'vitrine:token';
+    const MARK = {
+      cart: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h2l2.4 10.2a1.5 1.5 0 0 0 1.5 1.2h8.3a1.5 1.5 0 0 0 1.5-1.1L21 8H6.2"/><circle cx="9.5" cy="19.5" r="1.4"/><circle cx="17" cy="19.5" r="1.4"/></svg>',
+      bag: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg>',
+      pin: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>',
+    };
     const PLATFORM = {
-      mercadolivre: { label: 'Mercado Livre', cls: 'ml', color: '#f5c400', ink: '#2d3277', letter: 'ML' },
-      shopee: { label: 'Shopee', cls: 'shopee', color: '#ee4d2d', ink: '#fff', letter: 'S' },
-      proprio: { label: 'Produto próprio', cls: 'proprio', color: null, ink: '#fff', letter: '★' },
+      mercadolivre: { label: 'Mercado Livre', cls: 'ml', color: '#fff159', ink: '#2d3277', letter: MARK.cart },
+      shopee: { label: 'Shopee', cls: 'shopee', color: '#ee4d2d', ink: '#fff', letter: MARK.bag },
+      proprio: { label: 'Produto próprio', cls: 'proprio', color: null, ink: '#fff', letter: MARK.pin },
     };
     const PALETTE = ['#16a6e0', '#6366f1', '#8b5cf6', '#ec4899', '#e11d48', '#f97316', '#f59e0b', '#16a34a', '#0d9488', '#14161b'];
 
@@ -463,6 +487,155 @@
         try { document.execCommand('copy'); toast(msg); } catch { toast('Não foi possível copiar', true); }
         ta.remove();
       }
+    }
+
+    /* ---------------- Mensagens de oferta (3 modelos) ---------------- */
+    const OFFER_MODELS = [
+      { id: 1, name: '🔥 Destaque do dia' },
+      { id: 2, name: '✨ Achadinho' },
+      { id: 3, name: '⚡ Relâmpago' },
+    ];
+
+    const parseMoney = (v) => {
+      if (v === null || v === undefined || v === '') return null;
+      if (typeof v === 'number') return v > 0 ? v : null;
+      const n = Number(String(v).replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(?:\D|$))/g, '').replace(',', '.'));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+
+    function offerText(model, data) {
+      const title = String(data.title || '').trim() || 'Produto em oferta';
+      const price = parseMoney(data.price);
+      let original = parseMoney(data.original);
+      if (!(price && original && original > price)) original = null;
+      const off = original ? Math.round((1 - price / original) * 100) : null;
+      const link = String(data.link || '').trim();
+      let lines;
+      if (model === 2) {
+        lines = ['✨ ACHADINHO DO DIA ✨', '', `🛍️ *${title}*`, '',
+          price ? (original ? `💸 De ~${brl(original)}~ por apenas *${brl(price)}*` : `💸 Por apenas *${brl(price)}*`) : '💸 Preço especial no link',
+          off ? `🏷️ Economize ${off}%` : '', '', '👉 Garanta o seu aqui:', link, '', '⚠️ Preço e estoque podem mudar a qualquer momento.'];
+      } else if (model === 3) {
+        lines = ['⚡ OFERTA RELÂMPAGO ⚡', '', `📦 ${title}`, '',
+          off ? `🔻 ${off}% OFF` : '',
+          price ? `💰 Só ${brl(price)}${original ? ` (era ${brl(original)})` : ''}` : '💰 Confira o preço no link',
+          '', '🔗 Aproveite:', link, '', '⏰ Corre que pode acabar a qualquer momento!'];
+      } else {
+        lines = ['🔥 DESTAQUE DO DIA 🔥', '', `🎯${title}`, '',
+          original ? `❌ De ~${brl(original)}~` : '',
+          price ? `✅ Por ${brl(price)}` : '✅ Confira o preço no link',
+          off ? `🏷️ ${off}% OFF` : '', '', '🛒 COMPRE AQUI:', link, '', '⏳ Oferta sujeita à disponibilidade de estoque.'];
+      }
+      return lines.filter((l, i, a) => !(l === '' && (i === 0 || a[i - 1] === '')))
+        .join('\n').replace(/\n{3,}/g, '\n\n').replace(/\n+$/, '');
+    }
+
+    const currentModel = () => Number(state.settings && state.settings.offer_template) || 1;
+    const modelsHtml = () => `<div class="models" role="group" aria-label="Modelo da mensagem">${OFFER_MODELS.map((m) =>
+      `<button type="button" data-model="${m.id}" aria-pressed="${m.id === currentModel()}">${esc(m.name)}</button>`).join('')}</div>`;
+
+    function offerCard() {
+      const o = state.offer;
+      const canFill = state.config.lookup && (state.config.lookup.shopee || state.config.lookup.mercadolivre);
+      return `<section class="offer-card" aria-label="Gerador de oferta">
+        <h2>⚡ Gerador de oferta</h2>
+        <p class="sub">Cole o link de afiliado${canFill ? ' e toque em Gerar: nome, preço e desconto vêm sozinhos' : ''}. A mensagem sai pronta para copiar ou mandar no WhatsApp.</p>
+        <div class="offer-row">
+          <input class="input" id="offerLink" type="url" inputmode="url" placeholder="https://meli.la/... ou https://s.shopee.com.br/..." value="${esc(o ? o.link : '')}" ${isExpired() ? 'disabled' : ''}>
+          <button type="button" class="btn btn-primary" data-act="offer-generate" id="offerBtn" ${isExpired() ? 'disabled' : ''}>Gerar</button>
+        </div>
+        ${o ? `
+          <div class="offer-fields">
+            <label class="full">Nome do produto<input class="input" data-offer="title" value="${esc(o.title)}"></label>
+            <label>De (preço antigo)<input class="input" data-offer="original" inputmode="decimal" placeholder="opcional" value="${esc(o.original ? priceInput(parseMoney(o.original)) : '')}"></label>
+            <label>Por (preço atual)<input class="input" data-offer="price" inputmode="decimal" placeholder="opcional" value="${esc(o.price ? priceInput(parseMoney(o.price)) : '')}"></label>
+          </div>
+          ${modelsHtml()}
+          <textarea class="offer-preview" id="offerText" aria-label="Mensagem pronta">${esc(offerText(currentModel(), o))}</textarea>
+          ${o.image ? `<div class="offer-thumb"><img src="${esc(o.image)}" alt="">Confira se o nome e o preço batem com o anúncio.</div>` : ''}
+          <div class="offer-actions">
+            <button type="button" class="btn btn-soft" data-act="offer-copy">${I.copy}Copiar</button>
+            <button type="button" class="btn btn-wa" data-act="offer-wa">${I.wa}WhatsApp</button>
+            <button type="button" class="btn btn-ghost" data-act="offer-save">➕ Salvar na vitrine</button>
+            <button type="button" class="btn btn-ghost" data-act="offer-clear">Limpar</button>
+          </div>` : ''}
+      </section>`;
+    }
+
+    function updateOfferPreview() {
+      const box = $('#offerText');
+      if (box && state.offer) box.value = offerText(currentModel(), state.offer);
+    }
+
+    async function setOfferModel(id) {
+      state.settings.offer_template = id;
+      document.querySelectorAll('[data-model]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.model) === id)));
+      if (state.offerProduct) $('#offerText').value = offerText(id, state.offerProduct);
+      else updateOfferPreview();
+      try { await api('/api/me/settings', { method: 'PUT', body: { offer_template: id } }); } catch { /* preferência não é crítica */ }
+    }
+
+    async function generateOffer() {
+      let link = String(($('#offerLink') || {}).value || '').trim();
+      if (!link) { toast('Cole o link do produto.', true); return $('#offerLink').focus(); }
+      if (!/^https?:\/\//i.test(link)) link = 'https://' + link;
+      const platform = /shopee|shp\.ee|shope\.ee/i.test(link) ? 'shopee' : /mercadoli[vb]re|meli\.la/i.test(link) ? 'mercadolivre' : 'proprio';
+      state.offer = { link, title: '', price: '', original: '', image: '', platform };
+      const canFill = state.config.lookup && state.config.lookup[platform];
+      if (canFill) {
+        const btn = $('#offerBtn');
+        setBusy(btn, true, '...');
+        try {
+          const { product, quota } = await api('/api/me/lookup', { method: 'POST', body: { url: link } });
+          if (quota) state.quota = quota;
+          Object.assign(state.offer, {
+            title: product.title || '', price: product.price || '', original: product.original_price || '', image: product.image_url || '',
+          });
+          toast(product.source === 'title_match' ? 'Encontrei pelo nome. Confira o preço antes de enviar.' : '🔥 Oferta pronta! Confira e envie.');
+        } catch (err) {
+          toast(err.message + ' Preencha o nome e o preço abaixo.', true);
+        }
+      } else {
+        toast('Preencha o nome e o preço abaixo e a mensagem fica pronta.');
+      }
+      render();
+      const first = $('[data-offer="title"]');
+      if (first && !first.value) first.focus();
+    }
+
+    function saveOfferAsProduct() {
+      const o = state.offer;
+      if (!o) return;
+      state.editing = null;
+      state.prefill = {
+        title: o.title, affiliate_link: o.link, platform: o.platform, image_url: o.image,
+        price: parseMoney(o.price), original_price: parseMoney(o.original), show_price: 0,
+      };
+      state.tab = 'form';
+      render();
+      window.scrollTo({ top: 0 });
+      toast('Confira os dados e toque em Publicar na vitrine.');
+    }
+
+    function openProductOffer(id) {
+      const p = state.products.find((x) => x.id === id);
+      if (!p) return;
+      const link = safeImg(p.affiliate_link) ? p.affiliate_link : (/^https?:/i.test(p.affiliate_link || '') ? p.affiliate_link : `${state.storeUrl}?p=${p.id}`);
+      state.offerProduct = { title: p.title, price: p.price, original: p.original_price, link };
+      const ov = $('#dialogOverlay');
+      $('#dialog').innerHTML = `<h3 id="dlgTitle">📣 Mensagem de oferta</h3>
+        <p>Escolha o modelo, ajuste se quiser e envie.</p>
+        ${modelsHtml()}
+        <textarea class="offer-preview" id="offerText">${esc(offerText(currentModel(), state.offerProduct))}</textarea>
+        <div class="offer-actions">
+          <button type="button" class="btn btn-soft" data-act="offer-copy">${I.copy}Copiar</button>
+          <button type="button" class="btn btn-wa" data-act="offer-wa">${I.wa}WhatsApp</button>
+          <button type="button" class="btn btn-ghost full" data-close-offer>Fechar</button>
+        </div>`;
+      ov.classList.add('open');
+      ov.onclick = (e) => {
+        if (e.target === ov || e.target.closest('[data-close-offer]')) { ov.classList.remove('open'); ov.onclick = null; state.offerProduct = null; }
+      };
     }
 
     /* ---------------- Compartilhar ---------------- */
@@ -717,6 +890,7 @@
             ${p.is_physical ? '<span>· 📍 entrega local</span>' : ''}
             ${hidden ? '<span class="tag-hidden">Oculto</span>' : ''}</div></div>
         <div class="acts">
+          <button type="button" class="icon-btn" data-act="offer" data-id="${p.id}" aria-label="Gerar mensagem de oferta de ${esc(p.title)}" title="Mensagem de oferta">📣</button>
           <button type="button" class="icon-btn" data-act="toggle-visible" data-id="${p.id}" aria-label="${hidden ? 'Mostrar na vitrine' : 'Ocultar da vitrine'}" title="${hidden ? 'Mostrar na vitrine' : 'Ocultar da vitrine'}">${hidden ? I.eyeOff : I.eye}</button>
           <button type="button" class="icon-btn" data-act="edit" data-id="${p.id}" aria-label="Editar ${esc(p.title)}">${I.edit}</button>
           <button type="button" class="icon-btn danger" data-act="delete" data-id="${p.id}" aria-label="Excluir ${esc(p.title)}">${I.trash}</button>
@@ -733,6 +907,7 @@
           <div class="stat"><b>${count('mercadolivre') + count('shopee')}</b><span>Afiliados</span></div>
           <div class="stat"><b>${count('proprio')}</b><span>Próprios</span></div>
         </div>
+        ${offerCard()}
         <div class="section-title"><h2>Seus produtos</h2>
           <button type="button" class="btn btn-sm btn-primary" data-tab="new" ${isExpired() ? 'disabled' : ''}>+ Novo</button></div>
         ${state.products.length > 4 ? `<label class="search">${I.search}<input id="pSearch" type="search" placeholder="Buscar nos seus produtos" value="${esc(state.query)}" autocomplete="off"></label>` : ''}
@@ -746,7 +921,8 @@
 
     function renderForm() {
       // Afiliado começa com o preço oculto (o sistema não atualiza preços sozinho); produto próprio começa visível.
-      const p = state.editing || { title: '', description: '', price: null, image_url: '', affiliate_link: '', platform: 'mercadolivre', is_physical: 0, delivery_cities: '', sort_order: 0, show_price: 0 };
+      const p = state.editing || { title: '', description: '', price: null, original_price: null, image_url: '', affiliate_link: '', platform: 'mercadolivre', is_physical: 0, delivery_cities: '', sort_order: 0, show_price: 0, ...(state.prefill || {}) };
+      state.prefill = null;
       priceTouched = !!state.editing;
       const img = safeImg(p.image_url);
       const locked = isExpired();
@@ -795,6 +971,8 @@
                 <div class="input-group"><span class="prefix">R$</span>
                   <input class="input" name="price" inputmode="decimal" placeholder="Opcional" value="${esc(priceInput(p.price))}"></div>
                 <small id="priceHint"></small>
+                <span style="display:grid;gap:4px;margin-top:6px"><small style="font-size:13px;font-weight:700;color:var(--ink-2)">Preço antigo "De" <span style="font-weight:500;color:var(--muted)">(opcional, mostra o desconto)</span></small>
+                  <div class="input-group"><span class="prefix">R$</span><input class="input" name="original_price" inputmode="decimal" placeholder="Ex.: 1.999,00" value="${esc(priceInput(p.original_price))}"></div></span>
                 <span style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px">
                   <small style="font-size:13px;font-weight:700;color:var(--ink-2)">Mostrar preço na vitrine</small>
                   <span class="switch"><input type="checkbox" name="show_price" id="showPrice" ${Number(p.show_price) !== 0 ? 'checked' : ''} aria-label="Mostrar preço deste produto na vitrine"><span class="track"></span></span>
@@ -959,6 +1137,7 @@
         delivery_cities: fd.get('delivery_cities') || '',
         sort_order: fd.get('pinned') ? -1 : 0,
         show_price: fd.get('show_price') ? 1 : 0,
+        original_price: String(fd.get('original_price') || '').trim(),
       };
       if (!String(body.title || '').trim()) { toast('Dê um título ao produto.', true); form.title.focus(); return; }
       if (body.platform !== 'proprio' && !body.affiliate_link) { toast('Cole o link de afiliado.', true); form.affiliate_link.focus(); return; }
@@ -1099,6 +1278,7 @@
           $('#titleCount').textContent = `${product.title.length}/120`;
         }
         if (product.price && (manual || !form.price.value.trim())) form.price.value = priceInput(product.price);
+        if (product.original_price && (manual || !form.original_price.value.trim())) form.original_price.value = priceInput(product.original_price);
         if (product.image_url && (manual || !$('#imageValue').value)) setProductImage(product.image_url);
         if (!form.description.value.trim() && product.shop_name) {
           const extras = [product.shop_name ? `Loja: ${product.shop_name}` : '', product.rating ? `⭐ ${Number(product.rating).toFixed(1)}` : ''].filter(Boolean).join(' · ');
@@ -1141,11 +1321,11 @@
 
     /* ---------------- Eventos ---------------- */
     document.addEventListener('click', async (e) => {
-      const t = e.target.closest('[data-tab], [data-act], [data-color]');
+      const t = e.target.closest('[data-tab], [data-act], [data-color], [data-model]');
       if (!t || t.disabled) return;
       if (t.dataset.tab) return go(t.dataset.tab);
       if (t.dataset.color) return setColor(t.dataset.color);
-      const act = t.dataset.act;
+      const act = t.dataset.act || (t.dataset.model ? 'model' : '');
       if (act === 'copy-link') return copy(state.storeUrl, 'Link copiado! Cole na sua bio 😉');
       if (act === 'share-msg') return openShareMessage();
       if (act === 'toggle-visible') return toggleVisible(Number(t.dataset.id));
@@ -1162,6 +1342,13 @@
       if (act === 'delete') return deleteProduct(Number(t.dataset.id));
       if (act === 'clear-img') return setProductImage('');
       if (act === 'autofill') return autoFill(true);
+      if (act === 'offer-generate') return generateOffer();
+      if (act === 'offer-copy') return copy($('#offerText').value, 'Oferta copiada! É só colar 🔥');
+      if (act === 'offer-wa') return window.open(waLink('', $('#offerText').value), '_blank', 'noopener');
+      if (act === 'offer-save') return saveOfferAsProduct();
+      if (act === 'offer-clear') { state.offer = null; return render(); }
+      if (act === 'offer') return openProductOffer(Number(t.dataset.id));
+      if (act === 'model') return setOfferModel(Number(t.dataset.model));
       if (act === 'clear-avatar') return setAvatar('');
     });
 
@@ -1202,6 +1389,7 @@
         const s = $('#pSearch');
         if (s) { s.focus(); s.setSelectionRange(pos, pos); }
       }
+      if (el.dataset && el.dataset.offer) { state.offer[el.dataset.offer] = el.value; updateOfferPreview(); return; }
       if (el.name === 'title' && $('#titleCount')) $('#titleCount').textContent = `${el.value.length}/120`;
       if (el.name === 'description' && $('#descCount')) $('#descCount').textContent = `${el.value.length}/1500`;
     });

@@ -223,13 +223,21 @@
     .card-media .placeholder { position: relative; color: color-mix(in srgb, var(--halo) 70%, #000); opacity: .55; }
     .badge {
       position: absolute; top: 10px; left: 10px; z-index: 2;
-      font-size: 10px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase;
-      padding: 4px 8px; border-radius: 8px; background: rgba(255, 255, 255, .92); color: var(--ink-2);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, .06);
+      display: inline-flex; align-items: center; gap: 5px; max-width: calc(100% - 60px);
+      font-size: 11px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap;
+      padding: 4px 9px 4px 5px; border-radius: 999px; background: rgba(255, 255, 255, .95); color: var(--ink-2);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, .10);
     }
+    .badge i { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; }
     .badge.ml { color: #2d3277; background: #fff159; }
+    .badge.ml i { background: #2d3277; color: #fff159; }
     .badge.shopee { color: #fff; background: #ee4d2d; }
+    .badge.shopee i { background: #fff; color: #ee4d2d; }
     .badge.proprio { color: var(--accent-ink); background: var(--accent); }
+    .badge.proprio i { background: rgba(255, 255, 255, .9); color: var(--accent-deep); }
+    .old-price { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+    .old-price s { font-weight: 600; }
+    .off { font-size: 10.5px; font-weight: 800; color: #fff; background: #16a34a; padding: 2px 6px; border-radius: 6px; }
     .fav {
       position: absolute; top: 8px; right: 8px; z-index: 2;
       width: 36px; height: 36px; border-radius: 50%;
@@ -427,10 +435,16 @@
     'use strict';
 
     const API = String(window.VITRINE_API_BASE || '').replace(/\/+$/, '');
+    // Selos genéricos com as cores de cada plataforma (sem usar as logos oficiais).
+    const MARK = {
+      cart: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h2l2.4 10.2a1.5 1.5 0 0 0 1.5 1.2h8.3a1.5 1.5 0 0 0 1.5-1.1L21 8H6.2"/><circle cx="9.5" cy="19.5" r="1.4"/><circle cx="17" cy="19.5" r="1.4"/></svg>',
+      bag: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg>',
+      pin: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>',
+    };
     const PLATFORM = {
-      mercadolivre: { label: 'Mercado Livre', short: 'M. Livre', cls: 'ml', color: '#f5c400' },
-      shopee: { label: 'Shopee', short: 'Shopee', cls: 'shopee', color: '#ee4d2d' },
-      proprio: { label: 'Da região', short: 'Da região', cls: 'proprio', color: null },
+      mercadolivre: { label: 'Mercado Livre', short: 'Mercado Livre', cls: 'ml', color: '#f5c400', mark: MARK.cart },
+      shopee: { label: 'Shopee', short: 'Shopee', cls: 'shopee', color: '#ee4d2d', mark: MARK.bag },
+      proprio: { label: 'Da região', short: 'Da região', cls: 'proprio', color: null, mark: MARK.pin },
     };
     const HALOS = ['#16a6e0', '#f59e0b', '#a3e635', '#6366f1', '#ec4899', '#14b8a6', '#f97316', '#8b5cf6'];
 
@@ -535,7 +549,10 @@
           ? `<div class="price-alt">Ver preço no ${esc(PLATFORM[p.platform].label)}</div>`
           : `<div class="price-alt">Preço sob consulta</div>`;
       }
-      return `<div class="price">${isAffiliate(p) ? '<small>Preço de referência</small>' : ''}${brl(p.price)}</div>`;
+      const orig = Number(p.original_price);
+      const old = orig > Number(p.price)
+        ? `<div class="old-price"><s>${brl(orig)}</s><span class="off">-${Math.round((1 - Number(p.price) / orig) * 100)}%</span></div>` : '';
+      return `${old}<div class="price">${isAffiliate(p) && !old ? '<small>Preço de referência</small>' : ''}${brl(p.price)}</div>`;
     }
 
     function noticeBlock(p) {
@@ -617,7 +634,7 @@
       const fav = state.favs.has(p.id);
       return `<article class="card" style="animation-delay:${Math.min(i, 12) * 30}ms">
         ${mediaHtml(p, i)}
-        <span class="badge ${plat.cls}">${esc(plat.short)}</span>
+        <span class="badge ${plat.cls}"><i>${plat.mark}</i>${esc(plat.short)}</span>
         <button type="button" class="fav" data-fav="${p.id}" aria-pressed="${fav}" aria-label="${fav ? 'Remover dos' : 'Adicionar aos'} favoritos">${ICON.heart}</button>
         <div class="card-body">
           <h3 class="card-title">${esc(p.title)}</h3>
@@ -752,7 +769,7 @@
       history.replaceState(null, '', url);
       openSheet(`
         <div class="grabber"></div>
-        <div class="sheet-head"><span class="badge ${plat.cls}" style="position:static">${esc(plat.label)}</span>
+        <div class="sheet-head"><span class="badge ${plat.cls}" style="position:static"><i>${plat.mark}</i>${esc(plat.label)}</span>
           <button type="button" class="icon-btn" data-close aria-label="Fechar">${ICON.close}</button></div>
         ${mediaHtml(p, i, 'detail-media')}
         <h3 class="detail-title" id="sheetTitle">${esc(p.title)}</h3>
