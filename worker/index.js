@@ -278,6 +278,7 @@ function productInput(body) {
     is_physical: isPhysical,
     delivery_cities: isPhysical ? text(body.delivery_cities, 500, 'Cidades atendidas') : '',
     sort_order: clampInt(body.sort_order, -100000, 100000, 0),
+    show_price: body.show_price === undefined ? 1 : bool01(body.show_price),
   };
   if (platform === 'proprio' && isPhysical && !product.delivery_cities) {
     throw new HttpError(400, 'Informe as cidades onde você entrega este produto.');
@@ -392,6 +393,7 @@ function ensureSchema(env) {
       if (!tc.has('last_login_at')) alters.push('ALTER TABLE tenants ADD COLUMN last_login_at TEXT');
       if (!tc.has('views')) alters.push('ALTER TABLE tenants ADD COLUMN views INTEGER NOT NULL DEFAULT 0');
       if (!pc.has('is_visible')) alters.push('ALTER TABLE products ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1');
+      if (!pc.has('show_price')) alters.push('ALTER TABLE products ADD COLUMN show_price INTEGER NOT NULL DEFAULT 1');
       if (!sc.has('show_banner')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_banner INTEGER NOT NULL DEFAULT 1');
       if (!sc.has('share_message')) alters.push("ALTER TABLE tenant_settings ADD COLUMN share_message TEXT NOT NULL DEFAULT ''");
       for (const sql of alters) {
@@ -993,7 +995,7 @@ async function loadSettings(env, tenantId) {
 async function loadProducts(env, tenantId, { onlyVisible = false } = {}) {
   const { results } = await env.DB.prepare(
     `SELECT id, title, description, price, image_url, affiliate_link, platform,
-            is_physical, delivery_cities, sort_order, is_visible, created_at, updated_at
+            is_physical, delivery_cities, sort_order, is_visible, show_price, created_at, updated_at
        FROM products WHERE tenant_id = ? ${onlyVisible ? 'AND is_visible = 1' : ''}
       ORDER BY sort_order ASC, id DESC`,
   ).bind(tenantId).all();
@@ -1080,10 +1082,8 @@ async function handleStore(env, rawId) {
   }
   delete settings.share_message;
 
-  // Quando o lojista oculta preços, o preço nem sai do servidor.
-  const visibleProducts = settings.show_prices
-    ? products
-    : products.map((p) => ({ ...p, price: null }));
+  // Preço oculto (geral ou do produto): o valor nem sai do servidor.
+  const visibleProducts = products.map((p) => (settings.show_prices && Number(p.show_price) !== 0 ? p : { ...p, price: null }));
 
   return json({ store: tenantPublic(tenant), settings, products: visibleProducts });
 }
@@ -1299,12 +1299,12 @@ async function handleCreateProduct(request, env, tenant) {
   const ts = nowIso();
   const row = await env.DB.prepare(
     `INSERT INTO products (tenant_id, title, description, price, image_url, affiliate_link, platform,
-                           is_physical, delivery_cities, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           is_physical, delivery_cities, sort_order, show_price, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`,
   ).bind(
     tenant.id, p.title, p.description, p.price, p.image_url, p.affiliate_link, p.platform,
-    p.is_physical, p.delivery_cities, p.sort_order, ts, ts,
+    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, ts, ts,
   ).first();
   return json({ product: row }, 201);
 }
@@ -1315,12 +1315,12 @@ async function handleUpdateProduct(request, env, tenant, rawId) {
   const p = productInput(await readJson(request));
   const row = await env.DB.prepare(
     `UPDATE products SET title = ?, description = ?, price = ?, image_url = ?, affiliate_link = ?, platform = ?,
-                         is_physical = ?, delivery_cities = ?, sort_order = ?, updated_at = ?
+                         is_physical = ?, delivery_cities = ?, sort_order = ?, show_price = ?, updated_at = ?
      WHERE id = ? AND tenant_id = ?
      RETURNING *`,
   ).bind(
     p.title, p.description, p.price, p.image_url, p.affiliate_link, p.platform,
-    p.is_physical, p.delivery_cities, p.sort_order, nowIso(), current.id, tenant.id,
+    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, nowIso(), current.id, tenant.id,
   ).first();
   if (current.image_url && current.image_url !== p.image_url) await deleteImage(env, current.image_url, tenant.id);
   return json({ product: row });

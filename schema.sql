@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS products (
   delivery_cities  TEXT NOT NULL DEFAULT '',          -- ex.: "Campo Grande, Dourados"
   sort_order       INTEGER NOT NULL DEFAULT 0,
   is_visible       INTEGER NOT NULL DEFAULT 1 CHECK (is_visible IN (0, 1)),  -- 0 = oculto para os clientes
+  show_price       INTEGER NOT NULL DEFAULT 1 CHECK (show_price IN (0, 1)),  -- 0 = preço deste produto oculto
   created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );

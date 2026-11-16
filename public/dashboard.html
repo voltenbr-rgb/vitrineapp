@@ -712,7 +712,8 @@
         <div class="thumb">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : I.box}</div>
         <div class="meta"><strong>${p.sort_order < 0 ? '📌 ' : ''}${esc(p.title)}</strong>
           <div class="line"><span class="badge ${plat.cls}">${esc(plat.label)}</span>
-            ${p.price !== null && p.price !== undefined ? `<span class="price">${brl(p.price)}</span>` : '<span>sem preço</span>'}
+            ${p.price !== null && p.price !== undefined ? `<span class="price" ${Number(p.show_price) === 0 ? 'style="text-decoration:line-through;opacity:.6" title="Preço oculto na vitrine"' : ''}>${brl(p.price)}</span>` : '<span>sem preço</span>'}
+            ${Number(p.show_price) === 0 ? '<span class="tag-hidden">preço oculto</span>' : ''}
             ${p.is_physical ? '<span>· 📍 entrega local</span>' : ''}
             ${hidden ? '<span class="tag-hidden">Oculto</span>' : ''}</div></div>
         <div class="acts">
@@ -744,7 +745,7 @@
     }
 
     function renderForm() {
-      const p = state.editing || { title: '', description: '', price: null, image_url: '', affiliate_link: '', platform: 'mercadolivre', is_physical: 0, delivery_cities: '', sort_order: 0 };
+      const p = state.editing || { title: '', description: '', price: null, image_url: '', affiliate_link: '', platform: 'mercadolivre', is_physical: 0, delivery_cities: '', sort_order: 0, show_price: 1 };
       const img = safeImg(p.image_url);
       const locked = isExpired();
       const platOpt = (k) => {
@@ -786,7 +787,11 @@
               <label class="field"><span id="priceLabel">Preço</span>
                 <div class="input-group"><span class="prefix">R$</span>
                   <input class="input" name="price" inputmode="decimal" placeholder="Opcional" value="${esc(priceInput(p.price))}"></div>
-                <small id="priceHint"></small></label>
+                <small id="priceHint"></small>
+                <span style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px">
+                  <small style="font-size:13px;font-weight:700;color:var(--ink-2)">Mostrar preço na vitrine</small>
+                  <span class="switch"><input type="checkbox" name="show_price" ${Number(p.show_price) !== 0 ? 'checked' : ''} aria-label="Mostrar preço deste produto na vitrine"><span class="track"></span></span>
+                </span></label>
               <label class="field"><span id="linkLabel">Link</span>
                 <input class="input" name="affiliate_link" type="url" inputmode="url" placeholder="https://..." value="${esc(p.affiliate_link || '')}">
                 <small id="linkHint"></small></label>
@@ -951,6 +956,7 @@
         is_physical: fd.get('is_physical') ? 1 : 0,
         delivery_cities: fd.get('delivery_cities') || '',
         sort_order: fd.get('pinned') ? -1 : 0,
+        show_price: fd.get('show_price') ? 1 : 0,
       };
       if (!String(body.title || '').trim()) { toast('Dê um título ao produto.', true); form.title.focus(); return; }
       if (body.platform !== 'proprio' && !body.affiliate_link) { toast('Cole o link de afiliado.', true); form.affiliate_link.focus(); return; }
