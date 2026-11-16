@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   owner_name     TEXT NOT NULL DEFAULT '',
   whatsapp       TEXT NOT NULL DEFAULT '',            -- só dígitos, com DDI (5567999999999)
   avatar_url     TEXT,
+  cover_url      TEXT,                                -- foto de capa (fundo do topo da vitrine)
   theme_color    TEXT NOT NULL DEFAULT '#16a6e0',     -- #RRGGBB
   password_hash  TEXT NOT NULL,                       -- pbkdf2$iteracoes$salt$hash
   status         TEXT NOT NULL DEFAULT 'trial'

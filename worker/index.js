@@ -408,6 +408,7 @@ function ensureSchema(env) {
       if (!sc.has('share_message')) alters.push("ALTER TABLE tenant_settings ADD COLUMN share_message TEXT NOT NULL DEFAULT ''");
       if (!sc.has('offer_template')) alters.push('ALTER TABLE tenant_settings ADD COLUMN offer_template INTEGER NOT NULL DEFAULT 1');
       if (!tc.has('account_id')) alters.push('ALTER TABLE tenants ADD COLUMN account_id INTEGER');
+      if (!tc.has('cover_url')) alters.push('ALTER TABLE tenants ADD COLUMN cover_url TEXT');
       if (!sc.has('theme_mode')) alters.push("ALTER TABLE tenant_settings ADD COLUMN theme_mode TEXT NOT NULL DEFAULT 'light'");
       if (!sc.has('card_tone')) alters.push("ALTER TABLE tenant_settings ADD COLUMN card_tone TEXT NOT NULL DEFAULT 'white'");
       if (!sc.has('offer_templates')) alters.push("ALTER TABLE tenant_settings ADD COLUMN offer_templates TEXT NOT NULL DEFAULT ''");
@@ -1542,6 +1543,7 @@ function tenantPublic(t) {
     owner_name: t.owner_name,
     whatsapp: t.whatsapp,
     avatar_url: t.avatar_url,
+    cover_url: t.cover_url || null,
     theme_color: t.theme_color,
     status: t.status,
     trial_ends_at: t.trial_ends_at,
@@ -1664,6 +1666,8 @@ async function handlePhoto(env, kind, rawId) {
   let row = null;
   if (kind === 'p' && /^\d+$/.test(rawId)) {
     row = await env.DB.prepare('SELECT image_url AS img FROM products WHERE id = ? AND is_visible = 1').bind(Number(rawId)).first();
+  } else if (kind === 'c' && SLUG_RE.test(rawId)) {
+    row = await env.DB.prepare('SELECT cover_url AS img FROM tenants WHERE id = ?').bind(rawId).first();
   } else if (kind === 's' && SLUG_RE.test(rawId)) {
     row = await env.DB.prepare('SELECT avatar_url AS img FROM tenants WHERE id = ?').bind(rawId).first();
   }
@@ -1705,6 +1709,7 @@ async function handleStore(request, env, rawId) {
   });
   const store = tenantPublic(tenant);
   store.avatar_url = photoLink(base, 's', tenant.id, tenant.avatar_url, tenant.updated_at);
+  store.cover_url = photoLink(base, 'c', tenant.id, tenant.cover_url, tenant.updated_at);
 
   return json({ store, settings, products: visibleProducts });
 }
@@ -1889,14 +1894,21 @@ async function handleProfile(request, env, tenant) {
     owner_name: text(body.owner_name, 80, 'Seu nome'),
     whatsapp: whatsapp(body.whatsapp, { required: true }),
     avatar_url: httpUrl(body.avatar_url, 'Foto/logo', { allowData: true }),
+    cover_url: body.cover_url === undefined ? tenant.cover_url || null : httpUrl(body.cover_url, 'Foto de capa', { allowData: true }),
     theme_color: color(body.theme_color, tenant.theme_color),
   };
   const ts = nowIso();
-  await env.DB.prepare(
-    `UPDATE tenants SET store_name = ?, owner_name = ?, whatsapp = ?, avatar_url = ?, theme_color = ?, updated_at = ?
-     WHERE id = ?`,
-  ).bind(data.store_name, data.owner_name, data.whatsapp, data.avatar_url, data.theme_color, ts, tenant.id).run();
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE tenants SET store_name = ?, whatsapp = ?, avatar_url = ?, cover_url = ?, theme_color = ?, updated_at = ?
+       WHERE id = ?`,
+    ).bind(data.store_name, data.whatsapp, data.avatar_url, data.cover_url, data.theme_color, ts, tenant.id),
+    // "Seu nome" é da conta: vale para todas as lojas.
+    env.DB.prepare('UPDATE tenants SET owner_name = ? WHERE account_id = ?').bind(data.owner_name, tenant.account_id),
+    env.DB.prepare('UPDATE accounts SET owner_name = ?, updated_at = ? WHERE id = ?').bind(data.owner_name, ts, tenant.account_id),
+  ]);
   if (tenant.avatar_url && tenant.avatar_url !== data.avatar_url) await deleteImage(env, tenant.avatar_url, tenant.id);
+  if (tenant.cover_url && tenant.cover_url !== data.cover_url) await deleteImage(env, tenant.cover_url, tenant.id);
   return json({ tenant: tenantPrivate({ ...tenant, ...data, updated_at: ts }) });
 }
 
@@ -2331,7 +2343,7 @@ async function routeApi(request, env, path) {
   await ensureSchema(env);
   if (path === '/api/config' && method === 'GET') return handleConfig(request, env);
   if ((m = path.match(/^\/api\/store\/([^/]+)$/)) && method === 'GET') return handleStore(request, env, decodeURIComponent(m[1]));
-  if ((m = path.match(/^\/api\/photo\/([ps])\/([^/]+)$/)) && method === 'GET') return handlePhoto(env, m[1], decodeURIComponent(m[2]).toLowerCase());
+  if ((m = path.match(/^\/api\/photo\/([psc])\/([^/]+)$/)) && method === 'GET') return handlePhoto(env, m[1], decodeURIComponent(m[2]).toLowerCase());
   if ((m = path.match(/^\/api\/images\/(.+)$/)) && method === 'GET') return handleImage(env, decodeURIComponent(m[1]));
   if (path === '/api/auth/login' && method === 'POST') return handleLogin(request, env);
   if (path === '/api/auth/register' && method === 'POST') return handleRegister(request, env);

@@ -161,6 +161,16 @@
       background: rgba(255, 255, 255, .12);
     }
     .hero-text { position: relative; z-index: 1; min-width: 0; }
+    /* Foto de capa: fundo do topo, com película escura para o texto ficar legível */
+    .hero.has-cover { background: #1b1e26; min-height: 210px; align-items: end; box-shadow: 0 16px 40px rgba(0, 0, 0, .22); }
+    .hero.has-cover::after { display: none; }
+    .hero-bg { position: absolute; inset: -40px 0; background-size: cover; background-position: center; will-change: transform; }
+    .hero-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0, 0, 0, .05) 0%, rgba(0, 0, 0, .35) 45%, rgba(0, 0, 0, .72) 100%); }
+    .hero.has-cover .hero-text { text-shadow: 0 2px 12px rgba(0, 0, 0, .35); }
+    .hero.has-cover .hero-art img, .hero.has-cover .hero-art .hero-initial { width: 96px; height: 96px; transform: none; border: 3px solid #fff; box-shadow: 0 10px 26px rgba(0, 0, 0, .35); }
+    .hero.has-cover .hero-art { align-self: end; justify-items: end; }
+    @media (min-width: 720px) { .hero.has-cover { min-height: 300px; } }
+    @media (prefers-reduced-motion: reduce) { .hero-bg { transform: none !important; } }
     .hero-kicker {
       display: inline-flex; align-items: center; gap: 6px;
       background: rgba(255, 255, 255, .92); color: var(--ink);
@@ -707,9 +717,27 @@
       count.textContent = state.favs.size;
     }
 
+    // A capa desliza mais devagar que a página: efeito de profundidade leve ao rolar.
+    let parallaxOn = false;
+    function startCoverParallax() {
+      if (parallaxOn) return;
+      parallaxOn = true;
+      let ticking = false;
+      window.addEventListener('scroll', () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          const bg = document.getElementById('heroBg');
+          if (bg) bg.style.transform = `translate3d(0, ${Math.min(window.scrollY, 600) * 0.25}px, 0)`;
+          ticking = false;
+        });
+      }, { passive: true });
+    }
+
     function renderStore() {
       const s = state.store;
       const avatar = safeUrl(s.avatar_url, true);
+      const cover = safeUrl(s.cover_url, true);
       const heroImg = safeUrl((state.products.find((p) => safeUrl(p.image_url, true)) || {}).image_url, true) || avatar;
       const platforms = new Set(state.products.map((p) => p.platform));
       const catCount = new Map();
@@ -740,14 +768,17 @@
           <button type="button" class="filter-btn" id="btnSort" aria-label="Ordenar produtos">${ICON.sliders}</button>
         </div>
 
-        ${state.settings.show_banner === 0 ? '' : `<section class="hero" aria-label="Sobre a loja">
+        ${state.settings.show_banner === 0 ? '' : `<section class="hero${cover ? ' has-cover' : ''}" aria-label="Sobre a loja">
+          ${cover ? `<div class="hero-bg" id="heroBg" style="background-image:url('${esc(cover)}')"></div><div class="hero-shade"></div>` : ''}
           <div class="hero-text">
             <span class="hero-kicker">✨ Seleção ${firstName ? 'da ' + esc(firstName) : 'especial'}</span>
             <h1>${esc(s.store_name)}</h1>
             <p>Achados escolhidos a dedo para você${s.owner_name ? ', por ' + esc(s.owner_name) : ''}.</p>
             ${s.whatsapp ? `<a class="hero-cta" href="${esc(waLink(s.whatsapp, `Olá! Vim pela sua vitrine ${s.store_name} 😊`))}" target="_blank" rel="noopener noreferrer">${ICON.wa}Chamar no WhatsApp</a>` : ''}
           </div>
-          <div class="hero-art">${heroImg ? `<img src="${esc(heroImg)}" alt="">` : `<div class="hero-initial">${esc(initials(s.store_name))}</div>`}</div>
+          <div class="hero-art">${cover
+            ? (avatar ? `<img src="${esc(avatar)}" alt="">` : `<div class="hero-initial">${esc(initials(s.store_name))}</div>`)
+            : (heroImg ? `<img src="${esc(heroImg)}" alt="">` : `<div class="hero-initial">${esc(initials(s.store_name))}</div>`)}</div>
         </section>`}
 
         <nav class="chips" aria-label="Filtrar por categoria e origem">
@@ -909,6 +940,7 @@
         state.view = storage.get(`vitrine:view:${state.slug}`) || state.settings.view_mode || 'grid';
         document.documentElement.classList.toggle('dark', state.settings.theme_mode === 'dark');
         document.documentElement.classList.toggle('tinted', state.settings.card_tone === 'tinted');
+        startCoverParallax();
         renderStore();
 
         const pid = Number(new URLSearchParams(location.search).get('p'));
