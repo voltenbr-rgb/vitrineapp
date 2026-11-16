@@ -2433,7 +2433,7 @@ async function storeMeta(env, slug, productId) {
   if (!t) return null;
   const meta = {
     title: `${t.store_name} | Vitrine App`,
-    description: `Confira os produtos selecionados por ${t.owner_name || t.store_name}.`,
+    description: `Confira os produtos da vitrine ${t.store_name}.`,
     image: isHttpUrl(t.avatar_url) ? t.avatar_url : '',
     color: t.theme_color || '#16a6e0',
   };
