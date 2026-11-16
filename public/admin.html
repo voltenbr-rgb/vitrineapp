@@ -254,10 +254,10 @@
       return s || '—';
     };
     const slugify = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+    // Senha inicial do lojista: 4 dígitos (ele pode trocar depois no painel).
     const genPassword = () => {
-      const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
-      const arr = crypto.getRandomValues(new Uint32Array(8));
-      return Array.from(arr, (n) => chars[n % chars.length]).join('');
+      const arr = crypto.getRandomValues(new Uint32Array(1));
+      return String(1000 + (arr[0] % 9000));
     };
     const ago = (iso) => {
       if (!iso) return 'nunca';
@@ -470,11 +470,11 @@
         '',
         `🛍️ Sua vitrine: ${t.store_url}`,
         `⚙️ Painel: ${dashboardUrl(t)}`,
-        `🔑 Loja: ${t.id}`,
+        `📱 Entrar com o WhatsApp: ${fmtPhone(t.whatsapp)}`,
         password ? `🔒 Senha: ${password}` : '',
         '',
         t.status === 'trial' ? `Você tem ${t.trial_days_left} dias grátis para testar. Depois, apenas R$ ${state.planPrice}/mês.` : '',
-        'Recomendo trocar a senha no primeiro acesso (aba Conta).',
+        'Você pode trocar a senha no painel, na aba Conta.',
       ].filter((l, i, arr) => l !== '' || arr[i - 1] !== '').join('\n');
     }
 
@@ -484,7 +484,7 @@
         <div class="cred">
           <div><b>Vitrine</b>${esc(t.store_url)}</div>
           <div><b>Painel</b>${esc(dashboardUrl(t))}</div>
-          <div><b>Loja</b>${esc(t.id)}</div>
+          <div><b>Entrar com o WhatsApp</b>${esc(fmtPhone(t.whatsapp))}</div>
           <div><b>Senha</b>${esc(password)}</div>
         </div>
         <div class="acts">
@@ -506,7 +506,7 @@
             <label class="field"><span>WhatsApp</span><input class="input" name="whatsapp" inputmode="tel" required placeholder="(67) 99999-9999"></label>
           </div>
           <label class="field"><span>Senha inicial</span>
-            <div class="input-group"><input class="input" name="password" minlength="6" required value="${genPassword()}" autocomplete="off" spellcheck="false">
+            <div class="input-group"><input class="input" name="password" minlength="4" inputmode="numeric" required value="${genPassword()}" autocomplete="off" spellcheck="false">
             <button type="button" class="btn btn-ghost" data-act="gen">Gerar</button></div></label>
           <div class="field"><span>Cor da vitrine</span>
             <div class="colors">${PALETTE.map((c) => `<button type="button" data-color="${c}" style="background:${c}" aria-label="Cor ${c}" aria-pressed="${c === color}"></button>`).join('')}</div>
@@ -531,7 +531,7 @@
         e.preventDefault();
         const body = Object.fromEntries(new FormData(form));
         if (!body.store_name.trim()) return toast('Informe o nome da loja.', true);
-        if (String(body.password).length < 6) return toast('A senha precisa de 6 caracteres ou mais.', true);
+        if (String(body.password).length < 4) return toast('A senha precisa de 4 dígitos ou mais.', true);
         const btn = $('#createBtn');
         setBusy(btn, true, 'Criando...');
         try {
@@ -607,7 +607,7 @@
       openModal(`${head('Redefinir senha', `${t.store_name} · os aparelhos conectados serão desconectados.`)}
         <form id="pwForm" novalidate>
           <label class="field"><span>Nova senha</span>
-            <div class="input-group"><input class="input" name="password" minlength="6" required value="${genPassword()}" autocomplete="off" spellcheck="false">
+            <div class="input-group"><input class="input" name="password" minlength="4" inputmode="numeric" required value="${genPassword()}" autocomplete="off" spellcheck="false">
             <button type="button" class="btn btn-ghost" data-act="gen">Gerar</button></div></label>
           <button type="submit" class="btn btn-dark btn-block" id="pwBtn">Redefinir senha</button>
         </form>`);
@@ -616,7 +616,7 @@
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const password = form.password.value;
-        if (password.length < 6) return toast('A senha precisa de 6 caracteres ou mais.', true);
+        if (password.length < 4) return toast('A senha precisa de 4 dígitos ou mais.', true);
         const btn = $('#pwBtn');
         setBusy(btn, true);
         try {

@@ -278,13 +278,11 @@
         <div><h1>Painel da Vitrine</h1><p>Entre para gerenciar sua loja</p></div>
       </div>
       <div class="error-box" id="loginError" hidden></div>
-      <label class="field"><span>Endereço da sua loja</span>
-        <div class="input-group"><span class="prefix">/s/</span>
-          <input class="input" id="loginStore" name="store" placeholder="loja-do-joao" autocapitalize="none" autocomplete="username" spellcheck="false" required>
-        </div>
+      <label class="field"><span>Seu WhatsApp <small>o mesmo do cadastro</small></span>
+        <input class="input" id="loginStore" name="login" inputmode="tel" placeholder="(67) 99999-9999" autocomplete="username" spellcheck="false" required>
       </label>
       <label class="field"><span>Senha</span>
-        <input class="input" id="loginPass" name="password" type="password" autocomplete="current-password" required>
+        <input class="input" id="loginPass" name="password" type="password" inputmode="numeric" autocomplete="current-password" required placeholder="Sua senha de 4 dígitos ou mais">
       </label>
       <button class="btn btn-primary btn-block" id="loginBtn" type="submit">Entrar</button>
       <p class="login-foot">Ainda não tem sua vitrine? <a href="#" id="signupLink">Comece grátis por 7 dias</a></p>
@@ -616,18 +614,18 @@
       state.storeUrl = data.store_url;
       state.quota = data.lookup_quota || null;
       applyTheme(state.tenant.theme_color);
-      ls.set('vitrine:last-store', state.tenant.id);
+      ls.set('vitrine:last-login', fmtPhone(state.tenant.whatsapp) || state.tenant.id);
     }
 
     $('#loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const store = $('#loginStore').value.trim().toLowerCase().replace(/^.*\/s\//, '').replace(/[^a-z0-9-]/g, '');
+      const store = $('#loginStore').value.trim();
       const password = $('#loginPass').value;
-      if (!store || !password) return showLogin('Preencha o endereço da loja e a senha.');
+      if (!store || !password) return showLogin('Preencha seu WhatsApp e a senha.');
       const btn = $('#loginBtn');
       setBusy(btn, true, 'Entrando...');
       try {
-        const data = await api('/api/auth/login', { method: 'POST', body: { store_id: store, password } });
+        const data = await api('/api/auth/login', { method: 'POST', body: { login: store, password } });
         state.token = data.token;
         ls.set(TOKEN_KEY, data.token);
         await loadMe();
@@ -902,7 +900,7 @@
         <form class="card" id="passForm" novalidate>
           <h2>Trocar senha</h2><p class="sub">Ao trocar, os outros aparelhos conectados saem da conta.</p>
           <label class="field"><span>Senha atual</span><input class="input" type="password" name="current_password" autocomplete="current-password" required></label>
-          <label class="field"><span>Nova senha</span><input class="input" type="password" name="new_password" autocomplete="new-password" minlength="6" required placeholder="Mínimo 6 caracteres"></label>
+          <label class="field"><span>Nova senha</span><input class="input" type="password" name="new_password" autocomplete="new-password" minlength="4" required placeholder="Mínimo 4 dígitos" inputmode="numeric"></label>
           <button type="submit" class="btn btn-primary btn-block" id="savePass">Atualizar senha</button>
         </form>
         <div class="card"><button type="button" class="btn btn-ghost btn-block" data-act="logout">${I.out}Sair do painel</button></div>`;
@@ -1013,7 +1011,7 @@
     async function savePassword(form) {
       const fd = new FormData(form);
       const body = { current_password: fd.get('current_password'), new_password: fd.get('new_password') };
-      if (String(body.new_password || '').length < 6) return toast('A nova senha precisa de 6 caracteres ou mais.', true);
+      if (String(body.new_password || '').length < 4) return toast('A nova senha precisa de 4 dígitos ou mais.', true);
       const btn = $('#savePass');
       setBusy(btn, true);
       try {
@@ -1198,7 +1196,7 @@
         if (cfg) state.config = { ...state.config, ...cfg };
       } catch { /* usa padrões */ }
 
-      const last = ls.get('vitrine:last-store');
+      const last = ls.get('vitrine:last-login');
       if (last) $('#loginStore').value = last;
       const urlStore = new URLSearchParams(location.search).get('loja');
       if (urlStore) $('#loginStore').value = urlStore;

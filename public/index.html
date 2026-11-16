@@ -254,8 +254,8 @@
     .footer .container { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; align-items: center; }
     .footer nav { display: flex; gap: 18px; flex-wrap: wrap; font-weight: 600; }
     .footer nav a:hover { color: var(--ink); }
-    .master-dot { display: inline-block; width: 14px; height: 14px; line-height: 14px; text-align: center; color: #c9cdd6; opacity: .55; font-size: 14px; margin-left: 6px; }
-    .master-dot:hover { opacity: 1; }
+    .master-dot { display: inline-grid; place-items: center; width: 32px; height: 32px; margin-left: 2px; vertical-align: middle; color: #7d8494; font-size: 30px; line-height: 1; border-radius: 50%; }
+    .master-dot:hover, .master-dot:focus-visible { color: var(--ink); background: #e8ebf0; }
 
     /* Barra fixa no celular */
     .sticky-cta { position: fixed; left: 12px; right: 12px; bottom: calc(12px + var(--safe-bottom)); z-index: 60; display: flex; align-items: center; gap: 12px; background: rgba(18, 20, 24, .94); backdrop-filter: blur(10px); color: #fff; border-radius: 20px; padding: 10px 10px 10px 16px; box-shadow: var(--shadow-lg); transform: translateY(140%); transition: transform .3s ease; }
@@ -591,10 +591,10 @@
           <div class="slug-status" id="slugStatus" aria-live="polite"></div></label>
         <label class="field"><span>Seu nome</span>
           <input class="input" name="owner_name" maxlength="80" placeholder="Como você quer ser chamado(a)" autocomplete="name"></label>
-        <label class="field"><span>WhatsApp com DDD</span>
+        <label class="field"><span>WhatsApp com DDD <small>você vai entrar com ele</small></span>
           <input class="input" name="whatsapp" inputmode="tel" required placeholder="(67) 99999-9999" autocomplete="tel"></label>
-        <label class="field"><span>Crie uma senha <small>mínimo 6 caracteres</small></span>
-          <div class="group"><input class="input" name="password" type="password" minlength="6" required autocomplete="new-password" style="padding-left:15px">
+        <label class="field"><span>Crie uma senha <small>mínimo 4 dígitos</small></span>
+          <div class="group"><input class="input" name="password" type="password" inputmode="numeric" minlength="4" maxlength="32" required autocomplete="new-password" placeholder="Ex.: 4 números fáceis de lembrar" style="padding-left:15px">
           <button type="button" class="eye" data-eye aria-label="Mostrar senha">👁</button></div></label>
         <div class="hp" aria-hidden="true"><label>Site <input name="website" tabindex="-1" autocomplete="off"></label></div>
         <button type="submit" class="btn btn-primary btn-block" id="signupBtn">Criar minha vitrine</button>
@@ -745,7 +745,7 @@
       if (!body.id || body.id.length < 3) return showError('Escolha o endereço da sua vitrine (mínimo 3 letras).');
       if (slugOk === false) return showError('Esse endereço já está em uso. Escolha outro.');
       if (String(body.whatsapp).replace(/\D/g, '').length < 10) return showError('Digite seu WhatsApp com DDD.');
-      if (String(body.password).length < 6) return showError('A senha precisa ter pelo menos 6 caracteres.');
+      if (String(body.password).length < 4) return showError('A senha precisa ter pelo menos 4 dígitos.');
       const btn = $('#signupBtn');
       const label = btn.innerHTML;
       btn.disabled = true;
@@ -757,9 +757,10 @@
           body: JSON.stringify(body),
         });
         const data = await res.json().catch(() => ({}));
+        if (data.code === 'phone_taken') throw new Error('Este WhatsApp já tem uma vitrine. Toque em "Entrar no painel" abaixo para acessar.');
         if (!res.ok) throw new Error(data.error || 'Não foi possível criar sua conta. Tente novamente.');
         save('vitrine:token', data.token);
-        save('vitrine:last-store', data.tenant.id);
+        save('vitrine:last-login', String(body.whatsapp || '').trim());
         btn.innerHTML = '✓ Pronto! Abrindo seu painel...';
         location.href = '/dashboard.html?bemvindo=1';
       } catch (err) {

@@ -48,7 +48,7 @@ Funciona com links de anúncio (`MLB-...`), de catálogo (`/p/MLB...`) e links c
 
 ## Fluxo de uso
 1. O lojista se cadastra na **página inicial** ("Começar grátis") e já cai no painel com 7 dias de teste. O Master também pode criar lojas manualmente.
-2. O **lojista** entra em `/dashboard.html`, cadastra os produtos e configura a vitrine.
+2. O **lojista** entra em `/dashboard.html` com o **WhatsApp do cadastro** e a senha (mínimo 4 dígitos), cadastra os produtos e configura a vitrine.
 3. O **cliente final** acessa `/s/<loja>` e compra pelo link do produto ou compartilha o produto no WhatsApp.
 4. Quando o teste vence, o status muda sozinho para `expired`: a vitrine sai do ar e a edição fica pausada, mas os produtos continuam salvos. No Master, a opção **Ativar plano** (30, 90, 180 ou 365 dias) devolve tudo na hora.
 
@@ -74,6 +74,8 @@ Rotas do Master (`X-Master-Password`):
 - As senhas dos lojistas são guardadas com PBKDF2-SHA256 (100 mil iterações e salt aleatório).
 - O login gera um token assinado com HMAC, válido por 30 dias. Trocar a senha desconecta os outros aparelhos.
 - A loja de cada lojista vem sempre do token, nunca de um parâmetro da requisição.
+- Senhas de lojista com no mínimo 4 dígitos. Para compensar, há bloqueio de 15 min após 5 erros (por aparelho) e de 30 min após 20 erros na mesma conta; o Master bloqueia por 15 min após 5 erros. Redefinir a senha no Master desbloqueia a conta.
+- Um WhatsApp por conta (é o login do lojista).
 - A senha Master é comparada em tempo constante. Ela fica em memória e na sessão da aba, nunca no armazenamento local permanente.
 - Links e imagens aceitam só `http(s)`, ou imagem em base64 no caso das fotos. Todo texto é escapado ao ser exibido na tela.
 - Antes de divulgar o painel Master, vale ativar uma regra de *Rate Limiting* (WAF da Cloudflare) para `/api/auth/login` e `/api/admin/*`.

@@ -21,7 +21,7 @@
  *   GET    /api/images/:key+
  *   GET    /api/auth/check-slug?id=        endereço disponível?
  *   POST   /api/auth/register              cadastro com 7 dias grátis
- *   POST   /api/auth/login                 { store_id, password }
+ *   POST   /api/auth/login                 { login: WhatsApp ou endereço da loja, password }
  *
  * Rotas do lojista (Authorization: Bearer <token>)
  *   GET    /api/me
@@ -246,9 +246,11 @@ function bool01(value) {
   return value === true || value === 1 || value === '1' || value === 'true' || value === 'on' ? 1 : 0;
 }
 
-function password(value, field = 'Senha') {
+const PASSWORD_MIN = 4; // senha do lojista: mínimo 4 dígitos/caracteres (Master continua com 6)
+
+function password(value, field = 'Senha', min = PASSWORD_MIN) {
   const v = String(value ?? '');
-  if (v.length < 6) throw new HttpError(400, `${field}: mínimo de 6 caracteres.`);
+  if (v.length < min) throw new HttpError(400, `${field}: mínimo de ${min} caracteres.`);
   if (v.length > 128) throw new HttpError(400, `${field}: máximo de 128 caracteres.`);
   return v;
 }
@@ -286,6 +288,52 @@ function productInput(body) {
 /* ------------------------------------------------------------------ */
 /* Senhas e sessão                                                     */
 /* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* Proteção contra tentativas de senha (senhas de 4 dígitos)          */
+/* ------------------------------------------------------------------ */
+
+const clientIp = (request) => request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'local';
+
+async function checkLocked(env, keys) {
+  const now = nowIso();
+  for (const key of keys) {
+    const row = await env.DB.prepare('SELECT locked_until FROM login_attempts WHERE key = ?').bind(key).first();
+    if (row && row.locked_until && row.locked_until > now) {
+      const min = Math.max(1, Math.ceil((Date.parse(row.locked_until) - Date.now()) / 60_000));
+      throw new HttpError(429, `Muitas tentativas erradas. Por segurança, tente de novo em ${min} min.`, { code: 'locked' });
+    }
+  }
+}
+
+// Conta erros numa janela; ao passar do limite, bloqueia por alguns minutos.
+async function registerFail(env, key, { max, windowMin, lockMin }) {
+  const now = Date.now();
+  const row = await env.DB.prepare('SELECT fails, window_start FROM login_attempts WHERE key = ?').bind(key).first();
+  const inWindow = row && now - Date.parse(row.window_start) < windowMin * 60_000;
+  const fails = inWindow ? Number(row.fails) + 1 : 1;
+  const windowStart = inWindow ? row.window_start : new Date(now).toISOString();
+  const lockedUntil = fails >= max ? new Date(now + lockMin * 60_000).toISOString() : null;
+  await env.DB.prepare(
+    `INSERT INTO login_attempts (key, fails, window_start, locked_until) VALUES (?, ?, ?, ?)
+     ON CONFLICT (key) DO UPDATE SET fails = excluded.fails, window_start = excluded.window_start, locked_until = excluded.locked_until`,
+  ).bind(key, lockedUntil ? 0 : fails, lockedUntil ? new Date(now).toISOString() : windowStart, lockedUntil).run();
+  if (Math.random() < 0.05) {
+    await env.DB.prepare('DELETE FROM login_attempts WHERE window_start < ? AND (locked_until IS NULL OR locked_until < ?)')
+      .bind(new Date(now - DAY_MS).toISOString(), new Date(now).toISOString()).run();
+  }
+}
+
+async function clearFails(env, keys) {
+  for (const key of keys) await env.DB.prepare('DELETE FROM login_attempts WHERE key = ?').bind(key).run();
+}
+
+async function assertPhoneFree(env, phone, exceptId = null) {
+  if (!phone) return;
+  const other = await env.DB.prepare('SELECT id FROM tenants WHERE whatsapp = ? AND id <> ? LIMIT 1')
+    .bind(phone, exceptId || '').first();
+  if (other) throw new HttpError(409, 'Já existe uma conta com este WhatsApp. Use "Entrar" ou fale com o suporte.', { code: 'phone_taken' });
+}
 
 async function pbkdf2(pw, salt, iterations) {
   const material = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']);
@@ -330,6 +378,10 @@ function ensureSchema(env) {
         'CREATE TABLE IF NOT EXISTS lookup_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id TEXT NOT NULL, at TEXT NOT NULL)',
       ).run();
       await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_lookup_usage ON lookup_usage (tenant_id, at)').run();
+      await env.DB.prepare(
+        'CREATE TABLE IF NOT EXISTS login_attempts (key TEXT PRIMARY KEY, fails INTEGER NOT NULL, window_start TEXT NOT NULL, locked_until TEXT)',
+      ).run();
+      await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_tenants_whatsapp ON tenants (whatsapp)').run();
       const columns = async (table) => {
         const { results } = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
         return new Set((results || []).map((r) => r.name));
@@ -833,6 +885,8 @@ async function verifyToken(env, token) {
 async function requireMaster(request, env) {
   const given = request.headers.get('X-Master-Password') || '';
   if (!given) throw new HttpError(401, 'Senha Master incorreta.');
+  const lockKey = `m:${clientIp(request)}`;
+  await checkLocked(env, [lockKey]);
   let ok;
   if (env.MASTER_PASSWORD) {
     ok = timingSafeEqual(await sha256(given), await sha256(env.MASTER_PASSWORD));
@@ -842,7 +896,10 @@ async function requireMaster(request, env) {
       ? await verifyPassword(given, stored)
       : timingSafeEqual(await sha256(given), await sha256(MASTER_DEFAULT_PASSWORD));
   }
-  if (!ok) throw new HttpError(401, 'Senha Master incorreta.');
+  if (!ok) {
+    await registerFail(env, lockKey, { max: 5, windowMin: 15, lockMin: 15 });
+    throw new HttpError(401, 'Senha Master incorreta.');
+  }
 }
 
 async function requireTenant(request, env) {
@@ -1043,15 +1100,43 @@ async function handleImage(env, key) {
   return new Response(object.body, { headers });
 }
 
+// Entrada do lojista: pelo WhatsApp cadastrado (ou pelo endereço da loja) + senha.
 async function handleLogin(request, env) {
   const body = await readJson(request);
-  const id = String(body.store_id || '').trim().toLowerCase();
+  const raw = String(body.login ?? body.store_id ?? '').trim();
   const pw = String(body.password || '');
-  const tenant = SLUG_RE.test(id)
-    ? await env.DB.prepare('SELECT * FROM tenants WHERE id = ?').bind(id).first()
-    : null;
+  const ip = clientIp(request);
+  await checkLocked(env, [`ip:${ip}`]);
+
+  let tenant = null;
+  if (/[a-z]/i.test(raw)) {
+    const id = raw.toLowerCase().replace(/^.*\/s\//, '').replace(/[^a-z0-9-]/g, '');
+    if (SLUG_RE.test(id)) tenant = await env.DB.prepare('SELECT * FROM tenants WHERE id = ?').bind(id).first();
+  } else {
+    let phone = '';
+    try { phone = whatsapp(raw); } catch { phone = ''; }
+    if (phone) {
+      const { results } = await env.DB.prepare('SELECT * FROM tenants WHERE whatsapp = ? ORDER BY created_at LIMIT 2').bind(phone).all();
+      if (results && results.length > 1) {
+        throw new HttpError(409, 'Há mais de uma loja com este WhatsApp. Entre com o endereço da loja (ex.: loja-do-joao).', { code: 'phone_multiple' });
+      }
+      tenant = results && results[0] ? results[0] : null;
+    }
+  }
+
+  const keys = tenant ? [`t:${tenant.id}:${ip}`, `t:${tenant.id}`] : [];
+  if (keys.length) await checkLocked(env, keys);
   const ok = await verifyPassword(pw, tenant ? tenant.password_hash : DUMMY_HASH);
-  if (!tenant || !ok) throw new HttpError(401, 'Loja ou senha incorretas.');
+  if (!tenant || !ok) {
+    if (tenant) {
+      await registerFail(env, keys[0], { max: 5, windowMin: 15, lockMin: 15 });
+      await registerFail(env, keys[1], { max: 20, windowMin: 60, lockMin: 30 });
+    } else {
+      await registerFail(env, `ip:${ip}`, { max: 20, windowMin: 15, lockMin: 15 });
+    }
+    throw new HttpError(401, 'WhatsApp ou senha incorretos.');
+  }
+  await clearFails(env, keys);
   await refreshStatus(env, tenant);
   tenant.last_seen_at = tenant.last_login_at = await touchPresence(env, tenant.id, { login: true });
   return json({ token: await signToken(env, tenant), tenant: tenantPrivate(tenant) });
@@ -1134,6 +1219,7 @@ async function handleProfile(request, env, tenant) {
     avatar_url: httpUrl(body.avatar_url, 'Foto/logo', { allowData: true }),
     theme_color: color(body.theme_color, tenant.theme_color),
   };
+  await assertPhoneFree(env, data.whatsapp, tenant.id);
   const ts = nowIso();
   await env.DB.prepare(
     `UPDATE tenants SET store_name = ?, owner_name = ?, whatsapp = ?, avatar_url = ?, theme_color = ?, updated_at = ?
@@ -1322,7 +1408,7 @@ async function handleAdminConfigPut(request, env) {
     if (env.MASTER_PASSWORD) {
       throw new HttpError(400, 'A senha Master está fixada no Cloudflare (secret MASTER_PASSWORD). Altere por lá.');
     }
-    await setConfig(env, 'master_hash', await hashPassword(password(body.new_master_password, 'Nova senha Master')));
+    await setConfig(env, 'master_hash', await hashPassword(password(body.new_master_password, 'Nova senha Master', 6)));
   }
   return handleAdminConfigGet(env);
 }
@@ -1341,6 +1427,7 @@ async function createTenant(request, env, body) {
   };
   const exists = await env.DB.prepare('SELECT 1 FROM tenants WHERE id = ?').bind(id).first();
   if (exists) throw new HttpError(409, `O endereço "${id}" já está em uso. Escolha outro.`, { code: 'slug_taken' });
+  await assertPhoneFree(env, data.whatsapp);
 
   const createdMs = Date.now();
   const createdAt = new Date(createdMs).toISOString();
@@ -1408,12 +1495,14 @@ async function handleAdminPatch(request, env, rawId) {
     case 'reset_password': {
       const hash = await hashPassword(password(body.password, 'Nova senha'));
       await env.DB.prepare('UPDATE tenants SET password_hash = ?, updated_at = ? WHERE id = ?').bind(hash, ts, id).run();
+      await env.DB.prepare("DELETE FROM login_attempts WHERE key = ? OR key LIKE ?").bind(`t:${id}`, `t:${id}:%`).run();
       break;
     }
     case 'update': {
       const storeName = text(body.store_name ?? tenant.store_name, 80, 'Nome da loja', { required: true });
       const ownerName = text(body.owner_name ?? tenant.owner_name, 80, 'Nome do responsável');
       const phone = whatsapp(body.whatsapp ?? tenant.whatsapp, { required: true });
+      await assertPhoneFree(env, phone, id);
       await env.DB.prepare('UPDATE tenants SET store_name = ?, owner_name = ?, whatsapp = ?, updated_at = ? WHERE id = ?')
         .bind(storeName, ownerName, phone, ts, id).run();
       break;
