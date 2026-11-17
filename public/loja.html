@@ -635,7 +635,8 @@
     function noticeBlock(p) {
       const parts = [];
       if (isAffiliate(p) && state.settings.show_stock_warning) {
-        parts.push(`<p class="notice">${ICON.info}<span>Preço e estoque podem mudar no site parceiro. Confira antes de finalizar.</span></p>`);
+        const site = p.platform === 'shopee' ? 'pela Shopee' : 'pelo Mercado Livre';
+        parts.push(`<p class="notice">${ICON.info}<span><b>Vendido e entregue ${site}.</b> O preço é atualizado todo dia; o valor final é o do site.</span></p>`);
       }
       if (p.is_physical && String(p.delivery_cities || '').trim()) {
         parts.push(`<p class="notice city">${ICON.pin}<span><b>Entrega em:</b> ${esc(p.delivery_cities)}</span></p>`);

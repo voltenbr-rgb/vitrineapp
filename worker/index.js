@@ -971,15 +971,29 @@ async function fetchPreview(url) {
 
 const httpsImage = (u) => (u ? String(u).replace(/^http:\/\//i, 'https://') : null);
 
+// O "cartão" do link do Mercado Livre vem como "Nome do produto - R$ 1.749,90": separa nome e preço.
+function splitTitlePrice(rawTitle) {
+  let title = String(rawTitle || '').replace(/\s*[|-]\s*Mercado Livre.*$/i, '').trim();
+  let price = null;
+  const m = title.match(/\s*[-–|]\s*R\$\s*([\d.]+(?:,\d{1,2})?)\s*$/i);
+  if (m) {
+    const n = Number(m[1].replace(/\./g, '').replace(',', '.'));
+    if (n > 0) price = n;
+    title = title.slice(0, m.index).trim();
+  }
+  return { title, price };
+}
+
 async function lookupMercadoLivre(env, token, url) {
   const { ids, meta, trace } = await resolveMl(url);
   if (!ids) {
     await saveDebug(env, 'debug_ml', { input: url, trace });
     if (usefulMeta(meta)) {
+      const split = splitTitlePrice(meta.title);
       return {
         platform: 'mercadolivre',
-        title: meta.title.replace(/\s*[|-]\s*Mercado Livre.*$/i, '').slice(0, 120),
-        price: meta.price,
+        title: split.title.slice(0, 120),
+        price: Number(meta.price) > 0 ? Number(meta.price) : split.price,
         image_url: /^https:\/\//.test(meta.image) ? meta.image : null,
         shop_name: null,
         source: 'preview',
@@ -1315,7 +1329,14 @@ async function lookupProduct(env, rawUrl, { useCache = true, tenantId = null, li
   const cacheKey = `${platform}:${url.toString()}`;
   if (useCache) {
     const hit = await env.DB.prepare('SELECT data, fetched_at FROM product_cache WHERE key = ?').bind(cacheKey).first();
-    if (hit && Date.now() - Date.parse(hit.fetched_at) < 6 * 3_600_000) return { ...JSON.parse(hit.data), cached: true };
+    if (hit && Date.now() - Date.parse(hit.fetched_at) < 6 * 3_600_000) {
+      const data = JSON.parse(hit.data);
+      if (data.platform === 'mercadolivre' && !data.price) {
+        const split = splitTitlePrice(data.title);
+        if (split.price) { data.title = split.title; data.price = split.price; }
+      }
+      return { ...data, cached: true };
+    }
   }
   if (tenantId) {
     const quota = await lookupQuota(env, tenantId, limit);

@@ -2098,8 +2098,8 @@
     }
 
     function renderForm() {
-      // Afiliado começa com o preço oculto (o sistema não atualiza preços sozinho); produto próprio começa visível.
-      const p = state.editing || { title: '', description: '', price: null, original_price: null, image_url: '', affiliate_link: '', platform: state.settings && state.settings.store_mode === 'local' ? 'proprio' : 'mercadolivre', is_physical: state.settings && state.settings.store_mode === 'local' ? 1 : 0, delivery_cities: lastCities(), sort_order: 0, show_price: state.settings && state.settings.store_mode === 'local' ? 1 : 0, ...(state.prefill || {}) };
+      // O preço aparece por padrão: nos afiliados ele é conferido sozinho 1x por dia.
+      const p = state.editing || { title: '', description: '', price: null, original_price: null, image_url: '', affiliate_link: '', platform: state.settings && state.settings.store_mode === 'local' ? 'proprio' : 'mercadolivre', is_physical: state.settings && state.settings.store_mode === 'local' ? 1 : 0, delivery_cities: lastCities(), sort_order: 0, show_price: 1, ...(state.prefill || {}) };
       state.prefill = null;
       priceTouched = !!state.editing;
       const img = safeImg(p.image_url);
@@ -2202,7 +2202,7 @@
       $('#autofillBtn').hidden = !canFill;
       renderQuota(canFill);
       $('#priceHint').textContent = affiliate
-        ? 'Opcional: o preço muda no site parceiro.'
+        ? 'Vem sozinho pelo link e é atualizado 1x por dia.'
         : 'Deixe vazio para "Preço sob consulta".';
     }
 
@@ -2219,7 +2219,7 @@
             <label class="switch"><input type="checkbox" data-setting="show_banner" ${s.show_banner !== 0 ? 'checked' : ''}><span class="track"></span></label></div>
           <div class="switch-row"><div><strong>Exibir preços</strong><small>Desligado: mostra "Consulte o preço" / "Ver preço no site".</small></div>
             <label class="switch"><input type="checkbox" data-setting="show_prices" ${s.show_prices ? 'checked' : ''}><span class="track"></span></label></div>
-          <div class="switch-row"><div><strong>Aviso de preço e estoque</strong><small>Lembra que valores podem mudar no site parceiro (links de afiliado).</small></div>
+          <div class="switch-row"><div><strong>Aviso do site parceiro</strong><small>Nos links de afiliado, mostra que a venda e a entrega são feitas pelo Mercado Livre ou pela Shopee.</small></div>
             <label class="switch"><input type="checkbox" data-setting="show_stock_warning" ${s.show_stock_warning ? 'checked' : ''}><span class="track"></span></label></div>
           <div class="switch-row" style="display:block">
             <div style="margin-bottom:10px"><strong>Layout padrão</strong><small>Como os produtos aparecem ao abrir a vitrine.</small></div>
@@ -2485,25 +2485,17 @@
         : `Buscas automáticas esgotadas nesta hora · libera em ${q.reset_minutes} min`;
     }
 
-    // Preço visível: afiliado começa desligado; produto próprio, ligado (até o lojista mexer na chave).
+    // Preço visível por padrão (afiliados têm o preço conferido sozinho 1x por dia), até o lojista mexer na chave.
     let priceTouched = false;
     function syncPriceDefault() {
       const form = $('#productForm');
       if (!form || priceTouched || state.editing) return;
-      $('#showPrice').checked = form.platform.value === 'proprio';
+      $('#showPrice').checked = true;
     }
 
-    async function onShowPriceChange(el) {
-      const form = $('#productForm');
+    // Agora o preço dos afiliados se atualiza sozinho: não precisa mais confirmar.
+    function onShowPriceChange() {
       priceTouched = true;
-      if (!el.checked || !form || form.platform.value === 'proprio') return;
-      el.checked = false;
-      const ok = await confirmDialog({
-        title: 'Mostrar o preço deste produto?',
-        text: 'O sistema não atualiza os preços sozinho. Se o preço mudar no Mercado Livre ou na Shopee, você precisa editar aqui para corrigir. Tem certeza que quer mostrar o preço?',
-        ok: 'Sim, mostrar',
-      });
-      el.checked = ok;
     }
 
     // Busca nome, preço e foto pelo link (API de afiliados configurada no Master).
