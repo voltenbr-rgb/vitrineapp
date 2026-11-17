@@ -874,6 +874,47 @@
       };
     }
 
+    /* ---------------- Cidades de entrega: lembra o que a loja já usou ---------------- */
+    const CITIES_KEY = () => `vitrine:cities:${state.tenant ? state.tenant.id : ''}`;
+    const splitCities = (v) => String(v || '').split(/[,;\n]+/).map((c) => c.trim()).filter(Boolean);
+    // Última lista usada (salva ao gravar um produto) ou a do produto mais recente com cidades.
+    function lastCities() {
+      const saved = ls.get(CITIES_KEY());
+      if (saved) return saved;
+      const withCities = (state.products || []).filter((x) => String(x.delivery_cities || '').trim())
+        .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+      return withCities[0] ? withCities[0].delivery_cities : '';
+    }
+    // Todas as cidades já usadas na loja, sem repetir (para tocar e adicionar).
+    function knownCities() {
+      const seen = new Map();
+      [lastCities(), ...(state.products || []).map((x) => x.delivery_cities)].forEach((v) => splitCities(v).forEach((c) => {
+        const k = c.toLocaleLowerCase('pt-BR');
+        if (!seen.has(k)) seen.set(k, c);
+      }));
+      return [...seen.values()].slice(0, 20);
+    }
+    function citiesChips(current) {
+      const have = new Set(splitCities(current).map((c) => c.toLocaleLowerCase('pt-BR')));
+      const list = knownCities();
+      if (!list.length) return '';
+      return `<div class="cat-chips" id="cityChips" style="margin-top:8px">${list.map((c) => {
+        const on = have.has(c.toLocaleLowerCase('pt-BR'));
+        return `<button type="button" data-city="${esc(c)}" aria-pressed="${on}">${on ? '✓ ' : '+ '}${esc(c)}</button>`;
+      }).join('')}</div>`;
+    }
+    function toggleCity(city) {
+      const box = document.querySelector('[name="delivery_cities"]');
+      if (!box) return;
+      const list = splitCities(box.value);
+      const k = city.toLocaleLowerCase('pt-BR');
+      const i = list.findIndex((c) => c.toLocaleLowerCase('pt-BR') === k);
+      if (i >= 0) list.splice(i, 1); else list.push(city);
+      box.value = list.join(', ');
+      const chips = $('#cityChips');
+      if (chips) chips.outerHTML = citiesChips(box.value);
+    }
+
     function upgradeDialog(feature) {
       const dlg = $('#dialog');
       dlg.innerHTML = `<h3 id="dlgTitle">⭐ Recurso do plano Completo</h3>
@@ -1659,7 +1700,7 @@
 
     function renderForm() {
       // Afiliado começa com o preço oculto (o sistema não atualiza preços sozinho); produto próprio começa visível.
-      const p = state.editing || { title: '', description: '', price: null, original_price: null, image_url: '', affiliate_link: '', platform: state.settings && state.settings.store_mode === 'local' ? 'proprio' : 'mercadolivre', is_physical: state.settings && state.settings.store_mode === 'local' ? 1 : 0, delivery_cities: '', sort_order: 0, show_price: state.settings && state.settings.store_mode === 'local' ? 1 : 0, ...(state.prefill || {}) };
+      const p = state.editing || { title: '', description: '', price: null, original_price: null, image_url: '', affiliate_link: '', platform: state.settings && state.settings.store_mode === 'local' ? 'proprio' : 'mercadolivre', is_physical: state.settings && state.settings.store_mode === 'local' ? 1 : 0, delivery_cities: lastCities(), sort_order: 0, show_price: state.settings && state.settings.store_mode === 'local' ? 1 : 0, ...(state.prefill || {}) };
       state.prefill = null;
       priceTouched = !!state.editing;
       const img = safeImg(p.image_url);
@@ -1732,8 +1773,9 @@
             <label class="field" id="citiesField" ${p.is_physical ? '' : 'hidden'} style="margin:4px 0 0">
               <span>Cidades atendidas</span>
               <textarea class="textarea" name="delivery_cities" maxlength="500" style="min-height:70px" placeholder="Ex.: Campo Grande, Sidrolândia, Terenos">${esc(p.delivery_cities)}</textarea>
-              <small>Separe por vírgula. Aparece em destaque no cartão do produto.</small>
+              <small>Separe por vírgula. Já vem com as últimas cidades que você usou; toque abaixo para tirar ou pôr.</small>
             </label>
+            <div id="cityChipsWrap" ${p.is_physical ? '' : 'hidden'}>${citiesChips(p.delivery_cities)}</div>
             <div class="switch-row">
               <div><strong>Fixar no topo</strong><small>Aparece primeiro na sua vitrine.</small></div>
               <label class="switch"><input type="checkbox" name="pinned" ${p.sort_order < 0 ? 'checked' : ''}><span class="track"></span></label>
@@ -1943,6 +1985,9 @@
       if (body.affiliate_link && !/^https?:\/\//i.test(body.affiliate_link)) body.affiliate_link = 'https://' + body.affiliate_link;
       if (body.is_physical && body.platform === 'proprio' && !String(body.delivery_cities).trim()) {
         toast('Informe as cidades onde você entrega.', true); form.delivery_cities.focus(); return;
+      }
+      if (body.is_physical && String(body.delivery_cities).trim()) {
+        ls.set(CITIES_KEY(), splitCities(body.delivery_cities).join(', '));
       }
       const btn = $('#saveProduct');
       setBusy(btn, true);
@@ -2252,6 +2297,8 @@
       }
       const bar = e.target.closest('#chartWrap rect.bar');
       if (bar) return showChartTip(Number(bar.dataset.i));
+      const cityBtn = e.target.closest('[data-city]');
+      if (cityBtn) return toggleCity(cityBtn.dataset.city);
       const cat = e.target.closest('[data-cat]');
       if (cat) {
         const input = $('[name="category"]');
@@ -2318,7 +2365,17 @@
       if (el.name === 'platform') { updatePlatformHints(); syncPriceDefault(); }
       if (el.id === 'showPrice') onShowPriceChange(el);
       if (el.name === 'affiliate_link' && !state.editing) autoFill(false);
-      if (el.id === 'isPhysical') $('#citiesField').hidden = !el.checked;
+      if (el.id === 'isPhysical') {
+        $('#citiesField').hidden = !el.checked;
+        if ($('#cityChipsWrap')) $('#cityChipsWrap').hidden = !el.checked;
+        const box = document.querySelector('[name="delivery_cities"]');
+        // Ligou "entrega local" num produto sem cidades: preenche com as últimas usadas.
+        if (el.checked && box && !box.value.trim() && lastCities()) {
+          box.value = lastCities();
+          if ($('#cityChips')) $('#cityChips').outerHTML = citiesChips(box.value);
+          toast('Cidades preenchidas com as últimas que você usou 📍');
+        }
+      }
       if (el.dataset && el.dataset.setting) saveSettings();
       if (el.id === 'imgFile' && el.files[0]) { await handleProductImage(el.files[0]); el.value = ''; }
       if (el.id === 'imgUrl') {
