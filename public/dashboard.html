@@ -1162,72 +1162,183 @@
       ctx.fillStyle = fg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, cx, y + h / 2 + 2);
     }
 
-    // Arte da vitrine: capa, logo, nome, cor, até 4 produtos e o link.
+    // Arte da vitrine (modelo "vitrine"): ondas na cor da loja, foto redonda, nome, 4 produtos,
+    // botão "Conheça minha vitrine", link e selos. Todas as cores saem da cor escolhida pelo lojista.
+    function sparkle(ctx, x, y, r, color) {
+      ctx.save(); ctx.fillStyle = color; ctx.beginPath();
+      ctx.moveTo(x, y - r); ctx.quadraticCurveTo(x + r * 0.12, y - r * 0.12, x + r, y);
+      ctx.quadraticCurveTo(x + r * 0.12, y + r * 0.12, x, y + r); ctx.quadraticCurveTo(x - r * 0.12, y + r * 0.12, x - r, y);
+      ctx.quadraticCurveTo(x - r * 0.12, y - r * 0.12, x, y - r); ctx.fill(); ctx.restore();
+    }
+    function heartPath(ctx, cx, cy, w) {
+      const h = w * 0.9;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + h * 0.38);
+      ctx.bezierCurveTo(cx - w * 0.62, cy - h * 0.05, cx - w * 0.38, cy - h * 0.62, cx, cy - h * 0.22);
+      ctx.bezierCurveTo(cx + w * 0.38, cy - h * 0.62, cx + w * 0.62, cy - h * 0.05, cx, cy + h * 0.38);
+      ctx.closePath();
+    }
+    function bagIcon(ctx, cx, cy, w, { stroke = null, fill = null, heart = null, lw = 6 } = {}) {
+      const h = w * 0.9, x = cx - w / 2, y = cy - h / 2 + w * 0.12;
+      ctx.save(); ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      rr(ctx, x, y, w, h * 0.86, w * 0.14);
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
+      ctx.beginPath(); ctx.arc(cx, y, w * 0.24, Math.PI, 0); ctx.strokeStyle = stroke || fill; ctx.stroke();
+      if (heart) { heartPath(ctx, cx, y + h * 0.43, w * 0.42); if (fill) { ctx.fillStyle = heart; ctx.fill(); } else { ctx.strokeStyle = heart; ctx.stroke(); } }
+      ctx.restore();
+    }
+    function shieldIcon(ctx, cx, cy, s, color) {
+      ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = s * 0.09; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(cx, cy - s * 0.5); ctx.lineTo(cx + s * 0.42, cy - s * 0.34); ctx.lineTo(cx + s * 0.42, cy);
+      ctx.quadraticCurveTo(cx + s * 0.4, cy + s * 0.36, cx, cy + s * 0.52); ctx.quadraticCurveTo(cx - s * 0.4, cy + s * 0.36, cx - s * 0.42, cy);
+      ctx.lineTo(cx - s * 0.42, cy - s * 0.34); ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - s * 0.17, cy + s * 0.01); ctx.lineTo(cx - s * 0.03, cy + s * 0.15); ctx.lineTo(cx + s * 0.2, cy - s * 0.12); ctx.stroke();
+      ctx.restore();
+    }
+    function truckIcon(ctx, cx, cy, s, color) {
+      ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = s * 0.08; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      const x = cx - s * 0.42, y = cy - s * 0.28;
+      rr(ctx, x + s * 0.1, y, s * 0.46, s * 0.4, s * 0.05); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + s * 0.56, y + s * 0.12); ctx.lineTo(x + s * 0.72, y + s * 0.12); ctx.lineTo(x + s * 0.84, y + s * 0.26);
+      ctx.lineTo(x + s * 0.84, y + s * 0.4); ctx.lineTo(x + s * 0.56, y + s * 0.4); ctx.stroke();
+      [x + s * 0.28, x + s * 0.7].forEach((wx) => { ctx.beginPath(); ctx.arc(wx, y + s * 0.44, s * 0.08, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke(); });
+      [0.08, 0.18, 0.28].forEach((dy, k) => { ctx.beginPath(); ctx.moveTo(x - s * 0.14 + k * s * 0.03, y + s * dy); ctx.lineTo(x + s * 0.04, y + s * dy); ctx.stroke(); });
+      ctx.restore();
+    }
+    function chatIcon(ctx, cx, cy, s, color) {
+      ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = s * 0.08; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(cx, cy - s * 0.04, s * 0.4, Math.PI * 0.75, Math.PI * 2.55); ctx.lineTo(cx - s * 0.4, cy + s * 0.38); ctx.closePath(); ctx.stroke();
+      ctx.restore();
+    }
+    function heartIcon(ctx, cx, cy, s, color) {
+      ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = s * 0.09; ctx.lineJoin = 'round';
+      heartPath(ctx, cx, cy + s * 0.04, s * 0.95); ctx.stroke(); ctx.restore();
+    }
+    function fitFont(ctx, text, weight, start, min, maxW) {
+      let size = start;
+      while (size > min) { ctx.font = `${weight} ${size}px ${FONT}`; if (ctx.measureText(text).width <= maxW) break; size -= 2; }
+      ctx.font = `${weight} ${size}px ${FONT}`;
+      return size;
+    }
+
     async function drawStoreArt(format) {
       const [W, H] = ART_SIZES[format];
       const story = format === 'story';
       const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
       const ctx = cv.getContext('2d');
-      const t = state.tenant, color = brandColor(), dark = state.settings && state.settings.theme_mode === 'dark';
+      const t = state.tenant, color = brandColor();
+      const deep = mixHex(color, '#000000', 0.32), soft = mixHex(color, '#ffffff', 0.86), softer = mixHex(color, '#ffffff', 0.94);
+      const navy = '#0f1b3d';
       const prods = state.products.filter((p) => Number(p.is_visible) !== 0 && p.image_url).slice(0, story ? 4 : 3);
-      const [cover, logo, ...imgs] = await Promise.all([artImage(t.cover_url), artImage(t.avatar_url), ...prods.map((p) => artImage(p.image_url))]);
-      // fundo
-      ctx.fillStyle = dark ? '#0e1015' : '#f4f6fa'; ctx.fillRect(0, 0, W, H);
-      const coverH = story ? 600 : 400;
-      if (cover) coverImg(ctx, cover, 0, 0, W, coverH);
-      else { const g = ctx.createLinearGradient(0, 0, W, coverH); g.addColorStop(0, color); g.addColorStop(1, mixHex(color, '#000000', 0.35)); ctx.fillStyle = g; ctx.fillRect(0, 0, W, coverH); }
-      const sh = ctx.createLinearGradient(0, coverH * 0.4, 0, coverH); sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,.35)');
-      ctx.fillStyle = sh; ctx.fillRect(0, 0, W, coverH);
-      // logo
-      const lr = story ? 110 : 92;
-      drawLogo(ctx, logo, W / 2, coverH, lr, t.store_name, color);
+      const [face, cover, ...imgs] = await Promise.all([artImage(t.avatar_url), artImage(t.cover_url), ...prods.map((p) => artImage(p.image_url))]);
+      const photo = face || cover;
+
+      // fundo claro na cor da loja
+      const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, soft); bg.addColorStop(0.5, softer); bg.addColorStop(1, soft);
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      // onda do topo
+      const topH = story ? 400 : 230;
+      const g1 = ctx.createLinearGradient(0, 0, W, topH); g1.addColorStop(0, deep); g1.addColorStop(1, color);
+      ctx.fillStyle = g1; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W, 0); ctx.lineTo(W, topH * 0.62);
+      ctx.bezierCurveTo(W * 0.72, topH * 1.05, W * 0.35, topH * 0.55, 0, topH * 0.95); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = mixHex(color, '#ffffff', 0.35); ctx.globalAlpha = 0.55; ctx.beginPath(); ctx.moveTo(0, topH * 0.95);
+      ctx.bezierCurveTo(W * 0.35, topH * 0.6, W * 0.72, topH * 1.12, W, topH * 0.7); ctx.lineTo(W, topH * 0.8);
+      ctx.bezierCurveTo(W * 0.7, topH * 1.2, W * 0.35, topH * 0.75, 0, topH * 1.08); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+      // onda do rodapé
+      const botH = story ? 90 : 60;
+      ctx.fillStyle = mixHex(color, '#ffffff', 0.45); ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.moveTo(0, H - botH * 0.9);
+      ctx.bezierCurveTo(W * 0.3, H - botH * 1.3, W * 0.7, H - botH * 0.2, W, H - botH * 1.05); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+      const g3 = ctx.createLinearGradient(0, H - botH, W, H); g3.addColorStop(0, deep); g3.addColorStop(1, color);
+      ctx.fillStyle = g3; ctx.beginPath(); ctx.moveTo(0, H - botH * 0.45); ctx.bezierCurveTo(W * 0.35, H - botH * 0.95, W * 0.65, H - botH * 0.05, W, H - botH * 0.6);
+      ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+      // enfeites: brilhos, linhas e sacola
+      const glow = 'rgba(255,255,255,.9)';
+      sparkle(ctx, story ? 270 : 180, story ? 180 : 92, story ? 30 : 20, glow);
+      ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(story ? 70 : 40, story ? 262 : 140); ctx.lineTo(story ? 345 : 330, story ? 262 : 140); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(story ? 735 : 750, story ? 262 : 140); ctx.lineTo(story ? 880 : 1040, story ? 262 : 140); ctx.stroke();
+      if (story) bagIcon(ctx, 880, 150, 150, { stroke: 'rgba(255,255,255,.55)', heart: 'rgba(255,255,255,.55)', lw: 7 });
+      sparkle(ctx, story ? 48 : 40, story ? 640 : 460, story ? 26 : 16, mixHex(color, '#ffffff', 0.2));
+      sparkle(ctx, story ? 1030 : 1040, story ? 1100 : 520, story ? 26 : 16, mixHex(color, '#ffffff', 0.2));
+      // foto redonda
+      const ar = story ? 158 : 100, acx = W / 2, acy = story ? 300 : 158;
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 30;
+      ctx.beginPath(); ctx.arc(acx, acy, ar + 16, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); ctx.restore();
+      ctx.beginPath(); ctx.arc(acx, acy, ar + 9, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.save(); ctx.beginPath(); ctx.arc(acx, acy, ar, 0, Math.PI * 2); ctx.clip();
+      if (photo) coverImg(ctx, photo, acx - ar, acy - ar, ar * 2, ar * 2);
+      else { ctx.fillStyle = color; ctx.fillRect(acx - ar, acy - ar, ar * 2, ar * 2); ctx.fillStyle = '#fff'; ctx.font = `900 ${Math.round(ar * 0.8)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(initials(t.store_name), acx, acy + 4); }
+      ctx.restore();
       // nome e frase
-      const ink = dark ? '#f1f3f7' : '#0f172a', muted = dark ? '#a3acc0' : '#5b6b82';
-      ctx.fillStyle = ink; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-      ctx.font = `900 ${story ? 84 : 66}px ${FONT}`;
-      const nameLines = wrapLines(ctx, t.store_name, W - 140, 2);
-      let y = coverH + lr + (story ? 120 : 90);
-      nameLines.forEach((l) => { ctx.fillText(l, W / 2, y); y += story ? 92 : 72; });
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = navy;
+      let y = acy + ar + (story ? 140 : 92);
+      const size = fitFont(ctx, t.store_name, 900, story ? 96 : 68, story ? 64 : 46, W - 120);
+      const lines = ctx.measureText(t.store_name).width > W - 120 ? wrapLines(ctx, t.store_name, W - 120, 2) : [t.store_name];
+      lines.forEach((l) => { ctx.fillText(l, W / 2, y); y += size * 1.05; });
       const mode = state.settings && state.settings.store_mode;
-      const tagline = mode === 'local' ? '📍 Peça pelo WhatsApp e receba na sua região' : mode === 'affiliate' ? '✨ Achadinhos selecionados para você' : '✨ Achadinhos e ofertas selecionadas';
-      ctx.fillStyle = muted; ctx.font = `700 ${story ? 40 : 34}px ${FONT}`;
-      ctx.fillText(tagline, W / 2, y - (story ? 22 : 18));
-      // produtos (o tamanho se ajusta ao espaço entre o texto e a barra do link)
-      const barH = story ? 190 : 150, barY = H - barH - (story ? 70 : 40);
+      const tagline = mode === 'local' ? 'Peça pelo WhatsApp e receba em casa' : 'Achadinhos e ofertas selecionadas';
+      fitFont(ctx, `✨ ${tagline} ✨`, 600, story ? 44 : 32, 26, W - 100);
+      ctx.fillStyle = mixHex(navy, '#ffffff', 0.1); ctx.fillText(`✨ ${tagline} ✨`, W / 2, y - size * 0.25 + (story ? 30 : 18));
+      y += story ? 70 : 44;
+      // produtos
+      const ctaH = story ? 130 : 104;
+      const ctaY = story ? 1452 : 772;
       if (imgs.length) {
-        const n = imgs.length;
-        const gap = 28;
-        const cols = story ? Math.min(2, n) : n;
-        const rows = story ? Math.ceil(n / 2) : 1;
-        const avail = barY - (y + (story ? 10 : 0)) - (story ? 40 : 24);
-        const maxW = (W - 120 - gap * (cols - 1)) / cols;
-        const size = Math.max(120, Math.min(story ? 440 : 300, maxW, (avail - gap * (rows - 1)) / rows));
-        const top = y + (story ? 10 : 0) + Math.max(0, (avail - (rows * size + (rows - 1) * gap)) / 2);
+        const n = imgs.length, gap = story ? 30 : 24;
+        const cols = story ? Math.min(2, n) : n, rows = story ? Math.ceil(n / 2) : 1;
+        const avail = ctaY - y - (story ? 34 : 24);
+        const size2 = Math.min(story ? 410 : 290, (W - 150 - gap * (cols - 1)) / cols, (avail - gap * (rows - 1)) / rows);
+        const top = y + Math.max(0, (avail - (rows * size2 + (rows - 1) * gap)) / 2);
         imgs.forEach((img, i) => {
           const r = story ? Math.floor(i / 2) : 0, c = story ? i % 2 : i;
-          const rowCount = story && r === rows - 1 && n % 2 ? 1 : cols;
-          const startX = (W - (rowCount * size + (rowCount - 1) * gap)) / 2;
-          const x = startX + (story && rowCount === 1 ? 0 : c * (size + gap));
-          const yy = top + r * (size + gap);
-          ctx.save(); ctx.shadowColor = 'rgba(15,23,42,.18)'; ctx.shadowBlur = 24; ctx.fillStyle = '#fff'; rr(ctx, x, yy, size, size, 28); ctx.fill(); ctx.restore();
-          if (img) { ctx.save(); rr(ctx, x + 14, yy + 14, size - 28, size - 28, 18); ctx.clip(); containImg(ctx, img, x + 14, yy + 14, size - 28, size - 28); ctx.restore(); }
-          const p = prods[i];
-          if (state.settings.show_prices && Number(p.show_price) !== 0 && p.price) {
-            const label = brl(p.price);
-            ctx.font = `900 ${story ? 34 : 28}px ${FONT}`;
-            const pw = ctx.measureText(label).width + 36, ph = story ? 58 : 48;
-            ctx.fillStyle = color; rr(ctx, x + size - pw - 16, yy + size - ph - 16, pw, ph, ph / 2); ctx.fill();
-            ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, x + size - pw / 2 - 16, yy + size - ph / 2 - 14);
-          }
+          const inRow = story && r === rows - 1 && n % 2 ? 1 : cols;
+          const startX = (W - (inRow * size2 + (inRow - 1) * gap)) / 2;
+          const x = startX + (inRow === 1 ? 0 : c * (size2 + gap)), yy = top + r * (size2 + gap);
+          ctx.save(); ctx.shadowColor = mixHex(color, '#000000', 0.4) + '33'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 8;
+          ctx.fillStyle = '#fff'; rr(ctx, x, yy, size2, size2, story ? 38 : 28); ctx.fill(); ctx.restore();
+          if (img) { const pad = size2 * 0.07; ctx.save(); rr(ctx, x + pad, yy + pad, size2 - pad * 2, size2 - pad * 2, 18); ctx.clip(); containImg(ctx, img, x + pad, yy + pad, size2 - pad * 2, size2 - pad * 2); ctx.restore(); }
         });
       }
-      // chamada + link
-      const g2 = ctx.createLinearGradient(60, 0, W - 60, 0); g2.addColorStop(0, color); g2.addColorStop(1, mixHex(color, '#000000', 0.25));
-      ctx.fillStyle = g2; rr(ctx, 60, barY, W - 120, barH, 40); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-      ctx.font = `900 ${story ? 50 : 42}px ${FONT}`; ctx.fillText('🛍️ Confira minha vitrine', W / 2, barY + (story ? 82 : 66));
-      ctx.font = `700 ${story ? 36 : 30}px ${FONT}`; ctx.globalAlpha = 0.95;
-      ctx.fillText(state.storeUrl.replace(/^https?:\/\//, ''), W / 2, barY + (story ? 140 : 114)); ctx.globalAlpha = 1;
+      // botão "Conheça minha vitrine"
+      const bx = story ? 95 : 90, bw = W - bx * 2;
+      ctx.save(); ctx.shadowColor = mixHex(color, '#000000', 0.3) + '66'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 10;
+      const gb = ctx.createLinearGradient(bx, 0, bx + bw, 0); gb.addColorStop(0, color); gb.addColorStop(1, deep);
+      ctx.fillStyle = gb; rr(ctx, bx, ctaY, bw, ctaH, ctaH / 2); ctx.fill(); ctx.restore();
+      bagIcon(ctx, bx + ctaH * 0.72, ctaY + ctaH / 2 - 4, ctaH * 0.46, { fill: '#fff', heart: color, lw: ctaH * 0.05 });
+      ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 3; ctx.beginPath();
+      ctx.moveTo(bx + ctaH * 1.25, ctaY + ctaH * 0.25); ctx.lineTo(bx + ctaH * 1.25, ctaY + ctaH * 0.75); ctx.stroke();
+      const ccx = bx + bw - ctaH * 0.6, ccy = ctaY + ctaH / 2, cr = ctaH * 0.27;
+      ctx.beginPath(); ctx.arc(ccx, ccy, cr, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.strokeStyle = deep; ctx.lineWidth = cr * 0.28; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(ccx - cr * 0.18, ccy - cr * 0.4); ctx.lineTo(ccx + cr * 0.22, ccy); ctx.lineTo(ccx - cr * 0.18, ccy + cr * 0.4); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      fitFont(ctx, 'Conheça minha vitrine', 800, story ? 56 : 44, 30, bw - ctaH * 2.6);
+      ctx.fillText('Conheça minha vitrine', bx + ctaH * 1.25 + (bw - ctaH * 1.25 - ctaH * 1.05) / 2, ccy + 2);
+      // link da loja entre linhas
+      const ly = ctaY + ctaH + (story ? 62 : 46);
+      const link = state.storeUrl.replace(/^https?:\/\//, '');
+      ctx.fillStyle = navy; ctx.textBaseline = 'middle';
+      const lsz = fitFont(ctx, link, 'italic 600', story ? 38 : 30, 22, W - 320);
+      const lw2 = ctx.measureText(link).width;
+      ctx.fillText(link, W / 2, ly);
+      ctx.strokeStyle = deep; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(60, ly); ctx.lineTo(W / 2 - lw2 / 2 - 24, ly); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(W / 2 + lw2 / 2 + 24, ly); ctx.lineTo(W - 60, ly); ctx.stroke();
+      // selos
+      const badges = mode === 'local'
+        ? [[chatIcon, 'Pedido pelo', 'WhatsApp'], [truckIcon, 'Entrega na', 'sua região'], [heartIcon, 'Atendimento', 'com carinho']]
+        : [[shieldIcon, 'Compra', 'segura'], [truckIcon, 'Entrega para', 'todo o Brasil'], [heartIcon, 'Compre com', 'confiança']];
+      const by = ly + (story ? 92 : 64), colW = (W - 120) / 3, isz = story ? 62 : 44;
+      badges.forEach(([icon, l1, l2], k) => {
+        const cx = 60 + colW * k + colW / 2;
+        const ix = cx - colW * 0.28;
+        icon(ctx, ix, by, isz, deep);
+        ctx.fillStyle = navy; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        ctx.font = `600 ${story ? 30 : 22}px ${FONT}`;
+        ctx.fillText(l1, ix + isz * 0.75, by - 2); ctx.fillText(l2, ix + isz * 0.75, by + (story ? 34 : 25));
+        if (k) { ctx.strokeStyle = mixHex(color, '#ffffff', 0.3); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(60 + colW * k, by - isz * 0.55); ctx.lineTo(60 + colW * k, by + isz * 0.65); ctx.stroke(); }
+      });
       return cv;
     }
 
