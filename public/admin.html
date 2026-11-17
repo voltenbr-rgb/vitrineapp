@@ -147,6 +147,7 @@
     .tname a { display: block; font-size: 12.5px; color: var(--accent-deep); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
     .tbadges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .tbadges .pill, .tbadges .src-chip { margin: 0; font-size: 11.5px; }
+    .src-chip.ref-chip { background: #fdf2ff; color: #a21caf; }
     .tinfo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .tinfo .on-text { color: #15803d; }
     .tinfo div { background: var(--field); border-radius: 12px; padding: 9px 11px; min-width: 0; }
@@ -508,6 +509,8 @@
               <span class="pill ${esc(t.status)}"><span class="dot"></span>${esc(STATUS[t.status] || t.status)}</span>
               <span class="pill" style="background:${t.plan === 'complete' ? '#fff1c7' : '#eef2ff'};color:${t.plan === 'complete' ? '#8a5a00' : '#3730a3'}">${t.status === 'trial' ? 'Teste do Completo' : esc(PLAN_NAME[t.plan] || 'Básico')}</span>
               ${t.source ? `<span class="src-chip" title="Origem do cadastro${t.campaign ? ' · ' + esc(t.campaign) : ''}">${esc(srcName(t.source))}</span>` : ''}
+              ${t.referred_by_name ? `<span class="src-chip ref-chip" title="Veio pelo link de indicação">🎁 por ${esc(String(t.referred_by_name).split(' ')[0])}</span>` : ''}
+              ${t.ref_signups ? `<span class="src-chip ref-chip" title="Cadastros pelo link dele · quantos já pagaram">🎁 indicou ${t.ref_signups}${t.ref_paid ? ` · ${t.ref_paid} pagou` : ''}</span>` : ''}
             </div></div>
         </div>
         <div class="tinfo">

@@ -91,6 +91,8 @@
     .hero .lead { font-size: clamp(16px, 2.6vw, 19px); color: var(--ink-2); margin: 0 0 26px; max-width: 560px; }
     .hero-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
     .hero-ctas .btn { flex: 1 1 220px; }
+    .invite-pill { background: #fdf2ff; color: #a21caf; font-weight: 800; margin-left: 6px; }
+    @media (max-width: 480px) { .invite-pill { margin: 8px 0 0; } }
     .btn-demo { background: #fff; color: var(--ink, #0f172a); border: 2px dashed #9ccff5; box-shadow: none; }
     .btn-demo:hover { border-style: solid; }
     .faq-help { text-align: center; margin-top: 22px; }
@@ -351,6 +353,7 @@
       <div class="container hero-grid">
         <div>
           <span class="pill"><span class="tag">🔥 7 dias grátis</span>Sem cartão de crédito</span>
+          <span class="pill invite-pill" id="invitePill" hidden>🎁 Você recebeu um convite de um amigo!</span>
           <h1>Todos os seus achadinhos em <span class="grad">um link só</span>.</h1>
           <p class="lead">Monte sua vitrine com produtos da <b>Shopee</b>, do <b>Mercado Livre</b> e da <b>sua cidade</b>. Coloque o link na bio, responda o direct com uma mensagem pronta e venda mais — tudo pelo celular, em 2 minutos.</p>
           <div class="hero-ctas">
@@ -703,11 +706,22 @@
 
     /* ---------- De onde veio o visitante (para o relatório do Master) ---------- */
     // Guarda a 1ª origem por 30 dias: links com ?utm_source=... (ou ?ref=...) e o site anterior.
+    // Link de indicação (?indica=codigo): fica guardado por 30 dias, mesmo se a pessoa voltar depois.
+    const INDICA_KEY = 'vitrine:indica';
+    const indica = (() => {
+      const code = (new URLSearchParams(location.search).get('indica') || '').trim().toLowerCase();
+      try {
+        if (/^[a-z0-9-]{3,48}$/.test(code)) { localStorage.setItem(INDICA_KEY, JSON.stringify({ code, at: Date.now() })); return code; }
+        const saved = JSON.parse(localStorage.getItem(INDICA_KEY) || 'null');
+        return saved && Date.now() - (saved.at || 0) < 30 * 86400000 ? saved.code : '';
+      } catch { return /^[a-z0-9-]{3,48}$/.test(code) ? code : ''; }
+    })();
+    if (indica) { const ip = document.getElementById('invitePill'); if (ip) ip.hidden = false; }
     const ORIGIN_KEY = 'vitrine:origin';
     const origin = (() => {
       const q = new URLSearchParams(location.search);
       const fresh = {
-        utm_source: q.get('utm_source') || q.get('ref') || q.get('src') || '',
+        utm_source: q.get('utm_source') || q.get('ref') || q.get('src') || (q.get('indica') ? 'indicacao' : ''),
         utm_campaign: q.get('utm_campaign') || '',
         referrer: document.referrer && !document.referrer.startsWith(location.origin) ? document.referrer : '',
         at: Date.now(),
@@ -858,7 +872,8 @@
       e.preventDefault();
       showError('');
       const body = Object.fromEntries(new FormData(form));
-      body.source = { utm_source: origin.utm_source, utm_campaign: origin.utm_campaign, referrer: origin.referrer };
+      body.source = { utm_source: origin.utm_source || (indica ? 'indicacao' : ''), utm_campaign: origin.utm_campaign, referrer: origin.referrer };
+      if (indica) body.indica = indica;
       if (!body.store_name.trim()) return showError('Digite o nome da sua loja.');
       if (!body.id || body.id.length < 3) return showError('Escolha o endereço da sua vitrine (mínimo 3 letras).');
       if (slugOk === false) return showError('Esse endereço já está em uso. Escolha outro.');

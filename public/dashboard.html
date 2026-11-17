@@ -113,6 +113,20 @@
     .tip p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; flex: 1; }
     .tip a { align-self: flex-start; margin-top: 4px; text-decoration: none; font-weight: 800; font-size: 12.5px; color: var(--accent-deep); background: var(--accent-soft); border-radius: 999px; padding: 6px 12px; }
     .tip.only { flex-basis: 100%; }
+    /* Indique e ganhe */
+    .ref-card { position: relative; margin: 0 0 16px; padding: 16px; border-radius: 22px; background: linear-gradient(150deg, #fff4fb, #f3f0ff); border: 1px solid #f0dcf3; }
+    .ref-head { display: flex; gap: 12px; align-items: center; padding-right: 26px; }
+    .ref-emoji { width: 42px; height: 42px; border-radius: 14px; background: #fff; display: grid; place-items: center; font-size: 22px; flex-shrink: 0; box-shadow: 0 4px 12px rgba(162, 28, 175, .12); }
+    .ref-head strong { display: block; font-size: 15.5px; }
+    .ref-head small { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+    .ref-link { margin: 12px 0 10px; background: #fff; border: 1px dashed #e3b7ec; border-radius: 12px; padding: 10px 12px; font-weight: 700; font-size: 13px; color: #86198f; overflow-wrap: anywhere; }
+    .ref-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .ref-btns .btn { justify-content: center; }
+    .ref-wa { background: #16a34a; color: #fff; border: 0; }
+    .ref-stats { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+    .ref-stats b { color: #86198f; font-size: 14px; }
+    .ref-mini { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 14px; padding: 11px 14px; border-radius: 16px; border: 1px solid #f0dcf3; background: #fff7fd; cursor: pointer; font: inherit; font-size: 13.5px; color: inherit; text-align: left; }
+    .ref-mini .go { font-weight: 800; color: #a21caf; font-size: 12.5px; flex-shrink: 0; }
     /* Primeiros passos */
     .checklist { position: relative; margin: 0 0 16px; padding: 16px; border-radius: 22px; background: linear-gradient(160deg, #eef7ff, #f6f2ff); border: 1px solid #dfeaf7; }
     .checklist .ck-head { display: flex; gap: 12px; align-items: center; padding-right: 26px; }
@@ -168,7 +182,7 @@
     .trial-mini span { flex: 1; }
     .trial-mini .btn { margin: 0; }
     .plan { position: relative; }
-    .plan .plan-x, .checklist .plan-x { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(0,0,0,.06); color: inherit; font-size: 16px; font-weight: 800; cursor: pointer; display: grid; place-items: center; }
+    .plan .plan-x, .checklist .plan-x, .ref-card .plan-x { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(0,0,0,.06); color: inherit; font-size: 16px; font-weight: 800; cursor: pointer; display: grid; place-items: center; }
     /* Pagamento */
     .pay-plans { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 4px 0 12px; max-height: 46vh; overflow: auto; }
     .pay-plans .pp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -661,12 +675,12 @@
       toast(err.message || 'Algo deu errado.', true);
     }
 
-    function confirmDialog({ title, text, ok = 'Confirmar', danger = false }) {
+    function confirmDialog({ title, text, ok = 'Confirmar', danger = false, cancel = 'Cancelar' }) {
       return new Promise((resolve) => {
         const ov = $('#dialogOverlay');
         const dlg = $('#dialog');
         dlg.innerHTML = `<h3 id="dlgTitle">${esc(title)}</h3><p>${esc(text)}</p>
-          <div class="acts"><button type="button" class="btn btn-ghost" data-r="0">Cancelar</button>
+          <div class="acts">${cancel ? `<button type="button" class="btn btn-ghost" data-r="0">${esc(cancel)}</button>` : ''}
           <button type="button" class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-r="1">${esc(ok)}</button></div>`;
         ov.classList.add('open');
         const done = (v) => { ov.classList.remove('open'); ov.onclick = null; document.removeEventListener('keydown', onKey); resolve(v); };
@@ -1646,6 +1660,7 @@
       state.tenant = data.tenant;
       state.account = data.account || null;
       state.stores = data.stores || state.stores;
+      if (data.referral) state.referral = data.referral;
       state.storeId = data.tenant.id;
       ls.set(STORE_KEY, data.tenant.id);
       state.settings = data.settings;
@@ -1659,6 +1674,7 @@
       const data = await api('/api/me/stores');
       state.account = data.account;
       state.stores = data.stores || [];
+      if (data.referral) state.referral = data.referral;
     }
 
     // Plano com mais de 1 loja (ou conta que já tem várias) começa pela tela "Minhas lojas".
@@ -1713,6 +1729,7 @@
           <div style="display:flex;gap:8px;align-items:center;margin-left:auto">${installBtn()}<button type="button" class="btn btn-sm btn-ghost" data-act="logout">${I.out}Sair</button></div></div>
         ${tempPassNotice()}
         ${planBanner()}
+        ${referralCard()}
         ${learnBlock()}
         <div style="margin-top:14px">${cards}</div>
         ${canAdd ? `<button type="button" class="store-new" data-act="new-store">+ Nova loja</button>` : ''}
@@ -1779,6 +1796,7 @@
         render();
       }
       startPing();
+      setTimeout(referralCelebrate, 600);
     }
 
     $('#loginForm').addEventListener('submit', async (e) => {
@@ -1794,6 +1812,7 @@
         ls.set(TOKEN_KEY, data.token);
         state.account = data.account;
         state.stores = data.stores || [];
+        state.referral = data.referral || null;
         $('#loginPass').value = '';
         $('#loginView').hidden = true;
         await afterLogin();
@@ -2103,7 +2122,40 @@
         </section>
         ${tempPassNotice()}
         ${planBanner()}
-        ${withPerf ? startChecklist() : ''}`;
+        ${withPerf ? startChecklist() : ''}
+        ${withPerf ? referralCard() : ''}`;
+    }
+
+    /* ---------------- Indique e ganhe ---------------- */
+    const refHideKey = () => `vitrine:ref-hide:${(state.account && state.account.id) || ''}`;
+    function referralMessage() {
+      const r = state.referral || {};
+      return `Oi! 😊 Tô usando o *Vitrine App* pra montar minha vitrine de achadinhos num link só (Shopee, Mercado Livre e produtos da região).\n\nÉ bem fácil e dá pra testar *7 dias grátis*, sem cartão:\n${r.link}`;
+    }
+    function referralCard() {
+      const r = state.referral;
+      if (!r || !r.link) return '';
+      const stats = r.signups ? `<div class="ref-stats"><span><b>${nfmt(r.signups)}</b> ${r.signups === 1 ? 'cadastro' : 'cadastros'}</span><span><b>${nfmt(r.paid)}</b> ${r.paid === 1 ? 'assinou' : 'assinaram'}</span><span><b>${nfmt(r.paid)}</b> ${r.paid === 1 ? 'mês ganho' : 'meses ganhos'}</span></div>` : '';
+      if (ls.get(refHideKey())) {
+        return `<button type="button" class="ref-mini" data-act="ref-show"><span>🎁 <b>Indique e ganhe</b> 1 mês grátis</span><span class="go">Abrir ›</span></button>`;
+      }
+      return `<section class="ref-card" aria-label="Indique e ganhe">
+        <button type="button" class="plan-x" data-act="ref-hide" aria-label="Recolher indique e ganhe">✕</button>
+        <div class="ref-head"><span class="ref-emoji">🎁</span><div><strong>Indique e ganhe 1 mês grátis</strong>
+          <small>Mande seu link para um amigo. Quando ele assinar um plano, você ganha <b>+1 mês</b> automaticamente.</small></div></div>
+        <div class="ref-link">${esc(r.link.replace(/^https?:\/\//, ''))}</div>
+        <div class="ref-btns"><button type="button" class="btn btn-sm btn-primary" data-act="ref-copy">🔗 Copiar link</button>
+          <button type="button" class="btn btn-sm ref-wa" data-act="ref-wa">💬 Enviar no WhatsApp</button></div>
+        ${stats}
+      </section>`;
+    }
+    async function referralCelebrate() {
+      const r = state.referral;
+      if (!r || !r.new_rewards) return;
+      const n = r.new_rewards;
+      r.new_rewards = 0;
+      api('/api/me/referral/seen', { method: 'POST', body: {} }).catch(() => {});
+      await confirmDialog({ title: '🎉 Você ganhou!', text: `${n === 1 ? 'Um amigo assinou' : `${n} amigos assinaram`} pelo seu link de indicação. Somamos ${n === 1 ? '+1 mês grátis' : `+${n} meses grátis`} no seu plano. Obrigado por indicar! 💙`, ok: 'Oba!', cancel: '' }).catch(() => {});
     }
 
     /* ---------------- Primeiros passos (checklist) ---------------- */
@@ -2798,6 +2850,10 @@
       if (t.dataset.color) return setColor(t.dataset.color);
       const act = t.dataset.act || (t.dataset.model ? 'model' : '');
       if (act === 'copy-link') { markShared(); return copy(state.storeUrl, 'Link copiado! Cole na sua bio 😉'); }
+      if (act === 'ref-copy') return copy(state.referral.link, 'Link de indicação copiado! 🎁');
+      if (act === 'ref-wa') return window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(referralMessage())}`, '_blank', 'noopener');
+      if (act === 'ref-hide') { ls.set(refHideKey(), '1'); const y = window.scrollY; render(); window.scrollTo(0, y); return; }
+      if (act === 'ref-show') { ls.del(refHideKey()); const y = window.scrollY; render(); window.scrollTo(0, y); return; }
       if (act === 'checklist-hide') { ls.set(stepKey('hide'), '1'); render(); return toast('Primeiros passos escondidos'); }
       if (act === 'checklist-ok') { ls.set(stepKey('celebrated'), '1'); return render(); }
       if (act === 'goto-profile') { go('settings'); setTimeout(() => { const f = $('#profileForm'); if (f) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60); return; }

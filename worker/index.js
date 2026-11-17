@@ -454,6 +454,12 @@ function ensureSchema(env) {
       // De onde veio o cliente (anúncio, Instagram, indicação...): relatório "Origem dos clientes" no Master.
       await addAcc('source', "source TEXT NOT NULL DEFAULT ''");
       await addAcc('campaign', "campaign TEXT NOT NULL DEFAULT ''");
+      // Indique e ganhe: código do link, quem indicou, se já deu o prêmio e prêmios ainda não vistos.
+      await addAcc('ref_code', 'ref_code TEXT');
+      await addAcc('referred_by', 'referred_by INTEGER');
+      await addAcc('ref_rewarded', 'ref_rewarded INTEGER NOT NULL DEFAULT 0');
+      await addAcc('ref_new', 'ref_new INTEGER NOT NULL DEFAULT 0');
+      await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_ref_code ON accounts (ref_code) WHERE ref_code IS NOT NULL').run();
       await env.DB.prepare(
         `CREATE TABLE IF NOT EXISTS site_daily (
           day TEXT NOT NULL,
@@ -1944,6 +1950,7 @@ async function handleLogin(request, env) {
     token: await signToken(env, account),
     account: accountPrivate(env, account),
     stores: await loadAccountStoresFor(env, account),
+    referral: await referralInfo(request, env, account),
   });
 }
 
@@ -2023,6 +2030,7 @@ async function handleMe(request, env, tenant) {
     settings,
     products,
     store_url: `${publicBase(request, env)}/s/${tenant.id}`,
+    referral: await referralInfo(request, env, tenant.account),
     lookup_quota: await lookupQuota(env, `acc:${tenant.account_id}`, lookupLimitFor(env, plan)),
   });
 }
@@ -2034,7 +2042,7 @@ async function handleStores(request, env, account) {
   account = (await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(account.id).first()) || account;
   const base = publicBase(request, env);
   const stores = (await loadAccountStoresFor(env, account)).map((st) => ({ ...st, store_url: `${base}/s/${st.id}` }));
-  return json({ account: accountPrivate(env, account), stores, plans: plansCatalog(env) });
+  return json({ account: accountPrivate(env, account), stores, plans: plansCatalog(env), referral: await referralInfo(request, env, account) });
 }
 
 async function handleCreateStore(request, env, account) {
@@ -2383,6 +2391,14 @@ async function createAccountWithStore(env, body, { plan = 'basic', origin = { so
      VALUES (?, ?, ?, ?, 'trial', ?, ?, ?, ?, ?)`,
   ).bind(ownerName, phone, hash, PLANS[plan] ? plan : 'basic', trialEndsAt, ts, ts, origin.source, origin.campaign).run();
   const accountId = res.meta && res.meta.last_row_id;
+  // Veio pelo link de indicação de outro cliente (não vale indicar a si mesmo).
+  const code = cleanRefCode(body.indica);
+  if (code) {
+    const ref = await env.DB.prepare('SELECT id, whatsapp FROM accounts WHERE ref_code = ?').bind(code).first();
+    if (ref && ref.whatsapp !== phone && ref.id !== accountId) {
+      await env.DB.prepare('UPDATE accounts SET referred_by = ? WHERE id = ?').bind(ref.id, accountId).run();
+    }
+  }
   const account = await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(accountId).first();
   try {
     const store = await createStore(env, account, { ...body, id: slug, store_name: storeName, whatsapp: phone, owner_name: ownerName });
@@ -2433,7 +2449,26 @@ async function loadAdminAccounts(env, base, onlyId = null) {
     if (!map.has(t.account_id)) map.set(t.account_id, []);
     map.get(t.account_id).push(t);
   }
-  return Promise.all(accs.map((a) => adminAccountView(env, base, a, map)));
+  // Indicações: quantos cada conta trouxe e o nome de quem indicou.
+  const refs = new Map();
+  const names = new Map();
+  try {
+    const { results: agg } = await env.DB.prepare(
+      'SELECT referred_by AS id, COUNT(*) AS signups, COALESCE(SUM(ref_rewarded), 0) AS paid FROM accounts WHERE referred_by IS NOT NULL GROUP BY referred_by',
+    ).all();
+    for (const r of agg || []) refs.set(r.id, { signups: Number(r.signups), paid: Number(r.paid) });
+    const ids = [...new Set(accs.map((a) => a.referred_by).filter(Boolean))];
+    if (ids.length) {
+      const { results: rn } = await env.DB.prepare(`SELECT id, owner_name, whatsapp FROM accounts WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all();
+      for (const r of rn || []) names.set(r.id, r.owner_name || r.whatsapp);
+    }
+  } catch { /* colunas novas ainda não criadas */ }
+  return Promise.all(accs.map(async (a) => ({
+    ...(await adminAccountView(env, base, a, map)),
+    referred_by_name: a.referred_by ? names.get(a.referred_by) || `conta #${a.referred_by}` : null,
+    ref_signups: (refs.get(a.id) || {}).signups || 0,
+    ref_paid: (refs.get(a.id) || {}).paid || 0,
+  })));
 }
 
 async function handleAdminList(request, env) {
@@ -2791,7 +2826,78 @@ async function applyPayment(env, pay) {
   const paidUntil = addDays(Math.max(now, current), pay.days || 30);
   await env.DB.prepare("UPDATE accounts SET status = 'active', plan = ?, paid_until = ?, updated_at = ? WHERE id = ?")
     .bind(PLANS[pay.plan] ? pay.plan : 'basic', paidUntil, nowIso(), acc.id).run();
+  if (acc.referred_by) await rewardReferrer(env, acc).catch(() => {});
   return true;
+}
+
+/* ------------------------------------------------------------------ */
+/* Indique e ganhe                                                     */
+/* ------------------------------------------------------------------ */
+const REF_REWARD_DAYS = 30;
+function cleanRefCode(v) {
+  const c = String(v || '').trim().toLowerCase();
+  return /^[a-z0-9-]{3,48}$/.test(c) ? c : '';
+}
+
+// 1º pagamento do indicado: quem indicou ganha 1 mês grátis (uma vez por indicado).
+async function rewardReferrer(env, acc) {
+  const claim = await env.DB.prepare('UPDATE accounts SET ref_rewarded = 1 WHERE id = ? AND ref_rewarded = 0').bind(acc.id).run();
+  if (!claim.meta || !claim.meta.changes) return false;
+  const ref = await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(acc.referred_by).first();
+  if (!ref) return false;
+  const now = Date.now();
+  const ts = nowIso();
+  if (ref.status === 'trial' && ref.trial_ends_at && Date.parse(ref.trial_ends_at) > now) {
+    // Ainda no teste: o teste ganha +30 dias.
+    await env.DB.prepare('UPDATE accounts SET trial_ends_at = ?, ref_new = ref_new + 1, updated_at = ? WHERE id = ?')
+      .bind(addDays(Date.parse(ref.trial_ends_at), REF_REWARD_DAYS), ts, ref.id).run();
+  } else {
+    // Plano ativo: soma 30 dias ao que resta. Vencido: volta ao ar por 30 dias no plano dele.
+    const current = ref.status === 'active' && ref.paid_until ? Date.parse(ref.paid_until) : 0;
+    await env.DB.prepare("UPDATE accounts SET status = 'active', paid_until = ?, ref_new = ref_new + 1, updated_at = ? WHERE id = ?")
+      .bind(addDays(Math.max(now, current), REF_REWARD_DAYS), ts, ref.id).run();
+  }
+  return true;
+}
+
+async function ensureRefCode(env, account) {
+  if (account.ref_code) return account.ref_code;
+  const first = await env.DB.prepare('SELECT id FROM tenants WHERE account_id = ? ORDER BY created_at ASC, id ASC LIMIT 1').bind(account.id).first();
+  const tries = [];
+  if (first && first.id) tries.push(cleanRefCode(first.id.slice(0, 40)));
+  for (let i = 0; i < 4; i++) tries.push(`v${account.id}${Math.random().toString(36).slice(2, 6)}`);
+  for (const code of tries.filter(Boolean)) {
+    try {
+      const r = await env.DB.prepare('UPDATE accounts SET ref_code = ? WHERE id = ? AND ref_code IS NULL').bind(code, account.id).run();
+      if (r.meta && r.meta.changes) { account.ref_code = code; return code; }
+      const row = await env.DB.prepare('SELECT ref_code FROM accounts WHERE id = ?').bind(account.id).first();
+      if (row && row.ref_code) { account.ref_code = row.ref_code; return row.ref_code; }
+    } catch { /* código já usado por outra conta: tenta o próximo */ }
+  }
+  return '';
+}
+
+async function referralInfo(request, env, account) {
+  try {
+    const code = await ensureRefCode(env, account);
+    const row = await env.DB.prepare(
+      `SELECT COUNT(*) AS signups, COALESCE(SUM(ref_rewarded), 0) AS paid FROM accounts WHERE referred_by = ?`,
+    ).bind(account.id).first();
+    const fresh = await env.DB.prepare('SELECT ref_new FROM accounts WHERE id = ?').bind(account.id).first();
+    return {
+      code,
+      link: code ? `${publicBase(request, env)}/?indica=${encodeURIComponent(code)}` : '',
+      signups: Number((row && row.signups) || 0),
+      paid: Number((row && row.paid) || 0),
+      reward_days: REF_REWARD_DAYS,
+      new_rewards: Number((fresh && fresh.ref_new) || 0),
+    };
+  } catch { return null; }
+}
+
+async function handleReferralSeen(env, account) {
+  await env.DB.prepare('UPDATE accounts SET ref_new = 0 WHERE id = ?').bind(account.id).run();
+  return json({ ok: true });
 }
 
 // Confere no Mercado Pago (fonte da verdade) e atualiza o pagamento local.
@@ -2963,6 +3069,7 @@ async function routeApi(request, env, path, ctx = null) {
   if (path === '/api/me' || path.startsWith('/api/me/')) {
     const account = await requireAccount(request, env);
     if (path === '/api/me/ping' && method === 'POST') return handlePing(env, account);
+    if (path === '/api/me/referral/seen' && method === 'POST') return handleReferralSeen(env, account);
     if (path === '/api/me/password' && method === 'PUT') return handlePassword(request, env, account);
     if (path === '/api/me/stores' && method === 'GET') return handleStores(request, env, account);
     if (path === '/api/me/pay' && method === 'POST') return handlePayCreate(request, env, account);
