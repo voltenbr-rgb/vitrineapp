@@ -52,7 +52,7 @@
  */
 
 const DAY_MS = 86_400_000;
-const ONLINE_WINDOW_MS = 3 * 60_000;      // lojista "online" se deu sinal nos últimos 3 min
+const ONLINE_WINDOW_MS = 7 * 60_000;      // lojista "online" se deu sinal nos últimos 7 min (o painel avisa a cada 3 min)
 const MASTER_DEFAULT_PASSWORD = '1989';   // vale até ser trocada no painel Master
 const PBKDF2_ITERATIONS = 100_000; // limite máximo suportado pelo Workers
 const TOKEN_TTL_MS = 30 * DAY_MS;

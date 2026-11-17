@@ -1128,13 +1128,13 @@
       } catch (err) { handleError(err); }
     }
 
-    // Presença: avisa o Master que o lojista está com o painel aberto.
+    // Presença: avisa o Master que o lojista está com o painel aberto (a cada 3 min, economiza pedidos).
     let pingTimer = null;
     function startPing() {
       clearInterval(pingTimer);
       pingTimer = setInterval(() => {
         if (document.visibilityState === 'visible' && state.token) api('/api/me/ping', { method: 'POST' }).catch(() => {});
-      }, 60000);
+      }, 180000);
     }
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && state.token && state.tenant) api('/api/me/ping', { method: 'POST' }).catch(() => {});
