@@ -286,6 +286,14 @@
     .share-head a { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; background: rgba(255, 255, 255, .2); padding: 7px 10px; border-radius: 10px; }
     .share-url { display: block; background: rgba(255, 255, 255, .16); border-radius: 12px; padding: 10px 12px; font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 10px; }
     .share-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .share-btns .art-btn { grid-column: 1 / -1; background: linear-gradient(135deg, #fff, #f0fdf4); }
+    /* Estúdio de artes */
+    .art-formats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0 12px; }
+    .art-formats button { border: 2px solid var(--line, #e6e8ee); background: #fff; border-radius: 12px; padding: 8px; font: inherit; font-weight: 800; font-size: 13px; cursor: pointer; color: var(--ink); }
+    .art-formats button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-deep); }
+    .art-preview { display: grid; place-items: center; background: #eef1f6; border-radius: 16px; padding: 10px; min-height: 200px; margin-bottom: 12px; }
+    .art-preview img { max-width: 100%; max-height: 52vh; border-radius: 10px; box-shadow: 0 8px 24px rgba(15, 23, 42, .18); }
+    .art-preview .spinner { border-color: var(--accent); border-right-color: transparent; }
     .share-btns button { height: 46px; border-radius: 13px; background: #fff; color: var(--ink); font-weight: 800; font-size: 13.5px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: transform .12s; }
     .share-btns button:active { transform: scale(.97); }
     .share-btns small { display: block; font-size: 10.5px; font-weight: 600; color: var(--muted); }
@@ -984,6 +992,7 @@
           <div class="offer-actions">
             <button type="button" class="btn btn-soft" data-act="offer-copy">${I.copy}Copiar</button>
             <button type="button" class="btn btn-wa" data-act="offer-wa">${I.wa}WhatsApp</button>
+            <button type="button" class="btn btn-primary full" data-act="offer-art">🖼️ Gerar arte da oferta</button>
             <button type="button" class="btn btn-ghost" data-act="offer-save">➕ Salvar na vitrine</button>
             <button type="button" class="btn btn-ghost" data-act="offer-clear">Limpar</button>
           </div>` : ''}
@@ -1050,7 +1059,7 @@
       const p = state.products.find((x) => x.id === id);
       if (!p) return;
       const link = safeImg(p.affiliate_link) ? p.affiliate_link : (/^https?:/i.test(p.affiliate_link || '') ? p.affiliate_link : `${state.storeUrl}?p=${p.id}`);
-      state.offerProduct = { title: p.title, price: p.price, original: p.original_price, link };
+      state.offerProduct = { title: p.title, price: p.price, original: p.original_price, link, image: p.image_url };
       const ov = $('#dialogOverlay');
       $('#dialog').innerHTML = `<h3 id="dlgTitle">📣 Mensagem de oferta</h3>
         <p>Escolha o modelo, ajuste se quiser e envie.</p>
@@ -1059,12 +1068,290 @@
         <div class="offer-actions">
           <button type="button" class="btn btn-soft" data-act="offer-copy">${I.copy}Copiar</button>
           <button type="button" class="btn btn-wa" data-act="offer-wa">${I.wa}WhatsApp</button>
+          <button type="button" class="btn btn-primary full" data-act="offer-art">🖼️ Gerar arte da oferta</button>
           <button type="button" class="btn btn-ghost full" data-close-offer>Fechar</button>
         </div>`;
       ov.classList.add('open');
       ov.onclick = (e) => {
         if (e.target === ov || e.target.closest('[data-close-offer]')) { ov.classList.remove('open'); ov.onclick = null; state.offerProduct = null; }
       };
+    }
+
+
+    /* ---------------- Estúdio de artes: Status/Story e Post (todos os planos) ---------------- */
+    // Desenha no próprio celular (canvas): não gasta servidor. Fotos da Shopee/ML passam pela ponte /api/img.
+    const ART_SIZES = { story: [1080, 1920], post: [1080, 1080] };
+    let artFormat = ls.get('vitrine:art-format') === 'post' ? 'post' : 'story';
+
+    function artImage(url) {
+      return new Promise((resolve) => {
+        if (!url) return resolve(null);
+        let src = String(url);
+        if (/^https?:/i.test(src) && !src.startsWith(location.origin)) src = `${API}/api/img?u=${encodeURIComponent(src)}`;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
+    }
+    function rr(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+    }
+    function coverImg(ctx, img, x, y, w, h, r = 0) {
+      ctx.save();
+      if (r) { rr(ctx, x, y, w, h, r); ctx.clip(); }
+      const k = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+      const iw = img.naturalWidth * k, ih = img.naturalHeight * k;
+      ctx.drawImage(img, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih);
+      ctx.restore();
+    }
+    function containImg(ctx, img, x, y, w, h) {
+      const k = Math.min(w / img.naturalWidth, h / img.naturalHeight);
+      const iw = img.naturalWidth * k, ih = img.naturalHeight * k;
+      ctx.drawImage(img, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih);
+    }
+    function wrapLines(ctx, text, maxW, maxLines) {
+      const words = String(text || '').split(/\s+/).filter(Boolean);
+      const lines = [];
+      let cur = '';
+      for (const w of words) {
+        const t = cur ? `${cur} ${w}` : w;
+        if (ctx.measureText(t).width <= maxW) { cur = t; continue; }
+        if (cur) lines.push(cur);
+        cur = w;
+        if (lines.length === maxLines) break;
+      }
+      if (lines.length < maxLines && cur) lines.push(cur);
+      if (lines.length === maxLines && words.join(' ').length > lines.join(' ').length) {
+        let last = lines[maxLines - 1];
+        while (ctx.measureText(`${last}…`).width > maxW && last.length) last = last.slice(0, -1);
+        lines[maxLines - 1] = `${last.trim()}…`;
+      }
+      return lines;
+    }
+    const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+    const mixHex = (hex, other, t) => {
+      const a = hex.replace('#', ''), b = other.replace('#', '');
+      const c = (i) => Math.round(parseInt(a.substr(i, 2), 16) * (1 - t) + parseInt(b.substr(i, 2), 16) * t).toString(16).padStart(2, '0');
+      return `#${c(0)}${c(2)}${c(4)}`;
+    };
+    function brandColor() {
+      const c = state.tenant && state.tenant.theme_color;
+      return /^#[0-9a-f]{6}$/i.test(c || '') ? c : '#16a6e0';
+    }
+    function drawLogo(ctx, logo, cx, cy, r, name, color) {
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, r + 10, 0, Math.PI * 2); ctx.fillStyle = '#fff';
+      ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 30; ctx.fill(); ctx.restore();
+      ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+      if (logo) coverImg(ctx, logo, cx - r, cy - r, r * 2, r * 2);
+      else {
+        ctx.fillStyle = color; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+        ctx.fillStyle = '#fff'; ctx.font = `800 ${Math.round(r * 0.8)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(initials(name), cx, cy + 2);
+      }
+      ctx.restore();
+    }
+    function pill(ctx, text, cx, y, h, bg, fg, font) {
+      ctx.font = font;
+      const w = ctx.measureText(text).width + h * 1.2;
+      ctx.fillStyle = bg; rr(ctx, cx - w / 2, y, w, h, h / 2); ctx.fill();
+      ctx.fillStyle = fg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, cx, y + h / 2 + 2);
+    }
+
+    // Arte da vitrine: capa, logo, nome, cor, até 4 produtos e o link.
+    async function drawStoreArt(format) {
+      const [W, H] = ART_SIZES[format];
+      const story = format === 'story';
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      const ctx = cv.getContext('2d');
+      const t = state.tenant, color = brandColor(), dark = state.settings && state.settings.theme_mode === 'dark';
+      const prods = state.products.filter((p) => Number(p.is_visible) !== 0 && p.image_url).slice(0, story ? 4 : 3);
+      const [cover, logo, ...imgs] = await Promise.all([artImage(t.cover_url), artImage(t.avatar_url), ...prods.map((p) => artImage(p.image_url))]);
+      // fundo
+      ctx.fillStyle = dark ? '#0e1015' : '#f4f6fa'; ctx.fillRect(0, 0, W, H);
+      const coverH = story ? 600 : 400;
+      if (cover) coverImg(ctx, cover, 0, 0, W, coverH);
+      else { const g = ctx.createLinearGradient(0, 0, W, coverH); g.addColorStop(0, color); g.addColorStop(1, mixHex(color, '#000000', 0.35)); ctx.fillStyle = g; ctx.fillRect(0, 0, W, coverH); }
+      const sh = ctx.createLinearGradient(0, coverH * 0.4, 0, coverH); sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,.35)');
+      ctx.fillStyle = sh; ctx.fillRect(0, 0, W, coverH);
+      // logo
+      const lr = story ? 110 : 92;
+      drawLogo(ctx, logo, W / 2, coverH, lr, t.store_name, color);
+      // nome e frase
+      const ink = dark ? '#f1f3f7' : '#0f172a', muted = dark ? '#a3acc0' : '#5b6b82';
+      ctx.fillStyle = ink; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.font = `900 ${story ? 84 : 66}px ${FONT}`;
+      const nameLines = wrapLines(ctx, t.store_name, W - 140, 2);
+      let y = coverH + lr + (story ? 120 : 90);
+      nameLines.forEach((l) => { ctx.fillText(l, W / 2, y); y += story ? 92 : 72; });
+      const mode = state.settings && state.settings.store_mode;
+      const tagline = mode === 'local' ? '📍 Peça pelo WhatsApp e receba na sua região' : mode === 'affiliate' ? '✨ Achadinhos selecionados para você' : '✨ Achadinhos e ofertas selecionadas';
+      ctx.fillStyle = muted; ctx.font = `700 ${story ? 40 : 34}px ${FONT}`;
+      ctx.fillText(tagline, W / 2, y - (story ? 22 : 18));
+      // produtos (o tamanho se ajusta ao espaço entre o texto e a barra do link)
+      const barH = story ? 190 : 150, barY = H - barH - (story ? 70 : 40);
+      if (imgs.length) {
+        const n = imgs.length;
+        const gap = 28;
+        const cols = story ? Math.min(2, n) : n;
+        const rows = story ? Math.ceil(n / 2) : 1;
+        const avail = barY - (y + (story ? 10 : 0)) - (story ? 40 : 24);
+        const maxW = (W - 120 - gap * (cols - 1)) / cols;
+        const size = Math.max(120, Math.min(story ? 440 : 300, maxW, (avail - gap * (rows - 1)) / rows));
+        const top = y + (story ? 10 : 0) + Math.max(0, (avail - (rows * size + (rows - 1) * gap)) / 2);
+        imgs.forEach((img, i) => {
+          const r = story ? Math.floor(i / 2) : 0, c = story ? i % 2 : i;
+          const rowCount = story && r === rows - 1 && n % 2 ? 1 : cols;
+          const startX = (W - (rowCount * size + (rowCount - 1) * gap)) / 2;
+          const x = startX + (story && rowCount === 1 ? 0 : c * (size + gap));
+          const yy = top + r * (size + gap);
+          ctx.save(); ctx.shadowColor = 'rgba(15,23,42,.18)'; ctx.shadowBlur = 24; ctx.fillStyle = '#fff'; rr(ctx, x, yy, size, size, 28); ctx.fill(); ctx.restore();
+          if (img) { ctx.save(); rr(ctx, x + 14, yy + 14, size - 28, size - 28, 18); ctx.clip(); containImg(ctx, img, x + 14, yy + 14, size - 28, size - 28); ctx.restore(); }
+          const p = prods[i];
+          if (state.settings.show_prices && Number(p.show_price) !== 0 && p.price) {
+            const label = brl(p.price);
+            ctx.font = `900 ${story ? 34 : 28}px ${FONT}`;
+            const pw = ctx.measureText(label).width + 36, ph = story ? 58 : 48;
+            ctx.fillStyle = color; rr(ctx, x + size - pw - 16, yy + size - ph - 16, pw, ph, ph / 2); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, x + size - pw / 2 - 16, yy + size - ph / 2 - 14);
+          }
+        });
+      }
+      // chamada + link
+      const g2 = ctx.createLinearGradient(60, 0, W - 60, 0); g2.addColorStop(0, color); g2.addColorStop(1, mixHex(color, '#000000', 0.25));
+      ctx.fillStyle = g2; rr(ctx, 60, barY, W - 120, barH, 40); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.font = `900 ${story ? 50 : 42}px ${FONT}`; ctx.fillText('🛍️ Confira minha vitrine', W / 2, barY + (story ? 82 : 66));
+      ctx.font = `700 ${story ? 36 : 30}px ${FONT}`; ctx.globalAlpha = 0.95;
+      ctx.fillText(state.storeUrl.replace(/^https?:\/\//, ''), W / 2, barY + (story ? 140 : 114)); ctx.globalAlpha = 1;
+      return cv;
+    }
+
+    // Arte da oferta: foto, nome, de/por, % OFF, cor e nome da loja.
+    async function drawOfferArt(format, o) {
+      const [W, H] = ART_SIZES[format];
+      const story = format === 'story';
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      const ctx = cv.getContext('2d');
+      const t = state.tenant, color = brandColor();
+      const [photo, logo] = await Promise.all([artImage(o.image), artImage(t.avatar_url)]);
+      const price = parseMoney(o.price), orig = parseMoney(o.original);
+      const hasOff = price && orig && orig > price;
+      const off = hasOff ? Math.round((1 - price / orig) * 100) : 0;
+      const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, color); g.addColorStop(1, mixHex(color, '#000000', 0.45));
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      // brilhos
+      ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.arc(W * 0.9, H * 0.08, story ? 320 : 220, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(W * 0.05, H * 0.95, story ? 280 : 200, 0, Math.PI * 2); ctx.fill();
+      // topo: logo + loja
+      const lr = story ? 46 : 38, top = story ? 80 : 54;
+      drawLogo(ctx, logo, 60 + lr, top + lr, lr, t.store_name, mixHex(color, '#000000', 0.2));
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = `800 ${story ? 40 : 34}px ${FONT}`;
+      ctx.fillText(wrapLines(ctx, t.store_name, W - 420, 1)[0] || '', 60 + lr * 2 + 26, top + lr);
+      pill(ctx, '🔥 OFERTA', W - 60 - (story ? 140 : 120), top + lr - (story ? 34 : 28), story ? 68 : 56, '#fff', '#0f172a', `900 ${story ? 34 : 28}px ${FONT}`);
+      // foto do produto + título + preço, centralizados entre o topo e o rodapé
+      ctx.font = `800 ${story ? 60 : 42}px ${FONT}`;
+      const titleLines = wrapLines(ctx, o.title || 'Produto em oferta', W - 140, story ? 3 : 2);
+      const lineH = story ? 72 : 52;
+      const box = story ? 880 : 480;
+      const blockH = box + (story ? 110 : 70) + titleLines.length * lineH + (hasOff ? (story ? 120 : 78) : 0) + (story ? 100 : 74);
+      const areaTop = story ? 210 : 140, areaBottom = H - (story ? 200 : 150);
+      const bx = (W - box) / 2, by = areaTop + Math.max(0, (areaBottom - areaTop - blockH) / 2);
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.3)'; ctx.shadowBlur = 40; ctx.fillStyle = '#fff'; rr(ctx, bx, by, box, box, 48); ctx.fill(); ctx.restore();
+      if (photo) { ctx.save(); rr(ctx, bx + 30, by + 30, box - 60, box - 60, 30); ctx.clip(); containImg(ctx, photo, bx + 30, by + 30, box - 60, box - 60); ctx.restore(); }
+      if (hasOff) {
+        const r = story ? 110 : 80, cx = bx + box - r * 0.55, cy = by + r * 0.55;
+        ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.3)'; ctx.shadowBlur = 20;
+        ctx.fillStyle = '#ef233c'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = `900 ${story ? 64 : 46}px ${FONT}`; ctx.fillText(`-${off}%`, cx, cy - (story ? 8 : 6));
+        ctx.font = `800 ${story ? 26 : 20}px ${FONT}`; ctx.fillText('OFF', cx, cy + (story ? 42 : 30));
+      }
+      // título
+      let y = by + box + (story ? 110 : 70);
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.font = `800 ${story ? 60 : 42}px ${FONT}`;
+      titleLines.forEach((l) => { ctx.fillText(l, W / 2, y); y += lineH; });
+      // preços
+      y += story ? 20 : 6;
+      if (hasOff) {
+        ctx.font = `700 ${story ? 44 : 34}px ${FONT}`; ctx.globalAlpha = 0.85;
+        const deTxt = `De ${brl(orig)}`; ctx.fillText(deTxt, W / 2, y);
+        const dw = ctx.measureText(deTxt).width; ctx.fillRect(W / 2 - dw / 2, y - (story ? 15 : 12), dw, story ? 4 : 3);
+        ctx.globalAlpha = 1; y += story ? 100 : 72;
+      }
+      if (price) {
+        ctx.font = `900 ${story ? 104 : 74}px ${FONT}`; ctx.fillStyle = '#fff';
+        ctx.fillText(`${hasOff ? 'Por ' : ''}${brl(price)}`, W / 2, y);
+      } else {
+        ctx.font = `800 ${story ? 54 : 40}px ${FONT}`; ctx.fillText('Confira o preço no link', W / 2, y);
+      }
+      // rodapé
+      const fy = H - (story ? 170 : 140);
+      pill(ctx, '🛒 Link na bio · Garanta o seu!', W / 2, fy, story ? 96 : 76, '#fff', '#0f172a', `900 ${story ? 40 : 32}px ${FONT}`);
+      ctx.fillStyle = '#fff'; ctx.font = `700 ${story ? 30 : 24}px ${FONT}`; ctx.globalAlpha = 0.85; ctx.textAlign = 'center';
+      ctx.fillText(state.storeUrl.replace(/^https?:\/\//, ''), W / 2, fy + (story ? 140 : 102)); ctx.globalAlpha = 1;
+      return cv;
+    }
+
+    function openArt(kind, offerData = null) {
+      const ov = $('#dialogOverlay');
+      const dlg = $('#dialog');
+      let blob = null;
+      const name = () => `${kind === 'offer' ? 'oferta' : 'vitrine'}-${(state.tenant.id || 'loja')}-${artFormat}.png`;
+      dlg.innerHTML = `<h3 id="dlgTitle">🖼️ ${kind === 'offer' ? 'Arte da oferta' : 'Arte da vitrine'}</h3>
+        <p>${kind === 'offer' ? 'Com a foto, o preço e as cores da sua loja.' : 'Com sua capa, logo, cores e produtos.'} Poste no Status, Stories ou no feed.</p>
+        <div class="art-formats" role="group" aria-label="Formato">
+          <button type="button" data-fmt="story" aria-pressed="${artFormat === 'story'}">📱 Status / Story</button>
+          <button type="button" data-fmt="post" aria-pressed="${artFormat === 'post'}">⬛ Post quadrado</button>
+        </div>
+        <div class="art-preview" id="artPreview"><span class="spinner"></span></div>
+        <div class="grid-2">
+          <button type="button" class="btn btn-primary" data-art="share">📲 Compartilhar</button>
+          <button type="button" class="btn btn-soft" data-art="download">⬇️ Baixar</button>
+        </div>
+        <button type="button" class="btn btn-ghost btn-block" data-art="close" style="margin-top:8px">Fechar</button>`;
+      ov.classList.add('open');
+      const draw = async () => {
+        $('#artPreview').innerHTML = '<span class="spinner"></span>';
+        blob = null;
+        try {
+          const cv = kind === 'offer' ? await drawOfferArt(artFormat, offerData) : await drawStoreArt(artFormat);
+          blob = await new Promise((r) => cv.toBlob(r, 'image/png'));
+          const url = URL.createObjectURL(blob);
+          $('#artPreview').innerHTML = `<img src="${url}" alt="Prévia da arte">`;
+        } catch (err) {
+          $('#artPreview').innerHTML = '<p style="color:var(--muted);font-size:13px">Não consegui montar a arte agora. Tente de novo.</p>';
+        }
+      };
+      const close = () => { ov.classList.remove('open'); ov.onclick = null; };
+      ov.onclick = async (e) => {
+        if (e.target === ov) return close();
+        const f = e.target.closest('[data-fmt]');
+        if (f) {
+          artFormat = f.dataset.fmt; ls.set('vitrine:art-format', artFormat);
+          dlg.querySelectorAll('[data-fmt]').forEach((b) => b.setAttribute('aria-pressed', String(b === f)));
+          return draw();
+        }
+        const b = e.target.closest('[data-art]');
+        if (!b) return;
+        if (b.dataset.art === 'close') return close();
+        if (!blob) return toast('Aguarde a arte ficar pronta.');
+        const file = new File([blob], name(), { type: 'image/png' });
+        if (b.dataset.art === 'share' && navigator.canShare && navigator.canShare({ files: [file] })) {
+          try { await navigator.share({ files: [file], title: state.tenant.store_name }); } catch { /* cancelou */ }
+          return;
+        }
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = name();
+        document.body.appendChild(a); a.click(); a.remove();
+        toast(b.dataset.art === 'share' ? 'Arte baixada. Agora é só postar 📲' : 'Arte baixada ✓');
+      };
+      draw();
     }
 
     /* ---------------- Compartilhar ---------------- */
@@ -1654,6 +1941,7 @@
           <div class="share-btns">
             <button type="button" data-act="copy-link">🔗<span class="lbl">Copiar link<small>para a bio</small></span></button>
             <button type="button" data-act="share-msg">💬<span class="lbl">Mensagem<small>pronta p/ direct</small></span></button>
+            <button type="button" class="art-btn" data-act="art-store">🖼️<span class="lbl">Arte da vitrine<small>para Status, Stories e feed</small></span></button>
           </div>
         </section>
         ${tempPassNotice()}
@@ -2344,6 +2632,13 @@
       if (act === 'pay') return openPay(t.dataset.plan);
       if (act === 'plans') return openPay();
       if (act === 'install') return installApp();
+      if (act === 'art-store') return openArt('store');
+      if (act === 'offer-art') {
+        const o = state.offerProduct || state.offer;
+        if (!o) return toast('Gere uma oferta primeiro.');
+        // o diálogo da oferta do produto é substituído pela arte
+        return openArt('offer', { ...o });
+      }
       if (act === 'go-pass') {
         if (state.view === 'stores') { const first = state.stores[0]; if (first) await openStore(first.id); }
         go('account');

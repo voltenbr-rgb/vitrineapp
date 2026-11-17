@@ -1727,6 +1727,28 @@ function photoLink(base, kind, id, dataUrl, version) {
   return `${base}/api/photo/${kind}/${encodeURIComponent(id)}?v=${v}`;
 }
 
+// Ponte de imagens para as artes do painel: o navegador só deixa baixar a arte pronta (canvas)
+// se as fotos vierem do próprio site. Só aceita fotos da Shopee e do Mercado Livre (não é proxy aberto).
+const IMG_PROXY_HOSTS = /(^|\.)(susercontent\.com|shopee\.com\.br|shopeemobile\.com|mlstatic\.com|mercadolivre\.com\.br|mercadolibre\.com)$/i;
+async function handleImgProxy(request) {
+  const raw = new URL(request.url).searchParams.get('u') || '';
+  let target;
+  try { target = new URL(raw); } catch { throw new HttpError(400, 'Imagem inválida.'); }
+  if (!/^https?:$/.test(target.protocol) || !IMG_PROXY_HOSTS.test(target.hostname)) throw new HttpError(400, 'Imagem não permitida.');
+  target.protocol = 'https:';
+  let res;
+  try {
+    res = await fetch(target.toString(), { headers: { 'User-Agent': 'Mozilla/5.0 (VitrineApp)' }, cf: { cacheTtl: 86400, cacheEverything: true } });
+  } catch { throw new HttpError(502, 'Não foi possível baixar a imagem.'); }
+  const type = res.headers.get('content-type') || '';
+  if (!res.ok || !/^image\//i.test(type)) throw new HttpError(502, 'Não foi possível baixar a imagem.');
+  const len = Number(res.headers.get('content-length') || 0);
+  if (len > 6 * 1024 * 1024) throw new HttpError(413, 'Imagem muito grande.');
+  return new Response(res.body, {
+    headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' },
+  });
+}
+
 async function handlePhoto(env, kind, rawId) {
   let row = null;
   if (kind === 'p' && /^\d+$/.test(rawId)) {
@@ -2872,6 +2894,7 @@ async function routeApi(request, env, path, ctx = null) {
   if (path === '/api/config' && method === 'GET') return handleConfig(request, env);
   if ((m = path.match(/^\/api\/store\/([^/]+)$/)) && method === 'GET') return handleStore(request, env, decodeURIComponent(m[1]), ctx);
   if ((m = path.match(/^\/api\/store\/([^/]+)\/hit$/)) && method === 'POST') return handleStoreHit(request, env, decodeURIComponent(m[1]));
+  if (path === '/api/img' && method === 'GET') return handleImgProxy(request);
   if ((m = path.match(/^\/api\/photo\/([psc])\/([^/]+)$/)) && method === 'GET') return handlePhoto(env, m[1], decodeURIComponent(m[2]).toLowerCase());
   if ((m = path.match(/^\/api\/images\/(.+)$/)) && method === 'GET') return handleImage(env, decodeURIComponent(m[1]));
   if (path === '/api/auth/login' && method === 'POST') return handleLogin(request, env);
