@@ -113,6 +113,10 @@
     .tip p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; flex: 1; }
     .tip a { align-self: flex-start; margin-top: 4px; text-decoration: none; font-weight: 800; font-size: 12.5px; color: var(--accent-deep); background: var(--accent-soft); border-radius: 999px; padding: 6px 12px; }
     .tip.only { flex-basis: 100%; }
+    .tip-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .tip-acts a { margin-top: 0; }
+    .tip-acts button { border: 1px solid #dbe6ef; background: #fff; cursor: pointer; font: inherit; font-weight: 800; font-size: 12.5px; color: var(--ink, #0f172a); border-radius: 999px; padding: 5px 12px; }
+    .tip-acts button:active { transform: scale(.97); }
     /* Instalar app */
     .install-btn { display: inline-flex; align-items: center; gap: 6px; border: 0; cursor: pointer; font: inherit; font-weight: 800; font-size: 12.5px; color: #fff; background: linear-gradient(135deg, #16a6e0, #6d5dfc); border-radius: 999px; padding: 7px 13px 7px 10px; box-shadow: 0 6px 16px rgba(22, 166, 224, .35); }
     .top-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; }
@@ -1869,7 +1873,7 @@
           <span>${esc(tut.label || 'Conhecer melhor o aplicativo')}<small>Vídeos curtos de como usar no YouTube</small></span><span class="go">›</span></a>` : ''}
         ${tips.length ? `<div class="tips-row">${tips.map((t) => `<article class="tip ${tips.length === 1 ? 'only' : ''}">
           <span class="te">${esc(t.emoji || '💡')}</span><strong>${esc(t.title)}</strong>${t.text ? `<p>${esc(t.text)}</p>` : '<p></p>'}
-          ${safe(t.url) ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.button || 'Abrir')} ›</a>` : ''}</article>`).join('')}</div>` : ''}
+          ${safe(t.url) ? `<div class="tip-acts"><a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.button || 'Abrir')} ›</a><button type="button" data-act="copy-tip" data-url="${esc(t.url)}">📋 Copiar link</button></div>` : ''}</article>`).join('')}</div>` : ''}
       </section>`;
     }
 
@@ -2706,6 +2710,7 @@
       if (t.dataset.color) return setColor(t.dataset.color);
       const act = t.dataset.act || (t.dataset.model ? 'model' : '');
       if (act === 'copy-link') return copy(state.storeUrl, 'Link copiado! Cole na sua bio 😉');
+      if (act === 'copy-tip') return copy(t.dataset.url || '', 'Link copiado! 😉');
       if (act === 'share-msg') return openShareMessage();
       if (act === 'toggle-visible') return toggleVisible(Number(t.dataset.id));
       if (act === 'logout') {
