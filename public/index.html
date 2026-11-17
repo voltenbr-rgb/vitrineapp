@@ -9,7 +9,8 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="Vitrine App — seus achadinhos em um link só">
   <meta property="og:description" content="Shopee, Mercado Livre e produtos da sua cidade numa vitrine linda. Comece grátis por 7 dias.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2316a6e0'/%3E%3Cpath d='M18 24h28l-3 22H21z' fill='white'/%3E%3Cpath d='M25 24a7 7 0 0 1 14 0' stroke='white' stroke-width='4' fill='none'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/png" href="/icons/favicon-64.png">
+  <link rel="apple-touch-icon" href="/icons/app-touch-180.png">
   <script src="/config.js"></script>
   <style>
     :root {
@@ -61,7 +62,8 @@
     .nav.scrolled { border-bottom-color: var(--line); }
     .nav .container { display: flex; align-items: center; justify-content: space-between; height: 68px; gap: 12px; }
     .logo { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 19px; letter-spacing: -.02em; }
-    .logo-mark { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, #1fb5f0, #0f8fd0); box-shadow: 0 8px 18px rgba(22, 166, 224, .35); }
+    .logo-mark { width: 40px; height: 40px; display: grid; place-items: center; filter: drop-shadow(0 6px 12px rgba(22, 120, 224, .3)); }
+    .logo-mark img { width: 100%; height: 100%; display: block; }
     .logo b { color: var(--accent); }
     .nav-links { display: none; gap: 26px; font-weight: 600; font-size: 14px; color: var(--ink-2); }
     .nav-links a:hover { color: var(--accent-deep); }
@@ -71,7 +73,7 @@
     @media (max-width: 420px) {
       .nav .container { padding: 0 14px; }
       .logo { font-size: 17px; gap: 8px; }
-      .logo-mark { width: 34px; height: 34px; }
+      .logo-mark { width: 36px; height: 36px; }
       .nav-actions .login { padding: 0 6px; font-size: 13.5px; }
       .nav-actions .btn-sm { height: 40px; padding: 0 13px; font-size: 13px; }
     }
@@ -323,7 +325,7 @@
   <header class="nav" id="nav">
     <div class="container">
       <a class="logo" href="/" aria-label="Vitrine App — início">
-        <span class="logo-mark"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg></span>
+        <span class="logo-mark"><img src="/icons/logo-128.png" alt="" width="128" height="128"></span>
         <span>Vitrine<b>App</b></span>
       </a>
       <nav class="nav-links" aria-label="Seções">

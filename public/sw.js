@@ -1,7 +1,7 @@
 // Vitrine App — service worker do painel (só /dashboard; as vitrines /s/... não são afetadas).
 // Estratégia: rede primeiro; sem internet, abre a última versão salva do painel.
-const CACHE = 'vitrine-painel-v1';
-const SHELL = ['/dashboard.html', '/config.js', '/icons/icon-192.png', '/manifest.webmanifest'];
+const CACHE = 'vitrine-painel-v2';
+const SHELL = ['/dashboard.html', '/config.js', '/icons/app-192.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
