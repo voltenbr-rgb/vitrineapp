@@ -268,6 +268,11 @@
       padding: 4px 9px 4px 5px; border-radius: 999px; background: rgba(255, 255, 255, .95); color: var(--ink-2);
       box-shadow: 0 2px 8px rgba(0, 0, 0, .10);
     }
+    .ptag { position: absolute; z-index: 2; left: 10px; top: 40px; font-size: 10.5px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap;
+      padding: 3px 8px; border-radius: 999px; color: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .14); pointer-events: none; }
+    .ptag.hot { background: linear-gradient(135deg, #ff7a18, #ff3d3d); }
+    .ptag.new { background: linear-gradient(135deg, #7c5cff, #19a7ff); }
+    .products.list .ptag { top: 36px; left: 8px; }
     .badge i { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; }
     .badge.ml { color: #2d3277; background: #fff159; }
     .badge.ml i { background: #2d3277; color: #fff159; }
@@ -729,10 +734,10 @@
     }
 
     // Métrica do painel: clique em comprar/adicionar ou pedido no WhatsApp (não atrasa nada para o cliente).
-    function hit(type) {
+    function hit(type, product) {
       try {
         const url = `${API}/api/store/${encodeURIComponent(state.slug)}/hit`;
-        const body = JSON.stringify({ type });
+        const body = JSON.stringify(product ? { type, product: Number(product) } : { type });
         if (navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
         else fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true });
       } catch { /* métrica não é crítica */ }
@@ -746,10 +751,10 @@
       const link = safeUrl(p.affiliate_link);
       if (link) {
         const label = isAffiliate(p) ? 'Ver oferta' : 'Comprar';
-        return `<a class="btn-buy ${extraClass}" href="${esc(link)}" target="_blank" rel="noopener noreferrer sponsored">${isAffiliate(p) ? ICON.external : ICON.bag}<span>${label}</span></a>`;
+        return `<a class="btn-buy ${extraClass}" data-pid="${p.id}" href="${esc(link)}" target="_blank" rel="noopener noreferrer sponsored">${isAffiliate(p) ? ICON.external : ICON.bag}<span>${label}</span></a>`;
       }
       const msg = `Olá! Vi na sua vitrine e tenho interesse em: ${p.title}\n${productUrl(p)}`;
-      return `<a class="btn-buy wa ${extraClass}" href="${esc(waLink(state.store.whatsapp, msg))}" target="_blank" rel="noopener noreferrer">${ICON.wa}<span>Pedir</span></a>`;
+      return `<a class="btn-buy wa ${extraClass}" data-pid="${p.id}" href="${esc(waLink(state.store.whatsapp, msg))}" target="_blank" rel="noopener noreferrer">${ICON.wa}<span>Pedir</span></a>`;
     }
 
     function shareMessage(p) {
@@ -806,12 +811,19 @@
         </button>`;
     }
 
+    function tagHtml(p) {
+      if (p.tag === 'hot') return '<span class="ptag hot">🔥 Mais clicado</span>';
+      if (p.tag === 'new') return '<span class="ptag new">✨ Novo</span>';
+      return '';
+    }
+
     function cardHtml(p, i) {
       const plat = PLATFORM[p.platform] || PLATFORM.proprio;
       const fav = state.favs.has(p.id);
       return `<article class="card" style="animation-delay:${Math.min(i, 12) * 30}ms">
         ${mediaHtml(p, i)}
         <span class="badge ${plat.cls}"><i>${plat.mark}</i>${esc(plat.short)}</span>
+        ${tagHtml(p)}
         <button type="button" class="fav" data-fav="${p.id}" aria-pressed="${fav}" aria-label="${fav ? 'Remover dos' : 'Adicionar aos'} favoritos">${ICON.heart}</button>
         <div class="card-body">
           <h3 class="card-title">${esc(p.title)}</h3>
@@ -1006,10 +1018,10 @@
         return;
       }
       if (t.matches('[data-close]')) return closeSheet();
-      if (t.matches('a.btn-buy')) hit(t.classList.contains('wa') ? 'order' : 'click');
+      if (t.matches('a.btn-buy')) hit(t.classList.contains('wa') ? 'order' : 'click', t.dataset.pid);
       if (t.dataset.open) return openProduct(Number(t.dataset.open));
       if (t.dataset.add) {
-        hit('click');
+        hit('click', t.dataset.add);
         const id = Number(t.dataset.add);
         addToCart(id, 1);
         toast('Adicionado ao carrinho 🛒');
@@ -1017,7 +1029,7 @@
         if (overlay.classList.contains('open')) openProduct(id);
         return;
       }
-      if (t.dataset.order) hit('order');
+      if (t.dataset.order) hit('order', t.dataset.order);
       if (t.dataset.order) return orderNow(state.products.find((p) => p.id === Number(t.dataset.order)));
       if (t.dataset.qty) { addToCart(Number(t.dataset.qty), Number(t.dataset.d)); renderProducts(); return openCart(); }
       if (t.dataset.cart === 'open') return openCart();

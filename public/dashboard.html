@@ -113,6 +113,31 @@
     .tip p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; flex: 1; }
     .tip a { align-self: flex-start; margin-top: 4px; text-decoration: none; font-weight: 800; font-size: 12.5px; color: var(--accent-deep); background: var(--accent-soft); border-radius: 999px; padding: 6px 12px; }
     .tip.only { flex-basis: 100%; }
+    /* Primeiros passos */
+    .checklist { position: relative; margin: 0 0 16px; padding: 16px; border-radius: 22px; background: linear-gradient(160deg, #eef7ff, #f6f2ff); border: 1px solid #dfeaf7; }
+    .checklist .ck-head { display: flex; gap: 12px; align-items: center; padding-right: 26px; }
+    .checklist .ck-emoji { width: 42px; height: 42px; border-radius: 14px; background: #fff; display: grid; place-items: center; font-size: 22px; flex-shrink: 0; box-shadow: 0 4px 12px rgba(30, 90, 200, .12); }
+    .checklist strong { display: block; font-size: 15.5px; }
+    .checklist .ck-head small { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+    .ck-bar { height: 8px; border-radius: 99px; background: #fff; margin: 12px 0 10px; overflow: hidden; }
+    .ck-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #19a7ff, #7c5cff); transition: width .5s ease; }
+    .ck-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    .ck-list li { display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 14px; padding: 9px 10px; border: 1px solid transparent; }
+    .ck-list li.next { border-color: #b9d8ff; box-shadow: 0 4px 14px rgba(25, 120, 255, .10); }
+    .ck-list li.ok { background: rgba(255, 255, 255, .55); }
+    .ck-list li.ok b { color: var(--muted); text-decoration: line-through; font-weight: 600; }
+    .ck-dot { width: 30px; height: 30px; border-radius: 50%; background: #f0f5fb; display: grid; place-items: center; font-size: 15px; flex-shrink: 0; }
+    .ck-list li.ok .ck-dot { background: #22c55e; color: #fff; font-weight: 900; font-size: 14px; }
+    .ck-txt { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.3; }
+    .ck-txt small { display: block; color: var(--muted); font-size: 12px; margin-top: 1px; }
+    .ck-go { border: 0; cursor: pointer; font: inherit; font-weight: 800; font-size: 12px; color: #fff; background: var(--accent-deep, #0f7fd0); border-radius: 999px; padding: 7px 12px; flex-shrink: 0; }
+    .ck-list li:not(.next) .ck-go { background: #eaf3fc; color: var(--accent-deep, #0f7fd0); }
+    .checklist.done-all { text-align: left; }
+    .checklist .ck-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .trial-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0 4px; }
+    .trial-stats div { background: rgba(255, 255, 255, .75); border-radius: 12px; padding: 8px 6px; text-align: center; }
+    .trial-stats b { display: block; font-size: 18px; line-height: 1.1; }
+    .trial-stats span { font-size: 11px; color: var(--muted); font-weight: 700; }
     .tip-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
     .tip-acts a { margin-top: 0; }
     .tip-acts button { border: 1px solid #dbe6ef; background: #fff; cursor: pointer; font: inherit; font-weight: 800; font-size: 12.5px; color: var(--ink, #0f172a); border-radius: 999px; padding: 5px 12px; }
@@ -143,7 +168,7 @@
     .trial-mini span { flex: 1; }
     .trial-mini .btn { margin: 0; }
     .plan { position: relative; }
-    .plan .plan-x { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(0,0,0,.06); color: inherit; font-size: 16px; font-weight: 800; cursor: pointer; display: grid; place-items: center; }
+    .plan .plan-x, .checklist .plan-x { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(0,0,0,.06); color: inherit; font-size: 16px; font-weight: 800; cursor: pointer; display: grid; place-items: center; }
     /* Pagamento */
     .pay-plans { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 4px 0 12px; max-height: 46vh; overflow: auto; }
     .pay-plans .pp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -1812,6 +1837,20 @@
         <button type="button" class="btn btn-sm btn-primary" data-act="go-pass">Criar senha</button></div>`;
     }
 
+    // Fim do teste: mostra o que a vitrine já conquistou (soma das lojas nos últimos 7 dias).
+    function trialResults() {
+      const list = state.stores && state.stores.length ? state.stores : [];
+      const sum = (k) => list.reduce((n, st) => n + Number(st[k] || 0), 0);
+      const views = sum('week_views'), clicks = sum('week_clicks') + sum('week_orders');
+      const prods = list.length ? sum('product_count') : (state.products || []).length;
+      if (!views && !clicks) {
+        return `<div style="margin-top:8px">💡 Ainda dá tempo: compartilhe seu link no Status e na bio para ver as primeiras visitas aparecerem aqui.</div>`;
+      }
+      return `<div style="margin-top:8px"><b>Olha o que sua vitrine já conquistou nesses dias:</b></div>
+        <div class="trial-stats"><div><b>${nfmt(views)}</b><span>visitas</span></div><div><b>${nfmt(clicks)}</b><span>cliques</span></div><div><b>${nfmt(prods)}</b><span>produtos</span></div></div>
+        <div style="font-size:12.5px">Não deixe parar agora 💪 Assine e continue no ar.</div>`;
+    }
+
     function planBanner() {
       const a = state.account || state.tenant;
       if (state.view !== 'stores' && state.tenant && state.tenant.paused && a.status !== 'expired') {
@@ -1844,6 +1883,7 @@
           ${lastDay
             ? `Hoje é o último dia com tudo do plano <b>Completo</b> liberado. Escolha seu plano para sua vitrine continuar no ar sem parar.`
             : `Está tudo liberado do plano <b>Completo</b> (até 3 lojas, 3 modelos editáveis, 30 buscas/h) até ${fmtDate(a.trial_ends_at)}. Depois, escolha seu plano.`}
+          ${left <= 2 ? trialResults() : ''}
           <div class="progress" aria-hidden="true"><i style="width:${pct}%"></i></div>
           <div class="pay-row">${lastDay ? plansBtn.replace('Ver planos', 'Conhecer os planos') : plansBtn}</div></div></div>`;
       }
@@ -2062,7 +2102,51 @@
           </div>
         </section>
         ${tempPassNotice()}
-        ${planBanner()}`;
+        ${planBanner()}
+        ${withPerf ? startChecklist() : ''}`;
+    }
+
+    /* ---------------- Primeiros passos (checklist) ---------------- */
+    function markShared() {
+      if (ls.get(stepKey('shared'))) return;
+      ls.set(stepKey('shared'), '1');
+      if (state.tab === 'products') setTimeout(() => { const y = window.scrollY; render(); window.scrollTo(0, y); }, 400);
+    }
+    const stepKey = (k) => `vitrine:step:${k}:${state.storeId || ''}`;
+    function checklistSteps() {
+      const t = state.tenant || {};
+      const prods = (state.products || []).length;
+      return [
+        { id: 'logo', icon: '🖼️', title: 'Coloque sua foto ou logo', hint: 'Deixa sua vitrine com a sua cara.', done: !!safeImg(t.avatar_url), act: 'goto-profile', btn: 'Colocar' },
+        { id: 'cover', icon: '🌄', title: 'Escolha uma foto de capa', hint: 'O topo da vitrine fica muito mais bonito.', done: !!safeImg(t.cover_url), act: 'goto-profile', btn: 'Escolher' },
+        { id: 'products', icon: '🛍️', title: 'Cadastre 3 produtos', hint: prods ? `Você já tem ${prods} de 3.` : 'Cole o link do Mercado Livre ou da Shopee que o resto vem sozinho.', done: prods >= 3, tab: 'new', btn: 'Cadastrar' },
+        { id: 'share', icon: '📣', title: 'Compartilhe seu link', hint: 'Coloque na bio do Instagram ou mande no WhatsApp.', done: !!ls.get(stepKey('shared')), act: 'copy-link', btn: 'Copiar link' },
+      ];
+    }
+    function startChecklist() {
+      if (!state.tenant || isExpired()) return '';
+      if (ls.get(stepKey('hide'))) return '';
+      const steps = checklistSteps();
+      const done = steps.filter((x) => x.done).length;
+      const all = done === steps.length;
+      if (all && ls.get(stepKey('celebrated'))) return '';
+      const pct = Math.round((done / steps.length) * 100);
+      if (all) {
+        return `<section class="checklist done-all" aria-label="Primeiros passos">
+          <div class="ck-head"><span class="ck-emoji">🎉</span><div><strong>Sua vitrine está prontinha!</strong><small>Agora é divulgar: quanto mais gente vê, mais cliques você ganha.</small></div></div>
+          <div class="ck-row"><button type="button" class="btn btn-sm btn-primary" data-act="art-store">🖼️ Criar arte para o Status</button>
+          <button type="button" class="btn btn-sm btn-ghost" data-act="checklist-ok">Fechar</button></div></section>`;
+      }
+      const next = steps.find((x) => !x.done);
+      return `<section class="checklist" aria-label="Primeiros passos">
+        <button type="button" class="plan-x" data-act="checklist-hide" aria-label="Esconder primeiros passos">✕</button>
+        <div class="ck-head"><span class="ck-emoji">🚀</span><div><strong>Primeiros passos</strong><small>${done} de ${steps.length} concluídos · deixe sua vitrine pronta para vender</small></div></div>
+        <div class="ck-bar" aria-hidden="true"><i style="width:${Math.max(6, pct)}%"></i></div>
+        <ol class="ck-list">${steps.map((x) => `<li class="${x.done ? 'ok' : ''} ${x === next ? 'next' : ''}">
+          <span class="ck-dot">${x.done ? '✓' : x.icon}</span>
+          <span class="ck-txt"><b>${esc(x.title)}</b>${x.done ? '' : `<small>${esc(x.hint)}</small>`}</span>
+          ${x.done ? '' : `<button type="button" class="ck-go" ${x.tab ? `data-tab="${x.tab}"` : `data-act="${x.act}"`}>${esc(x.btn)}</button>`}
+        </li>`).join('')}</ol></section>`;
     }
 
     function productItem(p) {
@@ -2077,6 +2161,7 @@
             ${Number(p.show_price) === 0 ? '<span class="tag-hidden">preço oculto</span>' : ''}
             ${p.category ? `<span>· ${esc(p.category)}</span>` : ''}
             ${p.is_physical ? '<span>· 📍 entrega local</span>' : ''}
+            ${Number(p.clicks) > 0 ? `<span>· 👆 ${nfmt(p.clicks)} ${Number(p.clicks) === 1 ? 'clique' : 'cliques'}</span>` : ''}
             ${hidden ? '<span class="tag-hidden">Oculto</span>' : ''}</div></div>
         <div class="acts">
           <button type="button" class="icon-btn" data-act="offer" data-id="${p.id}" aria-label="Gerar mensagem de oferta de ${esc(p.title)}" title="Mensagem de oferta">📣</button>
@@ -2227,6 +2312,8 @@
             <label class="switch"><input type="checkbox" data-setting="show_prices" ${s.show_prices ? 'checked' : ''}><span class="track"></span></label></div>
           <div class="switch-row"><div><strong>Aviso do site parceiro</strong><small>Nos links de afiliado, mostra que a venda e a entrega são feitas pelo Mercado Livre ou pela Shopee.</small></div>
             <label class="switch"><input type="checkbox" data-setting="show_stock_warning" ${s.show_stock_warning ? 'checked' : ''}><span class="track"></span></label></div>
+          <div class="switch-row"><div><strong>Selos "Novo" e "Mais clicado"</strong><small>✨ Novo: produtos dos últimos 7 dias. 🔥 Mais clicado: os campeões de cliques da sua vitrine.</small></div>
+            <label class="switch"><input type="checkbox" data-setting="show_tags" ${s.show_tags !== 0 ? 'checked' : ''}><span class="track"></span></label></div>
           <div class="switch-row" style="display:block">
             <div style="margin-bottom:10px"><strong>Layout padrão</strong><small>Como os produtos aparecem ao abrir a vitrine.</small></div>
             <div class="seg two">
@@ -2426,6 +2513,7 @@
         store_mode: ($('[data-setting="store_mode"]:checked') || {}).value || 'mixed',
         show_whatsapp: get('show_whatsapp').checked ? 1 : 0,
         card_tone: ($('[data-setting="card_tone"]:checked') || {}).value || 'white',
+        show_tags: get('show_tags').checked ? 1 : 0,
       };
       try {
         const before = state.settings && state.settings.store_mode;
@@ -2709,9 +2797,12 @@
       if (t.dataset.tab) return go(t.dataset.tab);
       if (t.dataset.color) return setColor(t.dataset.color);
       const act = t.dataset.act || (t.dataset.model ? 'model' : '');
-      if (act === 'copy-link') return copy(state.storeUrl, 'Link copiado! Cole na sua bio 😉');
+      if (act === 'copy-link') { markShared(); return copy(state.storeUrl, 'Link copiado! Cole na sua bio 😉'); }
+      if (act === 'checklist-hide') { ls.set(stepKey('hide'), '1'); render(); return toast('Primeiros passos escondidos'); }
+      if (act === 'checklist-ok') { ls.set(stepKey('celebrated'), '1'); return render(); }
+      if (act === 'goto-profile') { go('settings'); setTimeout(() => { const f = $('#profileForm'); if (f) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60); return; }
       if (act === 'copy-tip') return copy(t.dataset.url || '', 'Link copiado! 😉');
-      if (act === 'share-msg') return openShareMessage();
+      if (act === 'share-msg') { markShared(); return openShareMessage(); }
       if (act === 'toggle-visible') return toggleVisible(Number(t.dataset.id));
       if (act === 'logout') {
         if (await confirmDialog({ title: 'Sair do painel?', text: 'Você precisará da senha para entrar de novo.', ok: 'Sair' })) logout();

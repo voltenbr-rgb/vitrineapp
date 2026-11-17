@@ -404,6 +404,7 @@ function ensureSchema(env) {
       if (!pc.has('show_price')) alters.push('ALTER TABLE products ADD COLUMN show_price INTEGER NOT NULL DEFAULT 1');
       if (!pc.has('original_price')) alters.push('ALTER TABLE products ADD COLUMN original_price REAL');
       if (!pc.has('price_checked_at')) alters.push('ALTER TABLE products ADD COLUMN price_checked_at TEXT');
+      if (!pc.has('clicks')) alters.push('ALTER TABLE products ADD COLUMN clicks INTEGER NOT NULL DEFAULT 0');
       if (!pc.has('category')) alters.push("ALTER TABLE products ADD COLUMN category TEXT NOT NULL DEFAULT ''");
       if (!sc.has('show_banner')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_banner INTEGER NOT NULL DEFAULT 1');
       if (!sc.has('share_message')) alters.push("ALTER TABLE tenant_settings ADD COLUMN share_message TEXT NOT NULL DEFAULT ''");
@@ -414,6 +415,7 @@ function ensureSchema(env) {
       if (!sc.has('card_tone')) alters.push("ALTER TABLE tenant_settings ADD COLUMN card_tone TEXT NOT NULL DEFAULT 'white'");
       if (!sc.has('show_whatsapp')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_whatsapp INTEGER NOT NULL DEFAULT 1');
       if (!sc.has('store_mode')) alters.push("ALTER TABLE tenant_settings ADD COLUMN store_mode TEXT NOT NULL DEFAULT 'mixed'");
+      if (!sc.has('show_tags')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_tags INTEGER NOT NULL DEFAULT 1');
       if (!sc.has('offer_templates')) alters.push("ALTER TABLE tenant_settings ADD COLUMN offer_templates TEXT NOT NULL DEFAULT ''");
       for (const sql of alters) {
         try {
@@ -1649,7 +1651,7 @@ function tenantPrivate(t) {
 
 const DEFAULT_SETTINGS = {
   show_prices: 1, show_stock_warning: 1, view_mode: 'grid', show_banner: 1, share_message: '', offer_template: 1,
-  theme_mode: 'light', card_tone: 'white', offer_templates: '', show_whatsapp: 1, store_mode: 'mixed',
+  theme_mode: 'light', card_tone: 'white', offer_templates: '', show_whatsapp: 1, store_mode: 'mixed', show_tags: 1,
 };
 // Tipo da loja: só afiliados, só catálogo da região (com carrinho) ou os dois.
 const STORE_MODES = ['affiliate', 'local', 'mixed'];
@@ -1658,7 +1660,7 @@ const storeMode = (v) => (STORE_MODES.includes(v) ? v : 'mixed');
 async function loadSettings(env, tenantId) {
   const row = await env.DB.prepare(
     `SELECT show_prices, show_stock_warning, view_mode, show_banner, share_message, offer_template,
-            theme_mode, card_tone, offer_templates, show_whatsapp, store_mode FROM tenant_settings WHERE tenant_id = ?`,
+            theme_mode, card_tone, offer_templates, show_whatsapp, store_mode, show_tags FROM tenant_settings WHERE tenant_id = ?`,
   ).bind(tenantId).first();
   return row ? { ...DEFAULT_SETTINGS, ...row } : { ...DEFAULT_SETTINGS };
 }
@@ -1666,7 +1668,7 @@ async function loadSettings(env, tenantId) {
 async function loadProducts(env, tenantId, { onlyVisible = false } = {}) {
   const { results } = await env.DB.prepare(
     `SELECT id, title, description, price, image_url, affiliate_link, platform,
-            is_physical, delivery_cities, sort_order, is_visible, show_price, original_price, category, created_at, updated_at
+            is_physical, delivery_cities, sort_order, is_visible, show_price, original_price, category, clicks, created_at, updated_at
        FROM products WHERE tenant_id = ? ${onlyVisible ? 'AND is_visible = 1' : ''}
       ORDER BY sort_order ASC, id DESC`,
   ).bind(tenantId).all();
@@ -1732,6 +1734,7 @@ async function handleConfig(request, env) {
     payments: mpConfigured(env),
     support_whatsapp: String(cfg.support_whatsapp || env.SUPPORT_WHATSAPP || '').replace(/\D/g, ''),
     video: videoEmbed(cfg.landing_video_url),
+    demo_store: SLUG_RE.test(cfg.demo_store || '') ? cfg.demo_store : null,
     tutorial: cfg.tutorial_url ? { url: cfg.tutorial_url, label: cfg.tutorial_label || 'Conhecer melhor o aplicativo' } : null,
     tips: parseTips(cfg.tips).filter((t) => t.active).map(({ active, ...t }) => t),
     lookup: { shopee: !!(await shopeeCredentials(env, cfg)), mercadolivre: mlConfigured(env) && !!cfg.ml_tokens },
@@ -1851,8 +1854,9 @@ async function handleStore(request, env, rawId, ctx = null) {
 
   // Preço oculto (geral ou do produto): o valor nem sai do servidor.
   const base = publicBase(request, env);
-  const visibleProducts = products.map((p) => {
-    const item = { ...p, image_url: photoLink(base, 'p', p.id, p.image_url, p.updated_at) };
+  const tags = productTags(products, settings);
+  const visibleProducts = products.map(({ clicks, ...p }) => {
+    const item = { ...p, tag: tags.get(p.id) || null, image_url: photoLink(base, 'p', p.id, p.image_url, p.updated_at) };
     return settings.show_prices && Number(p.show_price) !== 0 ? item : { ...item, price: null, original_price: null };
   });
   const store = tenantPublic(tenant);
@@ -1863,6 +1867,22 @@ async function handleStore(request, env, rawId, ctx = null) {
   store.cover_url = photoLink(base, 'c', tenant.id, tenant.cover_url, tenant.updated_at);
 
   return json({ store, settings, products: visibleProducts });
+}
+
+// Selos da vitrine: "Mais clicado" (os campeões, mínimo 5 cliques) e "Novo" (cadastrado há até 7 dias).
+function productTags(products, settings) {
+  const tags = new Map();
+  if (Number(settings.show_tags) === 0 || products.length < 2) return tags;
+  [...products].filter((p) => Number(p.clicks) >= 5)
+    .sort((a, b) => Number(b.clicks) - Number(a.clicks)).slice(0, Math.min(3, Math.floor(products.length / 3) || 1))
+    .forEach((p) => tags.set(p.id, 'hot'));
+  // "Novo" só nos mais recentes (no máximo 1 a cada 3 produtos, até 4), para o selo continuar chamando atenção.
+  const cut = Date.now() - 7 * 86_400_000;
+  [...products].filter((p) => !tags.has(p.id) && Date.parse(p.created_at) > cut)
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id - a.id)
+    .slice(0, Math.min(4, Math.max(1, Math.floor(products.length / 3))))
+    .forEach((p) => tags.set(p.id, 'new'));
+  return tags;
 }
 
 async function handleImage(env, key) {
@@ -2089,6 +2109,7 @@ async function handleSettings(request, env, tenant) {
     offer_templates: current.offer_templates || '',
     show_whatsapp: bool01(pick('show_whatsapp')),
     store_mode: storeMode(pick('store_mode')),
+    show_tags: bool01(pick('show_tags')),
   };
   // Recursos do plano: modelos 2 e 3 e edição dos modelos são do plano Completo (e do teste grátis).
   const plan = PLANS[effectivePlan(tenant.account)];
@@ -2104,8 +2125,8 @@ async function handleSettings(request, env, tenant) {
   }
   await env.DB.prepare(
     `INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, show_banner, share_message,
-                                  offer_template, theme_mode, card_tone, offer_templates, show_whatsapp, store_mode)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  offer_template, theme_mode, card_tone, offer_templates, show_whatsapp, store_mode, show_tags)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (tenant_id) DO UPDATE SET
        show_prices = excluded.show_prices,
        show_stock_warning = excluded.show_stock_warning,
@@ -2117,9 +2138,10 @@ async function handleSettings(request, env, tenant) {
        card_tone = excluded.card_tone,
        offer_templates = excluded.offer_templates,
        show_whatsapp = excluded.show_whatsapp,
-       store_mode = excluded.store_mode`,
+       store_mode = excluded.store_mode,
+       show_tags = excluded.show_tags`,
   ).bind(tenant.id, settings.show_prices, settings.show_stock_warning, settings.view_mode, settings.show_banner, settings.share_message,
-    settings.offer_template, settings.theme_mode, settings.card_tone, settings.offer_templates, settings.show_whatsapp, settings.store_mode).run();
+    settings.offer_template, settings.theme_mode, settings.card_tone, settings.offer_templates, settings.show_whatsapp, settings.store_mode, settings.show_tags).run();
   return json({ settings });
 }
 
@@ -2238,6 +2260,7 @@ async function handleAdminConfigGet(env) {
   return json({
     landing_video_url: cfg.landing_video_url || '',
     support_whatsapp: cfg.support_whatsapp || env.SUPPORT_WHATSAPP || '',
+    demo_store: cfg.demo_store || '',
     tutorial_url: cfg.tutorial_url || '',
     tutorial_label: cfg.tutorial_label || '',
     tips: parseTips(cfg.tips),
@@ -2260,6 +2283,15 @@ async function handleAdminConfigPut(request, env) {
   }
   if (body.support_whatsapp !== undefined) {
     await setConfig(env, 'support_whatsapp', whatsapp(body.support_whatsapp));
+  }
+  if (body.demo_store !== undefined) {
+    let slug = String(body.demo_store || '').trim().toLowerCase().replace(/^https?:\/\/[^/]+\/(s\/)?/, '').replace(/[/?#].*$/, '');
+    if (slug) {
+      if (!SLUG_RE.test(slug)) throw new HttpError(400, 'Loja de exemplo inválida. Use o endereço da vitrine (ex.: minha-loja).');
+      const ok = await env.DB.prepare('SELECT 1 FROM tenants WHERE id = ?').bind(slug).first();
+      if (!ok) throw new HttpError(400, 'Não achei essa loja. Confira o endereço da vitrine de exemplo.');
+    }
+    await setConfig(env, 'demo_store', slug);
   }
   if (body.tutorial_url !== undefined) {
     await setConfig(env, 'tutorial_url', httpUrl(body.tutorial_url, 'Link do tutorial') || '');
@@ -2560,10 +2592,16 @@ async function handleStoreHit(request, env, rawId) {
   const n = (hitWindow.ips.get(ip) || 0) + 1;
   hitWindow.ips.set(ip, n);
   if (n > 60) return json({ ok: true });
-  await env.DB.prepare(
+  const stmts = [env.DB.prepare(
     `INSERT INTO store_daily (tenant_id, day, ${col}) VALUES (?, ?, 1)
      ON CONFLICT (tenant_id, day) DO UPDATE SET ${col} = ${col} + 1`,
-  ).bind(id, dayKey()).run();
+  ).bind(id, dayKey())];
+  // Clique no produto: alimenta o selo "Mais clicado" da vitrine.
+  const pid = Number(body.product);
+  if (Number.isInteger(pid) && pid > 0) {
+    stmts.push(env.DB.prepare('UPDATE products SET clicks = clicks + 1 WHERE id = ? AND tenant_id = ?').bind(pid, id));
+  }
+  await env.DB.batch(stmts);
   return json({ ok: true });
 }
 

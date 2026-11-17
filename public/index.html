@@ -91,6 +91,10 @@
     .hero .lead { font-size: clamp(16px, 2.6vw, 19px); color: var(--ink-2); margin: 0 0 26px; max-width: 560px; }
     .hero-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
     .hero-ctas .btn { flex: 1 1 220px; }
+    .btn-demo { background: #fff; color: var(--ink, #0f172a); border: 2px dashed #9ccff5; box-shadow: none; }
+    .btn-demo:hover { border-style: solid; }
+    .faq-help { text-align: center; margin-top: 22px; }
+    .faq-help .btn { display: inline-flex; }
     @media (min-width: 560px) { .hero-ctas .btn { flex: 0 0 auto; } }
     .trust { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; color: var(--muted); font-weight: 600; }
     .trust span { display: inline-flex; align-items: center; gap: 6px; }
@@ -358,6 +362,9 @@
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10.5-6.5a1 1 0 0 0 0-1.8L9.5 4.6A1 1 0 0 0 8 5.5z"/></svg>
               Ver como funciona
             </a>
+            <a class="btn btn-demo" href="#" data-demo hidden target="_blank" rel="noopener">
+              <span aria-hidden="true">👀</span> Ver uma loja de exemplo
+            </a>
           </div>
           <div class="trust">
             <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>Pronto em 2 minutos</span>
@@ -573,7 +580,15 @@
           <details><summary>Funciona com link de afiliado da Shopee e do Mercado Livre?</summary><p>Sim! Cole o seu link de afiliado em cada produto. O cliente clica em "Ver oferta" e compra direto no site parceiro.</p></details>
           <details><summary>Posso vender produtos meus, da minha cidade?</summary><p>Pode. Marque "produto físico", informe as cidades onde entrega e o cliente faz o pedido direto pelo seu WhatsApp.</p></details>
           <details><summary>Consigo esconder um produto sem apagar?</summary><p>Sim. No painel, toque no ícone de olho e o produto some da vitrine. Toque de novo e ele volta.</p></details>
+          <details><summary>Preciso ter CNPJ ou empresa aberta?</summary><p>Não. Basta um número de WhatsApp. Afiliados recebem a comissão direto da Shopee ou do Mercado Livre, e quem vende na região combina o pagamento com o cliente como já faz hoje.</p></details>
+          <details><summary>A comissão dos afiliados é minha mesmo?</summary><p>Sim, 100%. A vitrine usa o <b>seu</b> link de afiliado em cada produto. O Vitrine App não toca no link nem na sua comissão.</p></details>
+          <details><summary>O preço dos produtos atualiza sozinho?</summary><p>Sim. Nos produtos da Shopee e do Mercado Livre, o sistema confere o preço uma vez por dia e atualiza a vitrine. Você não precisa ficar editando.</p></details>
+          <details><summary>Funciona no celular? Tem aplicativo?</summary><p>Tudo funciona pelo celular. E o painel pode ser instalado como aplicativo na tela inicial, com o botão "Instalar app" — sem precisar baixar nada da loja.</p></details>
+          <details><summary>Posso cancelar quando quiser?</summary><p>Pode. Não tem fidelidade nem multa: você paga mês a mês (Pix ou cartão). Se não renovar, a vitrine só fica pausada e seus produtos continuam guardados.</p></details>
           <details><summary>O que acontece depois dos 7 dias?</summary><p>Sua vitrine fica pausada até você assinar. Se você criou mais de uma loja no teste e escolher o Básico, a primeira loja continua no ar e as outras ficam pausadas (nada é apagado) — mudou para o Completo, elas voltam na hora. Seus produtos continuam salvos e voltam na hora quando o plano é ativado.</p></details>
+        </div>
+        <div class="faq-help reveal">
+          <a class="btn btn-ghost" href="#" data-support>💬 Ainda com dúvida? Chama no WhatsApp</a>
         </div>
       </div>
     </section>
@@ -726,6 +741,9 @@
       document.querySelectorAll('[data-day]').forEach((el) => { el.textContent = day(price); });
       document.querySelectorAll('[data-day-complete]').forEach((el) => { el.textContent = day(priceC); });
       supportPhone = cfg.support_whatsapp || '';
+      if (cfg.demo_store) {
+        document.querySelectorAll('[data-demo]').forEach((a) => { a.href = `/s/${encodeURIComponent(cfg.demo_store)}?demo=1`; a.hidden = false; });
+      }
       if (cfg.video && cfg.video.src && !/\/media\/vitrine-hero\.mp4$/.test(cfg.video.src)) {
         const box = $('#videoBox');
         box.innerHTML = cfg.video.type === 'video'
@@ -734,6 +752,7 @@
       }
     }).catch(() => {});
 
+    document.querySelectorAll('[data-support]').forEach((el) => el.addEventListener('click', (e) => { e.preventDefault(); $('#supportLink').click(); }));
     $('#supportLink').addEventListener('click', (e) => {
       e.preventDefault();
       const msg = 'Olá! Tenho uma dúvida sobre o Vitrine App.';

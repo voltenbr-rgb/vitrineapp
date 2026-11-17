@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS products (
   original_price   REAL,                              -- preço antigo ("De"), para mostrar o desconto
   category         TEXT NOT NULL DEFAULT '',          -- categoria livre (filtro na vitrine)
   price_checked_at TEXT,                              -- última conferência automática do preço (afiliados, 1x/dia)
+  clicks           INTEGER NOT NULL DEFAULT 0,        -- cliques em comprar/adicionar (selo "Mais clicado")
   created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -79,7 +80,8 @@ CREATE TABLE IF NOT EXISTS tenant_settings (
   view_mode           TEXT NOT NULL DEFAULT 'grid' CHECK (view_mode IN ('grid', 'list')),
   show_banner         INTEGER NOT NULL DEFAULT 1,     -- 0 = cliente vê só os produtos
   share_message       TEXT NOT NULL DEFAULT '',       -- mensagem pronta personalizada ({loja} e {link})
-  offer_template      INTEGER NOT NULL DEFAULT 1      -- modelo de mensagem de oferta (1 a 3)
+  offer_template      INTEGER NOT NULL DEFAULT 1,     -- modelo de mensagem de oferta (1 a 3)
+  show_tags           INTEGER NOT NULL DEFAULT 1      -- selos "Novo" e "Mais clicado" na vitrine
 );
 
 -- ---------------------------------------------------------------------

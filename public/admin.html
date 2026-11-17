@@ -938,6 +938,8 @@
         <form id="cfgForm" novalidate>
           <label class="field"><span>Vídeo explicativo da página inicial <small>YouTube, Vimeo ou .mp4</small></span>
             <input class="input" name="landing_video_url" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=..." value="${esc(cfg.landing_video_url)}"></label>
+          <label class="field"><span>👀 Loja de exemplo da página inicial <small>endereço da vitrine; vazio esconde o botão</small></span>
+            <input class="input" name="demo_store" placeholder="ex.: achadinhos-ariane" value="${esc(cfg.demo_store || '')}" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
           <label class="field"><span>Seu WhatsApp de suporte e vendas</span>
             <input class="input" name="support_whatsapp" inputmode="tel" placeholder="(67) 99999-9999" value="${esc(fmtPhone(cfg.support_whatsapp) === '—' ? '' : fmtPhone(cfg.support_whatsapp))}"></label>
           <div class="field" style="background:#fff7f3;border-radius:16px;padding:14px;margin-bottom:14px">
@@ -1010,7 +1012,7 @@
       $('#cfgForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const f = e.target;
-        const body = { landing_video_url: f.landing_video_url.value.trim(), support_whatsapp: f.support_whatsapp.value.trim() };
+        const body = { landing_video_url: f.landing_video_url.value.trim(), support_whatsapp: f.support_whatsapp.value.trim(), demo_store: f.demo_store.value.trim() };
         if (!body.support_whatsapp) delete body.support_whatsapp;
         if (f.shopee_app_id) body.shopee_app_id = f.shopee_app_id.value.trim();
         if (f.shopee_secret && f.shopee_secret.value.trim()) body.shopee_secret = f.shopee_secret.value.trim();
