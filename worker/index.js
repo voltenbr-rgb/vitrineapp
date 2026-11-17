@@ -403,6 +403,7 @@ function ensureSchema(env) {
       if (!pc.has('is_visible')) alters.push('ALTER TABLE products ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1');
       if (!pc.has('show_price')) alters.push('ALTER TABLE products ADD COLUMN show_price INTEGER NOT NULL DEFAULT 1');
       if (!pc.has('original_price')) alters.push('ALTER TABLE products ADD COLUMN original_price REAL');
+      if (!pc.has('price_checked_at')) alters.push('ALTER TABLE products ADD COLUMN price_checked_at TEXT');
       if (!pc.has('category')) alters.push("ALTER TABLE products ADD COLUMN category TEXT NOT NULL DEFAULT ''");
       if (!sc.has('show_banner')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_banner INTEGER NOT NULL DEFAULT 1');
       if (!sc.has('share_message')) alters.push("ALTER TABLE tenant_settings ADD COLUMN share_message TEXT NOT NULL DEFAULT ''");
@@ -1746,7 +1747,41 @@ async function handlePhoto(env, kind, rawId) {
   });
 }
 
-async function handleStore(request, env, rawId) {
+
+/* ------------------------------------------------------------------ */
+/* Preço sempre em dia: atualiza produtos de afiliado 1x por dia      */
+/* ------------------------------------------------------------------ */
+// Roda depois que a vitrine já foi entregue ao visitante (não deixa a página lenta).
+// A cada visita confere no máximo 2 produtos com preço de mais de 24 h. Só troca o preço
+// (e o "de"); título e foto que o lojista editou ficam como estão. Não gasta a cota do lojista.
+const PRICE_TTL_MS = 24 * 3_600_000;
+
+async function refreshStalePrices(env, tenantId, max = 2) {
+  const cutoff = new Date(Date.now() - PRICE_TTL_MS).toISOString();
+  const { results } = await env.DB.prepare(
+    `SELECT id, platform, affiliate_link, price, original_price FROM products
+      WHERE tenant_id = ? AND is_visible = 1 AND platform IN ('shopee', 'mercadolivre')
+        AND affiliate_link IS NOT NULL AND affiliate_link <> ''
+        AND (price_checked_at IS NULL OR price_checked_at < ?)
+      ORDER BY (price_checked_at IS NOT NULL), price_checked_at ASC LIMIT ?`,
+  ).bind(tenantId, cutoff, max).all();
+  for (const p of results || []) {
+    // Marca antes de buscar: duas visitas ao mesmo tempo não repetem a mesma consulta.
+    await env.DB.prepare('UPDATE products SET price_checked_at = ? WHERE id = ?').bind(nowIso(), p.id).run();
+    let found = null;
+    try { found = await lookupProduct(env, p.affiliate_link, { useCache: true }); } catch { continue; }
+    const novo = Number(found && found.price);
+    if (!(novo > 0)) continue;
+    // Proteção: variação absurda costuma ser produto errado (link mudou, busca confundiu). Mantém o atual.
+    const atual = Number(p.price);
+    if (atual > 0 && (novo < atual * 0.2 || novo > atual * 5)) continue;
+    const de = Number(found.original_price) > novo ? Number(found.original_price) : null;
+    if (novo === atual && (de || null) === (Number(p.original_price) || null)) continue;
+    await env.DB.prepare('UPDATE products SET price = ?, original_price = ? WHERE id = ?').bind(novo, de, p.id).run();
+  }
+}
+
+async function handleStore(request, env, rawId, ctx = null) {
   const id = String(rawId || '').toLowerCase();
   if (!SLUG_RE.test(id)) throw new HttpError(404, 'Vitrine não encontrada.');
   const tenant = await loadPublicStore(env, id);
@@ -1778,6 +1813,9 @@ async function handleStore(request, env, rawId) {
     return settings.show_prices && Number(p.show_price) !== 0 ? item : { ...item, price: null, original_price: null };
   });
   const store = tenantPublic(tenant);
+  if (ctx && ctx.waitUntil && tenant.status !== 'expired') {
+    ctx.waitUntil(refreshStalePrices(env, tenant.id).catch(() => {}));
+  }
   store.avatar_url = photoLink(base, 's', tenant.id, tenant.avatar_url, tenant.updated_at);
   store.cover_url = photoLink(base, 'c', tenant.id, tenant.cover_url, tenant.updated_at);
 
@@ -2091,12 +2129,12 @@ async function handleCreateProduct(request, env, tenant) {
   const ts = nowIso();
   const row = await env.DB.prepare(
     `INSERT INTO products (tenant_id, title, description, price, image_url, affiliate_link, platform,
-                           is_physical, delivery_cities, sort_order, show_price, original_price, category, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           is_physical, delivery_cities, sort_order, show_price, original_price, category, created_at, updated_at, price_checked_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`,
   ).bind(
     tenant.id, p.title, p.description, p.price, p.image_url, p.affiliate_link, p.platform,
-    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, p.original_price, p.category, ts, ts,
+    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, p.original_price, p.category, ts, ts, ts,
   ).first();
   return json({ product: row }, 201);
 }
@@ -2107,12 +2145,13 @@ async function handleUpdateProduct(request, env, tenant, rawId) {
   const p = productInput(await readJson(request));
   const row = await env.DB.prepare(
     `UPDATE products SET title = ?, description = ?, price = ?, image_url = ?, affiliate_link = ?, platform = ?,
-                         is_physical = ?, delivery_cities = ?, sort_order = ?, show_price = ?, original_price = ?, category = ?, updated_at = ?
+                         is_physical = ?, delivery_cities = ?, sort_order = ?, show_price = ?, original_price = ?, category = ?, updated_at = ?,
+                         price_checked_at = ?
      WHERE id = ? AND tenant_id = ?
      RETURNING *`,
   ).bind(
     p.title, p.description, p.price, p.image_url, p.affiliate_link, p.platform,
-    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, p.original_price, p.category, nowIso(), current.id, tenant.id,
+    p.is_physical, p.delivery_cities, p.sort_order, p.show_price, p.original_price, p.category, nowIso(), nowIso(), current.id, tenant.id,
   ).first();
   if (current.image_url && current.image_url !== p.image_url) await deleteImage(env, current.image_url, tenant.id);
   return json({ product: row });
@@ -2824,14 +2863,14 @@ async function handleMpWebhook(request, env) {
 /* Roteador                                                            */
 /* ------------------------------------------------------------------ */
 
-async function routeApi(request, env, path) {
+async function routeApi(request, env, path, ctx = null) {
   const method = request.method;
   let m;
 
   if (path === '/api/health' && method === 'GET') return json({ ok: true, time: nowIso() });
   await ensureSchema(env);
   if (path === '/api/config' && method === 'GET') return handleConfig(request, env);
-  if ((m = path.match(/^\/api\/store\/([^/]+)$/)) && method === 'GET') return handleStore(request, env, decodeURIComponent(m[1]));
+  if ((m = path.match(/^\/api\/store\/([^/]+)$/)) && method === 'GET') return handleStore(request, env, decodeURIComponent(m[1]), ctx);
   if ((m = path.match(/^\/api\/store\/([^/]+)\/hit$/)) && method === 'POST') return handleStoreHit(request, env, decodeURIComponent(m[1]));
   if ((m = path.match(/^\/api\/photo\/([psc])\/([^/]+)$/)) && method === 'GET') return handlePhoto(env, m[1], decodeURIComponent(m[2]).toLowerCase());
   if ((m = path.match(/^\/api\/images\/(.+)$/)) && method === 'GET') return handleImage(env, decodeURIComponent(m[1]));
@@ -2973,7 +3012,7 @@ async function serveAsset(request, env, url) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const cors = corsHeaders(env);
 
@@ -2983,7 +3022,7 @@ export default {
     let response;
     try {
       if (!env.DB) throw new HttpError(500, 'Banco D1 (binding DB) não configurado.');
-      response = await routeApi(request, env, url.pathname.replace(/\/+$/, '') || '/');
+      response = await routeApi(request, env, url.pathname.replace(/\/+$/, '') || '/', ctx);
     } catch (err) {
       if (err instanceof HttpError) {
         response = json({ error: err.message, ...err.extra }, err.status);

@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS products (
   show_price       INTEGER NOT NULL DEFAULT 1 CHECK (show_price IN (0, 1)),  -- 0 = preço deste produto oculto
   original_price   REAL,                              -- preço antigo ("De"), para mostrar o desconto
   category         TEXT NOT NULL DEFAULT '',          -- categoria livre (filtro na vitrine)
+  price_checked_at TEXT,                              -- última conferência automática do preço (afiliados, 1x/dia)
   created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
