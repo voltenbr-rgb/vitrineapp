@@ -113,6 +113,31 @@
     .tip p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; flex: 1; }
     .tip a { align-self: flex-start; margin-top: 4px; text-decoration: none; font-weight: 800; font-size: 12.5px; color: var(--accent-deep); background: var(--accent-soft); border-radius: 999px; padding: 6px 12px; }
     .tip.only { flex-basis: 100%; }
+    /* Vários de uma vez */
+    .bulk-cta { width: 100%; display: flex; align-items: center; gap: 12px; margin: 0 0 14px; padding: 12px 14px; border-radius: 18px; border: 1px solid #d6e6ff; background: linear-gradient(135deg, #eef6ff, #f4f0ff); cursor: pointer; font: inherit; color: inherit; text-align: left; }
+    .bulk-cta .bi { width: 40px; height: 40px; border-radius: 13px; background: #fff; display: grid; place-items: center; font-size: 20px; flex-shrink: 0; box-shadow: 0 4px 12px rgba(30, 90, 200, .12); }
+    .bulk-cta b { display: block; font-size: 14.5px; }
+    .bulk-cta small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+    .bulk-cta .bt { margin-left: auto; flex-shrink: 0; font-weight: 800; font-size: 12px; color: var(--accent-deep, #0f7fd0); }
+    .bulk-text { min-height: 150px; resize: vertical; font-size: 13.5px; line-height: 1.5; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .bulk-meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+    .bulk-meta .warn { color: #b45309; font-weight: 700; }
+    .bulk-seg { grid-template-columns: 1fr 1fr; }
+    .bulk-res { margin-top: 14px; }
+    .bulk-head { display: flex; flex-direction: column; gap: 2px; }
+    .bulk-head strong { font-size: 15.5px; }
+    .bulk-head span { font-size: 12.5px; color: var(--muted); }
+    .bulk-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+    .bulk-list li { min-width: 0; display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-radius: 12px; background: #f6f8fb; }
+    .bulk-list li.ok { background: #effbf3; }
+    .bulk-list li.error, .bulk-list li.stop { background: #fff7ed; }
+    .bl-ic { width: 22px; flex-shrink: 0; text-align: center; font-size: 15px; line-height: 20px; }
+    .bl-tx { min-width: 0; flex: 1; font-size: 13px; line-height: 1.35; }
+    .bl-tx b { display: block; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bl-tx small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+    .bl-tx .bl-price { color: #15803d; font-weight: 800; font-size: 12.5px; }
+    .spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #c7d7ee; border-top-color: var(--accent); animation: spin .8s linear infinite; vertical-align: -2px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     /* Escolha do estilo da vitrine */
     .style-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .style-pick input { position: absolute; opacity: 0; pointer-events: none; }
@@ -1678,6 +1703,7 @@
       state.account = data.account || null;
       state.stores = data.stores || state.stores;
       if (data.referral) state.referral = data.referral;
+      state.bulk = data.bulk || { allowed: false, max: 10 };
       state.storeId = data.tenant.id;
       ls.set(STORE_KEY, data.tenant.id);
       state.settings = data.settings;
@@ -2247,7 +2273,8 @@
         ${wantsPicker() ? '' : learnBlock()}
         ${offerCard()}
         <div class="section-title"><h2>Seus produtos</h2>
-          <button type="button" class="btn btn-sm btn-primary" data-tab="new" ${isExpired() ? 'disabled' : ''}>+ Novo</button></div>
+          <div style="display:flex;gap:8px"><button type="button" class="btn btn-sm btn-ghost" data-act="bulk-open" ${isExpired() ? 'disabled' : ''}>⚡ Vários${bulkAllowed() ? '' : ' 🔒'}</button>
+          <button type="button" class="btn btn-sm btn-primary" data-tab="new" ${isExpired() ? 'disabled' : ''}>+ Novo</button></div></div>
         ${state.products.length > 4 ? `<label class="search">${I.search}<input id="pSearch" type="search" placeholder="Buscar nos seus produtos" value="${esc(state.query)}" autocomplete="off"></label>` : ''}
         <div class="plist" id="plist">
           ${list.length ? list.map(productItem).join('') : state.products.length
@@ -2255,6 +2282,143 @@
             : `<div class="card empty"><div class="icon">${I.box}</div><strong>Sua vitrine está vazia</strong>Cadastre o primeiro produto em menos de 1 minuto.<br><br>
                <button type="button" class="btn btn-primary" data-tab="new" ${isExpired() ? 'disabled' : ''}>Cadastrar produto</button></div>`}
         </div>`;
+    }
+
+    /* ---------------- Vários de uma vez (plano Completo) ---------------- */
+    const bulkAllowed = () => !!(state.bulk && state.bulk.allowed);
+    const bulkMax = () => (state.bulk && state.bulk.max) || 10;
+    let bulkText = '';
+    let bulkCat = '';
+    let bulkRun = null; // { items: [{ url, status, msg, title, price }], running, done }
+
+    function bulkLinks(text) {
+      const found = String(text || '').match(/https?:\/\/[^\s<>"'`]+/gi) || [];
+      return [...new Set(found.map((u) => u.replace(/[),.;!]+$/, '')))];
+    }
+
+    function openBulk() {
+      if (isExpired()) return;
+      if (!bulkAllowed()) {
+        return confirmDialog({
+          title: '⚡ Vários de uma vez',
+          text: `Cole até ${bulkMax()} links da Shopee ou do Mercado Livre e o sistema busca nome, preço e foto e publica tudo direto na sua vitrine. Recurso exclusivo de quem assina o plano Completo.`,
+          ok: 'Ver o plano Completo',
+        }).then((ok) => { if (ok) openPay('complete'); });
+      }
+      bulkRun = bulkRun && bulkRun.running ? bulkRun : null;
+      go('bulk');
+    }
+
+    function renderBulk() {
+      const q = state.quota;
+      const run = bulkRun;
+      const cats = categories();
+      return `
+        <div class="top"><button type="button" class="icon-btn" data-tab="products" aria-label="Voltar">${I.back}</button>
+          <div class="who"><small>Plano Completo</small><strong>⚡ Vários de uma vez</strong></div></div>
+        <div class="card">
+          <h2>Cole os links</h2><p class="sub">Até ${bulkMax()} links da Shopee ou do Mercado Livre — um por linha (pode colar tudo junto, eu separo). Nome, preço e foto vêm sozinhos e os produtos já entram na vitrine.</p>
+          <textarea class="input bulk-text" id="bulkText" rows="7" placeholder="https://meli.la/...&#10;https://s.shopee.com.br/...&#10;https://meli.la/..." ${run && run.running ? 'disabled' : ''}>${esc(bulkText)}</textarea>
+          <div class="bulk-meta"><span id="bulkCount">Nenhum link ainda</span><span id="bulkQuota">${q ? `✨ ${q.remaining} de ${q.limit} buscas nesta hora` : ''}</span></div>
+        </div>
+        <div class="card">
+          <h2>Organizar</h2><p class="sub">Coloque todos numa categoria ou deixe avulsos.</p>
+          <div class="seg bulk-seg">
+            <label><input type="radio" name="bulkMode" value="loose" ${bulkCat ? '' : 'checked'}><span class="opt">📦 Avulsos</span></label>
+            <label><input type="radio" name="bulkMode" value="cat" ${bulkCat ? 'checked' : ''}><span class="opt">🏷️ Numa categoria</span></label>
+          </div>
+          <label class="field" id="bulkCatField" style="margin:12px 0 0" ${bulkCat ? '' : 'hidden'}><span>Categoria</span>
+            <input class="input" id="bulkCat" list="bulkCatList" maxlength="40" placeholder="Ex.: Cozinha, Moda, Eletrônicos" value="${esc(bulkCat)}" autocomplete="off">
+            <datalist id="bulkCatList">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></label>
+        </div>
+        <button type="button" class="btn btn-primary btn-block" id="bulkGo" data-act="bulk-go" ${run && run.running ? 'disabled' : ''}>⚡ Buscar e publicar</button>
+        <div id="bulkResult">${bulkResultHtml()}</div>`;
+    }
+
+    function updateBulkCount() {
+      const el = $('#bulkCount');
+      if (!el) return;
+      const n = bulkLinks(bulkText).length;
+      const max = bulkMax();
+      el.textContent = !n ? 'Nenhum link ainda' : n > max ? `${n} links · só os ${max} primeiros serão usados` : `${n} ${n === 1 ? 'link encontrado' : 'links encontrados'}`;
+      el.classList.toggle('warn', n > max);
+      const go = $('#bulkGo');
+      if (go && !(bulkRun && bulkRun.running)) go.textContent = n ? `⚡ Buscar e publicar ${Math.min(n, max)} ${Math.min(n, max) === 1 ? 'produto' : 'produtos'}` : '⚡ Buscar e publicar';
+    }
+
+    function bulkResultHtml() {
+      const run = bulkRun;
+      if (!run) return '';
+      const icon = { wait: '⏳', loading: '<span class="spin"></span>', ok: '✅', dup: '↩️', error: '⚠️', stop: '⏸️' };
+      const ok = run.items.filter((x) => x.status === 'ok').length;
+      const dup = run.items.filter((x) => x.status === 'dup').length;
+      const bad = run.items.filter((x) => x.status === 'error' || x.status === 'stop').length;
+      const doneNow = run.items.filter((x) => !['wait', 'loading'].includes(x.status)).length;
+      const pct = Math.round((doneNow / run.items.length) * 100);
+      return `<div class="card bulk-res" aria-live="polite">
+        <div class="bulk-head"><strong>${run.running ? `Publicando ${Math.min(doneNow + 1, run.items.length)} de ${run.items.length}...` : '🎉 Pronto!'}</strong>
+          <span>${ok} ${ok === 1 ? 'publicado' : 'publicados'}${dup ? ` · ${dup} já ${dup === 1 ? 'estava' : 'estavam'}` : ''}${bad ? ` · ${bad} ${bad === 1 ? 'pendente' : 'pendentes'}` : ''}</span></div>
+        <div class="ck-bar"><i style="width:${Math.max(4, pct)}%"></i></div>
+        <ul class="bulk-list">${run.items.map((x) => `<li class="${x.status}"><span class="bl-ic">${icon[x.status] || ''}</span>
+          <span class="bl-tx"><b>${esc(x.title || x.url.replace(/^https?:\/\//, '').slice(0, 48))}</b>${x.price ? `<small class="bl-price">${esc(brl(x.price))}</small>` : ''}${x.msg ? `<small>${esc(x.msg)}</small>` : ''}</span></li>`).join('')}</ul>
+        ${run.running ? '' : `<div class="ck-row">${ok ? '<button type="button" class="btn btn-sm btn-primary" data-tab="products">Ver meus produtos</button>' : ''}
+          <a class="btn btn-sm btn-ghost" href="${esc(state.storeUrl || '#')}" target="_blank" rel="noopener">Abrir vitrine ↗</a>
+          ${bad ? '<button type="button" class="btn btn-sm btn-ghost" data-act="bulk-go">Tentar os pendentes</button>' : ''}</div>`}
+      </div>`;
+    }
+
+    function paintBulk() {
+      const el = $('#bulkResult');
+      if (el) el.innerHTML = bulkResultHtml();
+      const q = state.quota;
+      const qe = $('#bulkQuota');
+      if (qe && q) qe.textContent = q.remaining > 0 ? `✨ ${q.remaining} de ${q.limit} buscas nesta hora` : `Buscas desta hora esgotadas · libera em ${q.reset_minutes || 60} min`;
+    }
+
+    async function runBulk() {
+      if (bulkRun && bulkRun.running) return;
+      if (!bulkAllowed()) return openBulk();
+      const mode = ($('input[name="bulkMode"]:checked') || {}).value;
+      const cat = mode === 'cat' ? String(($('#bulkCat') || {}).value || '').trim() : '';
+      if (mode === 'cat' && !cat) { toast('Escreva o nome da categoria ou escolha "Avulsos".', true); $('#bulkCat').focus(); return; }
+      bulkCat = cat;
+      const links = bulkLinks(bulkText).slice(0, bulkMax());
+      if (!links.length) { toast('Cole pelo menos um link da Shopee ou do Mercado Livre.', true); $('#bulkText').focus(); return; }
+      bulkRun = { running: true, items: links.map((url) => ({ url, status: 'wait' })) };
+      const ta = $('#bulkText'); if (ta) ta.disabled = true;
+      const go = $('#bulkGo'); if (go) { go.disabled = true; go.textContent = 'Publicando...'; }
+      paintBulk();
+      $('#bulkResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      let stopMsg = '';
+      for (const item of bulkRun.items) {
+        if (stopMsg) { item.status = 'stop'; item.msg = stopMsg; continue; }
+        item.status = 'loading'; paintBulk();
+        try {
+          const data = await api('/api/me/products/from-link', { method: 'POST', body: { url: item.url, category: cat } });
+          item.status = 'ok';
+          item.title = data.product.title;
+          item.price = data.product.price;
+          if (!data.product.price) item.msg = 'Sem preço no link — coloque o valor depois, se quiser.';
+          state.products.unshift(data.product);
+          if (data.quota) state.quota = data.quota;
+        } catch (err) {
+          if (err.code === 'duplicate') { item.status = 'dup'; item.msg = 'Já estava na sua vitrine.'; }
+          else if (err.code === 'quota' || err.code === 'plan_required' || err.code === 'trial_expired' || err.status === 402) {
+            item.status = 'stop'; item.msg = err.message; stopMsg = err.code === 'quota' ? 'Aguardando as buscas desta hora liberarem.' : err.message;
+            if (err.code === 'quota' && state.quota) state.quota.remaining = 0;
+          } else { item.status = 'error'; item.msg = err.message || 'Não deu para adicionar este link.'; }
+        }
+        paintBulk();
+      }
+      bulkRun.running = false;
+      // Deixa na caixa só os links que não entraram, para tentar de novo.
+      bulkText = bulkRun.items.filter((x) => x.status === 'error' || x.status === 'stop').map((x) => x.url).join('\n');
+      const okN = bulkRun.items.filter((x) => x.status === 'ok').length;
+      if (ta) { ta.disabled = false; ta.value = bulkText; }
+      updateBulkCount();
+      if (go) go.disabled = false;
+      paintBulk();
+      if (okN) toast(`🎉 ${okN} ${okN === 1 ? 'produto publicado' : 'produtos publicados'} na vitrine!`);
     }
 
     function renderForm() {
@@ -2274,6 +2438,7 @@
           <div class="who"><small>${state.editing ? 'Editar produto' : 'Novo produto'}</small><strong>${state.editing ? esc(p.title) : 'Cadastrar na vitrine'}</strong></div>
           <button type="submit" form="productForm" class="btn btn-sm btn-primary save-top" ${locked ? 'disabled' : ''}>Salvar</button></div>
         ${locked ? planBanner() : ''}
+        ${!state.editing && !locked ? `<button type="button" class="bulk-cta" data-act="bulk-open"><span class="bi">⚡</span><span><b>Tem vários links?</b><small>Adicione até ${(state.bulk && state.bulk.max) || 10} de uma vez e publique tudo direto na vitrine.</small></span><span class="bt">${bulkAllowed() ? 'Usar ›' : '🔒 Completo'}</span></button>` : ''}
         <form id="productForm" novalidate>
           <fieldset ${locked ? 'disabled' : ''} style="border:0;padding:0;margin:0;min-width:0">
           <div class="card">
@@ -2509,6 +2674,7 @@
         if (!fresh) loadStats().then(() => { if (state.stats) state.stats.at = Date.now(); });
       }
       else if (state.tab === 'form') { main.innerHTML = renderForm(); updatePlatformHints(); }
+      else if (state.tab === 'bulk') { main.innerHTML = renderBulk(); updateBulkCount(); }
       else if (state.tab === 'settings') main.innerHTML = renderSettings();
       else if (state.tab === 'account') main.innerHTML = renderAccount();
     }
@@ -2899,6 +3065,8 @@
       }
       if (act === 'delete') return deleteProduct(Number(t.dataset.id));
       if (act === 'clear-img') return setProductImage('');
+      if (act === 'bulk-open') return openBulk();
+      if (act === 'bulk-go') return runBulk();
       if (act === 'autofill') return autoFill(true);
       if (act === 'offer-generate') return generateOffer();
       if (act === 'offer-copy') return copy($('#offerText').value, 'Oferta copiada! É só colar 🔥');
@@ -2942,6 +3110,7 @@
     document.addEventListener('change', async (e) => {
       const el = e.target;
       if (el.name === 'platform') { updatePlatformHints(); syncPriceDefault(); }
+      if (el.name === 'bulkMode') { const f = $('#bulkCatField'); if (f) { f.hidden = el.value !== 'cat'; if (el.value === 'cat') $('#bulkCat').focus(); } }
       if (el.id === 'showPrice') onShowPriceChange(el);
       if (el.name === 'affiliate_link' && !state.editing) autoFill(false);
       if (el.id === 'isPhysical') {
@@ -2978,6 +3147,8 @@
 
     document.addEventListener('input', (e) => {
       const el = e.target;
+      if (el.id === 'bulkText') { bulkText = el.value; updateBulkCount(); return; }
+      if (el.id === 'bulkCat') { bulkCat = el.value; return; }
       if (el.id === 'pSearch') {
         state.query = el.value;
         const pos = el.selectionStart;

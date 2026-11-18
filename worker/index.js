@@ -2082,6 +2082,7 @@ async function handleMe(request, env, tenant) {
     products,
     store_url: `${publicBase(request, env)}/s/${tenant.id}`,
     referral: await referralInfo(request, env, tenant.account),
+    bulk: { allowed: canBulk(tenant.account), max: BULK_MAX_LINKS },
     lookup_quota: await lookupQuota(env, `acc:${tenant.account_id}`, lookupLimitFor(env, plan)),
   });
 }
@@ -2248,6 +2249,10 @@ async function getOwnedProduct(env, tenant, rawId) {
 async function handleCreateProduct(request, env, tenant) {
   assertCanEdit(tenant);
   const p = productInput(await readJson(request));
+  return json({ product: await insertProduct(env, tenant, p) }, 201);
+}
+
+async function insertProduct(env, tenant, p) {
   const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM products WHERE tenant_id = ?').bind(tenant.id).first('n');
   if (Number(count) >= MAX_PRODUCTS_PER_TENANT) {
     throw new HttpError(400, `Limite de ${MAX_PRODUCTS_PER_TENANT} produtos atingido.`);
@@ -2262,7 +2267,42 @@ async function handleCreateProduct(request, env, tenant) {
     tenant.id, p.title, p.description, p.price, p.image_url, p.affiliate_link, p.platform,
     p.is_physical, p.delivery_cities, p.sort_order, p.show_price, p.original_price, p.category, ts, ts, ts,
   ).first();
-  return json({ product: row }, 201);
+  return row;
+}
+
+/* Vários de uma vez (plano Completo pago): um link por chamada, o painel mostra o progresso.
+   Busca nome, preço e foto pelo link e já publica na vitrine. Usa a mesma cota de buscas. */
+const BULK_MAX_LINKS = 10;
+function canBulk(account) {
+  return !!account && account.status === 'active' && account.plan === 'complete';
+}
+
+async function handleProductFromLink(request, env, tenant) {
+  assertCanEdit(tenant);
+  if (!canBulk(tenant.account)) {
+    throw new HttpError(403, 'Adicionar vários de uma vez é exclusivo do plano Completo.', { code: 'plan_required' });
+  }
+  const body = await readJson(request);
+  const link = httpUrl(body.url, 'Link', { required: true });
+  const dup = await env.DB.prepare('SELECT id, title FROM products WHERE tenant_id = ? AND affiliate_link = ? LIMIT 1').bind(tenant.id, link).first();
+  if (dup) throw new HttpError(409, 'Este link já está na sua vitrine.', { code: 'duplicate', product: dup });
+  const quotaKey = `acc:${tenant.account_id}`;
+  const limit = lookupLimitFor(env, effectivePlan(tenant.account));
+  const found = await lookupProduct(env, link, { tenantId: quotaKey, limit });
+  if (!found || !found.title) throw new HttpError(422, 'Não consegui ler os dados deste link. Cadastre este produto pelo modo avulso.');
+  const p = productInput({
+    title: String(found.title).slice(0, 120),
+    description: found.shop_name ? `Loja: ${found.shop_name}${found.rating ? ` · ⭐ ${Number(found.rating).toFixed(1)}` : ''}` : '',
+    price: found.price,
+    original_price: found.original_price,
+    image_url: found.image_url || '',
+    affiliate_link: link,
+    platform: found.platform,
+    show_price: body.show_price === undefined ? 1 : body.show_price,
+    category: body.category,
+  });
+  const product = await insertProduct(env, tenant, p);
+  return json({ product, source: found.source || null, quota: await lookupQuota(env, quotaKey, limit) }, 201);
 }
 
 async function handleUpdateProduct(request, env, tenant, rawId) {
@@ -3144,6 +3184,7 @@ async function routeApi(request, env, path, ctx = null) {
     if (path === '/api/me/settings' && method === 'PUT') return handleSettings(request, env, tenant);
     if (path === '/api/me/upload' && method === 'POST') return handleUpload(request, env, tenant);
     if (path === '/api/me/products' && method === 'POST') return handleCreateProduct(request, env, tenant);
+    if (path === '/api/me/products/from-link' && method === 'POST') return handleProductFromLink(request, env, tenant);
     if ((m = path.match(/^\/api\/me\/products\/(\d+)\/visibility$/)) && method === 'PATCH') {
       return handleVisibility(request, env, tenant, m[1]);
     }
