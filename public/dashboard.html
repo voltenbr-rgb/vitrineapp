@@ -113,6 +113,23 @@
     .tip p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; flex: 1; }
     .tip a { align-self: flex-start; margin-top: 4px; text-decoration: none; font-weight: 800; font-size: 12.5px; color: var(--accent-deep); background: var(--accent-soft); border-radius: 999px; padding: 6px 12px; }
     .tip.only { flex-basis: 100%; }
+    /* Escolha do estilo da vitrine */
+    .style-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .style-pick input { position: absolute; opacity: 0; pointer-events: none; }
+    .sp-card { display: block; border: 2px solid var(--line, #e6e8ee); border-radius: 18px; padding: 8px 8px 10px; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+    .style-pick input:checked + .sp-card { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+    .style-pick input:focus-visible + .sp-card { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+    .sp-prev { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; height: 84px; border-radius: 12px; padding: 7px; overflow: hidden; }
+    .sp-prev i { grid-column: 1 / -1; height: 30px; border-radius: 8px; }
+    .sp-prev b { border-radius: 7px; }
+    .sp-prev.classic { background: #eef0f4; }
+    .sp-prev.classic i { background: linear-gradient(135deg, #16a6e0, #0f7fb0); }
+    .sp-prev.classic b { background: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .06); }
+    .sp-prev.glass { background: radial-gradient(80% 90% at 85% 0%, color-mix(in srgb, var(--c) 70%, transparent), transparent 70%), radial-gradient(70% 70% at 0% 100%, rgba(255, 140, 60, .45), transparent 70%), #121216; }
+    .sp-prev.glass i, .sp-prev.glass b { background: rgba(255, 255, 255, .10); border: 1px solid rgba(255, 255, 255, .16); }
+    .sp-name { display: block; font-weight: 800; font-size: 14px; margin-top: 8px; }
+    .sp-name em { font-style: normal; font-size: 10px; font-weight: 800; color: #fff; background: linear-gradient(135deg, #7c5cff, #19a7ff); border-radius: 99px; padding: 2px 6px; vertical-align: 2px; }
+    .sp-card small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.3; }
     /* Indique e ganhe */
     .ref-card { position: relative; margin: 0 0 16px; padding: 16px; border-radius: 22px; background: linear-gradient(150deg, #fff4fb, #f3f0ff); border: 1px solid #f0dcf3; }
     .ref-head { display: flex; gap: 12px; align-items: center; padding-right: 26px; }
@@ -827,7 +844,7 @@
         ['15 buscas automáticas por hora'],
         ['Mensagem de oferta 🔥 Destaque do dia'],
         ['Tema claro/escuro, cor da loja e foto de capa'],
-        ['2 temas de loja', true],
+        ['2 estilos de vitrine: Clássico e Vidro ✨'],
       ],
       complete: [
         ['Até 3 lojas (um link para cada nicho)'],
@@ -835,7 +852,7 @@
         ['30 buscas automáticas por hora'],
         ['3 modelos de mensagem, com textos editáveis'],
         ['Troca de loja com um toque'],
-        ['3 temas de loja', true],
+        ['3º estilo de vitrine exclusivo', true],
       ],
     };
 
@@ -2389,15 +2406,24 @@
         </div>
 
         <div class="card">
-          <h2>Aparência</h2><p class="sub">Tema da vitrine e cor dos cards dos produtos.</p>
+          <h2>Aparência</h2><p class="sub">Estilo da vitrine, tema e cor dos cards dos produtos.</p>
           <div class="switch-row" style="display:block;padding-top:0">
+            <div style="margin-bottom:10px"><strong>Estilo da vitrine</strong></div>
+            <div class="style-pick">
+              <label><input type="radio" name="store_style" value="classic" data-setting="store_style" ${s.store_style !== 'glass' ? 'checked' : ''}>
+                <span class="sp-card"><span class="sp-prev classic"><i></i><b></b><b></b></span><span class="sp-name">Clássico</span><small>Leve, claro ou escuro</small></span></label>
+              <label><input type="radio" name="store_style" value="glass" data-setting="store_style" ${s.store_style === 'glass' ? 'checked' : ''}>
+                <span class="sp-card"><span class="sp-prev glass" style="--c:${esc(state.tenant.theme_color || '#16a6e0')}"><i></i><b></b><b></b></span><span class="sp-name">Vidro <em>novo</em></span><small>Escuro, com brilho e vidro fosco</small></span></label>
+            </div>
+          </div>
+          <div class="switch-row glass-off" style="display:block" ${s.store_style === 'glass' ? 'hidden' : ''}>
             <div style="margin-bottom:10px"><strong>Tema</strong></div>
             <div class="seg two">
               <label><input type="radio" name="theme_mode" value="light" data-setting="theme_mode" ${s.theme_mode !== 'dark' ? 'checked' : ''}><span class="opt">☀️ Claro</span></label>
               <label><input type="radio" name="theme_mode" value="dark" data-setting="theme_mode" ${s.theme_mode === 'dark' ? 'checked' : ''}><span class="opt">🌙 Escuro</span></label>
             </div>
           </div>
-          <div class="switch-row" style="display:block">
+          <div class="switch-row glass-off" style="display:block" ${s.store_style === 'glass' ? 'hidden' : ''}>
             <div style="margin-bottom:10px"><strong>Cor dos cards</strong><small>Tingido usa um tom suave da cor da sua loja.</small></div>
             <div class="seg two">
               <label><input type="radio" name="card_tone" value="white" data-setting="card_tone" ${s.card_tone !== 'tinted' ? 'checked' : ''}><span class="opt">⬜ Neutro</span></label>
@@ -2566,6 +2592,7 @@
         show_whatsapp: get('show_whatsapp').checked ? 1 : 0,
         card_tone: ($('[data-setting="card_tone"]:checked') || {}).value || 'white',
         show_tags: get('show_tags').checked ? 1 : 0,
+        store_style: ($('[data-setting="store_style"]:checked') || {}).value || 'classic',
       };
       try {
         const before = state.settings && state.settings.store_mode;
@@ -2928,6 +2955,7 @@
           toast('Cidades preenchidas com as últimas que você usou 📍');
         }
       }
+      if (el.dataset && el.dataset.setting === 'store_style') document.querySelectorAll('.glass-off').forEach((x) => { x.hidden = el.value === 'glass'; });
       if (el.dataset && el.dataset.setting) saveSettings();
       if (el.id === 'imgFile' && el.files[0]) { await handleProductImage(el.files[0]); el.value = ''; }
       if (el.id === 'imgUrl') {

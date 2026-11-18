@@ -466,6 +466,151 @@
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
     }
+
+    /* =========================================================
+       Estilo "Vidro": escuro, brilhos na cor da loja e cards de vidro fosco
+       ========================================================= */
+    .hero-stats { display: none; }
+    html.glass {
+      color-scheme: dark;
+      --glow: var(--accent);
+      --glow-2: color-mix(in srgb, var(--accent) 35%, #ff7a2f);
+      --bg: #0c0c10;
+      --card: rgba(255, 255, 255, .06);
+      --card-solid: #18181f;
+      --glass-line: rgba(255, 255, 255, .11);
+      --ink: #f4f4f6;
+      --ink-2: #cfd0d6;
+      --muted: #9a9ba6;
+      --line: rgba(255, 255, 255, .10);
+      --media: rgba(255, 255, 255, .045);
+      --chip: rgba(255, 255, 255, .07);
+      --accent-soft: color-mix(in srgb, var(--accent) 24%, transparent);
+      --accent-deep: color-mix(in srgb, var(--accent) 55%, #ffffff);
+      --lime: color-mix(in srgb, var(--accent) 18%, #ecf7a5);
+      --warn-bg: rgba(255, 196, 80, .10);
+      --warn-ink: #f2cf86;
+      --shadow: none;
+      --shadow-lg: 0 30px 80px rgba(0, 0, 0, .55);
+    }
+    html.glass body { background: var(--bg); letter-spacing: -.005em; }
+    html.glass body::before {
+      content: ""; position: fixed; inset: -10vh -10vw; z-index: -1; pointer-events: none;
+      background:
+        radial-gradient(42vmax 38vmax at 88% 6%, color-mix(in srgb, var(--glow) 62%, transparent), transparent 70%),
+        radial-gradient(36vmax 34vmax at 4% 42%, color-mix(in srgb, var(--glow-2) 40%, transparent), transparent 70%),
+        radial-gradient(40vmax 30vmax at 70% 100%, color-mix(in srgb, var(--glow) 28%, transparent), transparent 70%);
+      filter: blur(30px) saturate(1.15);
+    }
+    html.glass .icon-btn, html.glass .search, html.glass .filter-btn, html.glass .chip, html.glass .view-toggle,
+    html.glass .card, html.glass .state, html.glass .empty {
+      background: var(--card);
+      border: 1px solid var(--glass-line);
+      -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
+    }
+    html.glass .icon-btn { border-radius: 16px; color: var(--ink); }
+    html.glass .avatar { box-shadow: 0 0 0 2px rgba(255, 255, 255, .25), 0 0 26px color-mix(in srgb, var(--glow) 55%, transparent); }
+    html.glass .topbar-title strong { font-weight: 600; letter-spacing: .01em; }
+    html.glass .search { color: var(--muted); }
+    html.glass .filter-btn { color: var(--ink); }
+
+    /* Topo: painel de vidro grande, título leve e botão branco em pílula */
+    html.glass .hero {
+      display: block; min-height: 0; padding: 22px 20px 16px;
+      border-radius: 30px;
+      background: linear-gradient(160deg, rgba(255, 255, 255, .10), rgba(255, 255, 255, .03));
+      border: 1px solid var(--glass-line);
+      -webkit-backdrop-filter: blur(22px) saturate(1.3); backdrop-filter: blur(22px) saturate(1.3);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 24px 60px rgba(0, 0, 0, .35);
+    }
+    html.glass .hero::after {
+      display: block; right: -70px; top: -70px; bottom: auto; width: 240px; height: 240px;
+      background: radial-gradient(circle, color-mix(in srgb, var(--glow) 55%, transparent), transparent 65%);
+    }
+    html.glass .hero.has-cover { background: linear-gradient(180deg, transparent 0, rgba(255, 255, 255, .03) 190px), #111116; min-height: 0; padding-top: 196px; }
+    html.glass .hero-bg { inset: 0 0 auto 0; height: 210px; -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%); mask-image: linear-gradient(180deg, #000 55%, transparent 100%); }
+    html.glass .hero-shade { display: none; }
+    html.glass .hero.has-cover .hero-text { text-shadow: none; }
+    html.glass .hero-text { position: relative; z-index: 1; }
+    html.glass .hero:not(.no-art) .hero-text { padding-right: 120px; }
+    html.glass .hero-kicker { background: none; color: var(--muted); padding: 0; margin-bottom: 8px; font-weight: 600; font-size: 11.5px; letter-spacing: .02em; }
+    html.glass .hero h1 { font-size: clamp(30px, 8.6vw, 44px); font-weight: 500; letter-spacing: -.035em; line-height: 1.02; margin-bottom: 8px; }
+    html.glass .hero p { color: var(--ink-2); opacity: 1; font-size: 13.5px; margin-bottom: 16px; }
+    html.glass .hero-cta { background: #fff; color: #111; border-radius: 999px; padding: 12px 20px; font-weight: 700; box-shadow: 0 10px 30px rgba(255, 255, 255, .12); }
+    html.glass .hero-art { position: absolute; z-index: 1; right: 14px; top: 18px; }
+    html.glass .hero.has-cover .hero-art { top: 150px; bottom: auto; align-self: auto; }
+    html.glass .hero.has-cover:not(.no-art) .hero-text { padding-right: 124px; }
+    html.glass .hero-art .feat { position: relative; display: block; }
+    html.glass .hero-art img, html.glass .hero.has-cover .hero-art img {
+      width: 112px; height: 112px; transform: none; border-radius: 26px; object-fit: cover;
+      border: 1px solid rgba(255, 255, 255, .22); background: rgba(255, 255, 255, .08);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, .45), 0 0 40px color-mix(in srgb, var(--glow) 40%, transparent);
+    }
+    html.glass .hero-art .feat-tag { background: rgba(12, 12, 16, .7); color: #fff; border: 1px solid rgba(255, 255, 255, .15); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+    html.glass .hero-stats {
+      position: relative; z-index: 1;
+      display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px;
+      margin-top: 18px; padding: 12px 10px; border-radius: 22px;
+      background: rgba(255, 255, 255, .06); border: 1px solid var(--glass-line);
+    }
+    html.glass .hero-stats div { min-width: 0; padding: 0 6px; }
+    html.glass .hero-stats div + div { border-left: 1px solid var(--line); }
+    html.glass .hero-stats b { display: block; font-size: 24px; font-weight: 500; letter-spacing: -.03em; line-height: 1.1; }
+    html.glass .hero-stats span { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); margin-top: 3px; white-space: nowrap; }
+    html.glass .hero-stats span i { width: 7px; height: 7px; border-radius: 50%; background: var(--d, var(--accent)); box-shadow: 0 0 8px var(--d, var(--accent)); }
+
+    html.glass .chip { border-radius: 999px; color: var(--ink-2); font-weight: 600; }
+    html.glass .chip[aria-pressed="true"] { background: #fff; color: #111; border-color: #fff; }
+    html.glass .section-head h2 { font-weight: 500; letter-spacing: -.02em; }
+    html.glass .view-toggle { border-radius: 999px; }
+    html.glass .view-toggle button { border-radius: 999px; }
+    html.glass .view-toggle button[aria-pressed="true"] { background: rgba(255, 255, 255, .14); color: #fff; }
+
+    /* Cards de produto */
+    html.glass .card { border-radius: 26px; padding: 7px; }
+    html.glass .card-media { border-radius: 20px; background: linear-gradient(160deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, .02)); }
+    html.glass .card-media .halo { background: radial-gradient(circle, color-mix(in srgb, var(--halo, var(--accent)) 45%, transparent) 0%, transparent 70%); opacity: .7; }
+    html.glass .card-body { padding: 10px 7px 6px; }
+    html.glass .card-title { font-weight: 600; }
+    html.glass .price { color: var(--lime); font-weight: 600; font-size: 20px; letter-spacing: -.02em; }
+    html.glass .price-alt { color: var(--lime); }
+    html.glass .off { background: color-mix(in srgb, var(--lime) 85%, transparent); color: #1a1d0a; border-radius: 999px; }
+    html.glass .fav { background: rgba(12, 12, 16, .55); color: #d6d7dc; border: 1px solid rgba(255, 255, 255, .14); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: none; }
+    html.glass .badge:not(.ml):not(.shopee):not(.proprio) { background: rgba(12, 12, 16, .6); }
+    html.glass .btn-buy { border-radius: 999px; background: #fff; color: #111; box-shadow: none; }
+    html.glass .btn-buy.wa { background: color-mix(in srgb, var(--wa) 85%, #0a3d22); color: #fff; }
+    html.glass .btn-share, html.glass .btn-share-wide { background: rgba(255, 255, 255, .08); color: #7cf0a8; border: 1px solid var(--glass-line); border-radius: 999px; }
+    html.glass .notice { background: rgba(255, 255, 255, .05); color: var(--muted); border: 1px solid var(--line); }
+    html.glass .notice.city { background: color-mix(in srgb, var(--ok) 14%, transparent); color: #a7f3c0; border-color: transparent; }
+    html.glass .skeleton { background: linear-gradient(90deg, rgba(255,255,255,.04) 0%, rgba(255,255,255,.09) 50%, rgba(255,255,255,.04) 100%); background-size: 200% 100%; }
+
+    /* Navegação, carrinho e painéis */
+    html.glass .bottom-nav { background: rgba(20, 20, 26, .62); border: 1px solid var(--glass-line); -webkit-backdrop-filter: blur(22px) saturate(1.4); backdrop-filter: blur(22px) saturate(1.4); box-shadow: 0 18px 50px rgba(0, 0, 0, .5); }
+    html.glass .bottom-nav button[aria-current="true"] { color: #fff; }
+    html.glass .cart-bar { background: rgba(255, 255, 255, .92); color: #111; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+    html.glass .overlay { background: rgba(5, 5, 8, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+    html.glass .sheet { background: rgba(24, 24, 31, .92); border: 1px solid var(--glass-line); border-bottom: 0; -webkit-backdrop-filter: blur(26px); backdrop-filter: blur(26px); }
+    html.glass .detail-media { background: linear-gradient(160deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, .02)); }
+    html.glass .detail-media .halo { background: radial-gradient(circle, color-mix(in srgb, var(--accent) 40%, transparent) 0%, transparent 70%); }
+    html.glass .sort-list button { background: rgba(255, 255, 255, .06); }
+    html.glass .sort-list button[aria-checked="true"] { background: #fff; color: #111; }
+    html.glass .toast { background: rgba(255, 255, 255, .95); color: #111; }
+    html.glass .footer a { color: var(--ink); }
+    @media (min-width: 720px) {
+      html.glass .hero { padding: 34px 36px 22px; }
+      html.glass .hero.has-cover { padding-top: 290px; }
+      html.glass .hero-bg { height: 310px; }
+      html.glass .hero:not(.no-art) .hero-text { padding-right: 200px; }
+      html.glass .hero-art img, html.glass .hero.has-cover .hero-art img { width: 170px; height: 170px; border-radius: 34px; }
+      html.glass .hero-art { right: 30px; top: 30px; }
+      html.glass .hero.has-cover .hero-art { top: 220px; }
+      html.glass .hero.has-cover:not(.no-art) .hero-text { padding-right: 200px; }
+      html.glass .hero-stats { max-width: 560px; }
+    }
+    @media (prefers-reduced-transparency: reduce) {
+      html.glass .card, html.glass .hero, html.glass .bottom-nav, html.glass .sheet { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card-solid); }
+    }
   </style>
 </head>
 <body>
@@ -916,6 +1061,7 @@
             <p>${tagline}</p>
             ${showWa ? `<a class="hero-cta" href="${esc(waLink(s.whatsapp, `Olá! Vim pela sua vitrine ${s.store_name} 😊`))}" target="_blank" rel="noopener noreferrer">${ICON.wa}Chamar no WhatsApp</a>` : ''}
           </div>
+          ${heroStats()}
           ${featured ? `<div class="hero-art"><button type="button" class="feat" data-open="${featured.id}" aria-label="Ver destaque: ${esc(featured.title)}">
             <span class="feat-tag">⭐ Destaque</span><img src="${esc(heroImg)}" alt=""></button></div>` : ''}
         </section>`}
@@ -941,6 +1087,20 @@
       $('[data-nav="contact"]').hidden = !showContact;
       $('#bottomNav').classList.toggle('no-contact', !showContact);
       renderProducts();
+    }
+
+    // Faixa de números do topo (aparece no estilo Vidro).
+    function heroStats() {
+      const list = state.products;
+      const nf = (n) => n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).replace('.', ',')}k` : String(n);
+      const cats = new Set(list.map((p) => String(p.category || '').trim()).filter(Boolean)).size;
+      const deals = list.filter((p) => Number(p.original_price) > Number(p.price) && Number(p.price) > 0).length;
+      const fresh = list.filter((p) => p.tag === 'new').length;
+      const items = [[list.length, list.length === 1 ? 'produto' : 'produtos', 'var(--accent)']];
+      if (deals) items.push([deals, deals === 1 ? 'oferta' : 'ofertas', '#ecf7a5']);
+      if (cats) items.push([cats, cats === 1 ? 'categoria' : 'categorias', '#ff9a5c']);
+      if (fresh && items.length < 3) items.push([fresh, fresh === 1 ? 'novidade' : 'novidades', '#a78bfa']);
+      return `<div class="hero-stats" aria-hidden="true">${items.slice(0, 3).map(([n, l, c]) => `<div><b>${nf(n)}</b><span><i style="--d:${c}"></i>${l}</span></div>`).join('')}</div>`;
     }
 
     function renderState({ icon, title, text, extra = '' }) {
@@ -1103,8 +1263,11 @@
           if (p && isLocal(p) && Number(q) > 0) state.cart[id] = Math.min(Number(q), 99);
         }
         state.view = storage.get(`vitrine:view:${state.slug}`) || state.settings.view_mode || 'grid';
-        document.documentElement.classList.toggle('dark', state.settings.theme_mode === 'dark');
-        document.documentElement.classList.toggle('tinted', state.settings.card_tone === 'tinted');
+        const glass = state.settings.store_style === 'glass';
+        document.documentElement.classList.toggle('glass', glass);
+        document.documentElement.classList.toggle('dark', glass || state.settings.theme_mode === 'dark');
+        document.documentElement.classList.toggle('tinted', !glass && state.settings.card_tone === 'tinted');
+        if (glass) { const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = '#0c0c10'; }
         renderStore();
 
         const pid = Number(new URLSearchParams(location.search).get('p'));

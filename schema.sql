@@ -81,7 +81,8 @@ CREATE TABLE IF NOT EXISTS tenant_settings (
   show_banner         INTEGER NOT NULL DEFAULT 1,     -- 0 = cliente vê só os produtos
   share_message       TEXT NOT NULL DEFAULT '',       -- mensagem pronta personalizada ({loja} e {link})
   offer_template      INTEGER NOT NULL DEFAULT 1,     -- modelo de mensagem de oferta (1 a 3)
-  show_tags           INTEGER NOT NULL DEFAULT 1      -- selos "Novo" e "Mais clicado" na vitrine
+  show_tags           INTEGER NOT NULL DEFAULT 1,     -- selos "Novo" e "Mais clicado" na vitrine
+  store_style         TEXT NOT NULL DEFAULT 'classic' -- estilo da vitrine: classic | glass
 );
 
 -- ---------------------------------------------------------------------
