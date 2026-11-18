@@ -780,20 +780,37 @@ function shopeeNodeToProduct(node) {
   };
 }
 
-async function shopeeSearchByTitle(creds, title) {
-  const keyword = normalizeWords(title).slice(0, 10).join(' ');
-  if (!keyword) return null;
-  const query = `{ productOfferV2(keyword: ${JSON.stringify(keyword)}, page: 1, limit: 10) {
+// Código da foto da Shopee (".../file/br-11134207-...") — igual na prévia do link e na API.
+const shopeeImageId = (u) => ((String(u || '').match(/\/file\/([a-z0-9_-]{12,})/i) || [])[1] || '').toLowerCase();
+
+async function shopeeSearchByTitle(creds, rawTitle, image = '') {
+  // A prévia corta o nome com "..." — tira o fim cortado antes de comparar.
+  const truncated = /(\.\.\.|…)\s*$/.test(rawTitle || '');
+  const title = String(rawTitle || '').replace(/\s*(\.\.\.|…)\s*$/, '');
+  let words = normalizeWords(title);
+  if (truncated && words.length > 3) words = words.slice(0, -1);
+  if (!words.length) return null;
+  const imgId = shopeeImageId(image);
+  const attempts = [...new Set([words.slice(0, 10).join(' '), words.slice(0, 6).join(' ')])];
+  for (const keyword of attempts) {
+    const query = `{ productOfferV2(keyword: ${JSON.stringify(keyword)}, page: 1, limit: 20) {
     nodes { itemId shopId productName price priceMin priceMax imageUrl shopName ratingStar sales priceDiscountRate } } }`;
-  const data = await shopeeGraphql(creds, query);
-  const nodes = ((data.productOfferV2 || {}).nodes) || [];
-  let best = null;
-  let bestScore = 0;
-  for (const n of nodes) {
-    const score = titleSimilarity(title, n.productName);
-    if (score > bestScore) { best = n; bestScore = score; }
+    const data = await shopeeGraphql(creds, query);
+    const nodes = ((data.productOfferV2 || {}).nodes) || [];
+    // 1º: mesma foto = mesmo produto (certeza).
+    if (imgId) {
+      const same = nodes.find((n) => shopeeImageId(n.imageUrl) === imgId);
+      if (same) return { ...shopeeNodeToProduct(same), source: 'image_match' };
+    }
+    let best = null;
+    let bestScore = 0;
+    for (const n of nodes) {
+      const score = titleSimilarity(words.join(' '), n.productName);
+      if (score > bestScore) { best = n; bestScore = score; }
+    }
+    if (best && bestScore >= 0.75) return { ...shopeeNodeToProduct(best), source: 'title_match' };
   }
-  return best && bestScore >= 0.75 ? { ...shopeeNodeToProduct(best), source: 'title_match' } : null;
+  return null;
 }
 
 async function lookupShopee(env, creds, url) {
@@ -803,7 +820,7 @@ async function lookupShopee(env, creds, url) {
     // Achou o nome pela prévia: procura o mesmo produto na API pelo nome para trazer preço e foto.
     if (usefulMeta(meta)) {
       try {
-        const found = await shopeeSearchByTitle(creds, meta.title);
+        const found = await shopeeSearchByTitle(creds, meta.title, meta.image);
         if (found) return found;
       } catch (err) {
         console.error('Shopee busca por nome:', err && err.message);
@@ -821,6 +838,8 @@ async function lookupShopee(env, creds, url) {
   const node = (((data.productOfferV2 || {}).nodes) || [])[0];
   if (!node) {
     if (usefulMeta(meta)) {
+      const found = await shopeeSearchByTitle(creds, meta.title, meta.image).catch(() => null);
+      if (found) return found;
       return { platform: 'shopee', title: meta.title.replace(/\s*\|\s*Shopee.*$/i, '').slice(0, 120), price: meta.price, image_url: /^https:\/\//.test(meta.image) ? meta.image : null, shop_name: null, source: 'preview' };
     }
     throw new HttpError(404, 'A Shopee não retornou este produto. Ele pode não participar do programa de afiliados.');
@@ -992,21 +1011,24 @@ function splitTitlePrice(rawTitle) {
   return { title, price };
 }
 
+// Prévia pública (cartão do link): nome limpo + preço que vem colado no nome ("... - R$ 64,74").
+function mlPreviewResult(meta) {
+  const split = splitTitlePrice(meta.title);
+  return {
+    platform: 'mercadolivre',
+    title: split.title.slice(0, 120),
+    price: Number(meta.price) > 0 ? Number(meta.price) : split.price,
+    image_url: /^https:\/\//.test(meta.image || '') ? meta.image : null,
+    shop_name: null,
+    source: 'preview',
+  };
+}
+
 async function lookupMercadoLivre(env, token, url) {
   const { ids, meta, trace } = await resolveMl(url);
   if (!ids) {
     await saveDebug(env, 'debug_ml', { input: url, trace });
-    if (usefulMeta(meta)) {
-      const split = splitTitlePrice(meta.title);
-      return {
-        platform: 'mercadolivre',
-        title: split.title.slice(0, 120),
-        price: Number(meta.price) > 0 ? Number(meta.price) : split.price,
-        image_url: /^https:\/\//.test(meta.image) ? meta.image : null,
-        shop_name: null,
-        source: 'preview',
-      };
-    }
+    if (usefulMeta(meta)) return mlPreviewResult(meta);
     throw new HttpError(422, 'Não consegui abrir este link do Mercado Livre. Tente o link completo do produto (abra o link no navegador e copie o endereço).');
   }
   let apiError = null;
@@ -1052,11 +1074,11 @@ async function lookupMercadoLivre(env, token, url) {
     await saveDebug(env, 'debug_ml', { input: url, ids, error: 'ml_permission', preview: preview ? preview.title : null });
   }
   if (preview) {
-    return { platform: 'mercadolivre', title: preview.title.replace(/\s*[|-]\s*Mercado Livre.*$/i, '').slice(0, 120), price: preview.price, image_url: /^https:\/\//.test(preview.image) ? preview.image : null, shop_name: null, source: 'preview' };
+    return mlPreviewResult(preview);
   }
   if (apiError) throw apiError;
   if (usefulMeta(meta)) {
-    return { platform: 'mercadolivre', title: meta.title.replace(/\s*[|-]\s*Mercado Livre.*$/i, '').slice(0, 120), price: meta.price, image_url: /^https:\/\//.test(meta.image) ? meta.image : null, shop_name: null, source: 'preview' };
+    return mlPreviewResult(meta);
   }
   throw new HttpError(404, 'O Mercado Livre não retornou este produto. Ele pode ter sido pausado ou removido.');
 }
@@ -1343,7 +1365,8 @@ async function lookupProduct(env, rawUrl, { useCache = true, tenantId = null, li
         const split = splitTitlePrice(data.title);
         if (split.price) { data.title = split.title; data.price = split.price; }
       }
-      return { ...data, cached: true };
+      // Prévia sem preço guardada: não reaproveita, tenta buscar de novo.
+      if (data.price || data.source !== 'preview') return { ...data, cached: true };
     }
   }
   if (tenantId) {
