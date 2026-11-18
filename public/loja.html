@@ -1105,7 +1105,8 @@
 
     function renderState({ icon, title, text, extra = '' }) {
       $('#bottomNav').hidden = true;
-      app.innerHTML = `<section class="state"><div class="state-icon">${icon}</div><h1>${title}</h1><p>${text}</p>${extra}</section>`;
+      // title/text são sempre escapados (podem vir do nome da loja); icon/extra são HTML montado pelo próprio código.
+      app.innerHTML = `<section class="state"><div class="state-icon">${icon}</div><h1>${esc(title)}</h1><p>${esc(text)}</p>${extra}</section>`;
     }
 
 

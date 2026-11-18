@@ -53,7 +53,6 @@
 
 const DAY_MS = 86_400_000;
 const ONLINE_WINDOW_MS = 7 * 60_000;      // lojista "online" se deu sinal nos últimos 7 min (o painel avisa a cada 3 min)
-const MASTER_DEFAULT_PASSWORD = '1989';   // vale até ser trocada no painel Master
 const PBKDF2_ITERATIONS = 100_000; // limite máximo suportado pelo Workers
 const TOKEN_TTL_MS = 30 * DAY_MS;
 const MAX_JSON_BYTES = 1_000_000;
@@ -90,7 +89,7 @@ function corsHeaders(env) {
   return {
     'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Master-Password',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Master-Password, X-Store',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   };
@@ -188,6 +187,13 @@ function text(value, max, field, { required = false } = {}) {
   const v = String(value ?? '').replace(/\u0000/g, '').trim();
   if (required && !v) throw new HttpError(400, `Preencha o campo "${field}".`);
   if (v.length > max) throw new HttpError(400, `"${field}" deve ter no máximo ${max} caracteres.`);
+  return v;
+}
+
+// Nomes aparecem em várias telas: não aceitam caracteres de HTML (defesa extra contra XSS).
+function nameText(value, max, field, opts) {
+  const v = text(value, max, field, opts);
+  if (/[<>"`]/.test(v)) throw new HttpError(400, `"${field}" não pode ter os caracteres < > " \``);
   return v;
 }
 
@@ -1459,9 +1465,9 @@ async function requireMaster(request, env) {
     ok = timingSafeEqual(await sha256(given), await sha256(env.MASTER_PASSWORD));
   } else {
     const stored = await env.DB.prepare("SELECT value FROM app_config WHERE key = 'master_hash'").first('value');
-    ok = stored
-      ? await verifyPassword(given, stored)
-      : timingSafeEqual(await sha256(given), await sha256(MASTER_DEFAULT_PASSWORD));
+    // Sem senha configurada não existe senha padrão (o código é público): o Master fica fechado.
+    if (!stored) throw new HttpError(503, 'Configure o secret MASTER_PASSWORD no Cloudflare para usar o Master.');
+    ok = await verifyPassword(given, stored);
   }
   if (!ok) {
     await registerFail(env, lockKey, { max: 5, windowMin: 15, lockMin: 15 });
@@ -1565,7 +1571,12 @@ async function storeOverLimit(env, account, storeId) {
 async function requireStore(request, env, account) {
   const wanted = String(request.headers.get('X-Store') || new URL(request.url).searchParams.get('store') || '').trim().toLowerCase();
   let t = null;
-  if (wanted) t = await env.DB.prepare('SELECT * FROM tenants WHERE id = ? AND account_id = ?').bind(wanted, account.id).first();
+  if (wanted) {
+    t = await env.DB.prepare('SELECT * FROM tenants WHERE id = ? AND account_id = ?').bind(wanted, account.id).first();
+    if (!t && await env.DB.prepare('SELECT 1 FROM tenants WHERE id = ?').bind(wanted).first()) {
+      throw new HttpError(403, 'Esta loja não pertence à sua conta.', { code: 'forbidden_store' });
+    }
+  }
   if (!t) t = await env.DB.prepare('SELECT * FROM tenants WHERE account_id = ? ORDER BY created_at ASC LIMIT 1').bind(account.id).first();
   if (!t) throw new HttpError(404, 'Nenhuma loja nesta conta. Crie a sua primeira loja.', { code: 'no_store' });
   const merged = mergeStore(t, account);
@@ -1792,14 +1803,21 @@ async function handleImgProxy(request) {
   target.protocol = 'https:';
   let res;
   try {
-    res = await fetch(target.toString(), { headers: { 'User-Agent': 'Mozilla/5.0 (VitrineApp)' }, cf: { cacheTtl: 86400, cacheEverything: true } });
+    res = await fetch(target.toString(), { redirect: 'manual', headers: { 'User-Agent': 'Mozilla/5.0 (VitrineApp)' }, cf: { cacheTtl: 86400, cacheEverything: true } });
+    // Segue no máximo 1 redirecionamento, e só para os mesmos domínios de imagem.
+    if (res.status >= 300 && res.status < 400) {
+      const next = new URL(res.headers.get('location') || '', target);
+      if (next.protocol !== 'https:' || !IMG_PROXY_HOSTS.test(next.hostname)) throw new Error('redirect');
+      res = await fetch(next.toString(), { redirect: 'manual', headers: { 'User-Agent': 'Mozilla/5.0 (VitrineApp)' }, cf: { cacheTtl: 86400, cacheEverything: true } });
+    }
   } catch { throw new HttpError(502, 'Não foi possível baixar a imagem.'); }
-  const type = res.headers.get('content-type') || '';
-  if (!res.ok || !/^image\//i.test(type)) throw new HttpError(502, 'Não foi possível baixar a imagem.');
+  const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  // Só fotos comuns: SVG/HTML poderiam rodar código no domínio do app.
+  if (!res.ok || !/^image\/(png|jpe?g|webp|gif|avif)$/.test(type)) throw new HttpError(502, 'Não foi possível baixar a imagem.');
   const len = Number(res.headers.get('content-length') || 0);
   if (len > 6 * 1024 * 1024) throw new HttpError(413, 'Imagem muito grande.');
   return new Response(res.body, {
-    headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' },
+    headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" },
   });
 }
 
@@ -2000,8 +2018,14 @@ async function handleCheckSlug(env, url) {
 async function handleRegister(request, env) {
   const body = await readJson(request);
   if (String(body.website || '').trim()) throw new HttpError(400, 'Não foi possível concluir o cadastro.'); // campo-isca anti-robô
+  // Limite de cadastros por IP (evita criar contas em massa para ganhar testes grátis).
+  const regKey = `reg:${clientIp(request)}`;
+  await checkLocked(env, [regKey]).catch(() => {
+    throw new HttpError(429, 'Muitos cadastros feitos desta conexão. Tente de novo mais tarde ou fale com o suporte.', { code: 'register_limit' });
+  });
   const origin = resolveSource(body);
   const { account, store } = await createAccountWithStore(env, body, { origin });
+  await registerFail(env, regKey, { max: 8, windowMin: 60, lockMin: 60 }).catch(() => {});
   await env.DB.prepare(
     `INSERT INTO site_daily (day, source, signups) VALUES (?, ?, 1)
      ON CONFLICT (day, source) DO UPDATE SET signups = signups + 1`,
@@ -2105,8 +2129,8 @@ async function handleProfile(request, env, tenant) {
   assertCanEdit(tenant);
   const body = await readJson(request);
   const data = {
-    store_name: text(body.store_name, 80, 'Nome da loja', { required: true }),
-    owner_name: text(body.owner_name, 80, 'Seu nome'),
+    store_name: nameText(body.store_name, 80, 'Nome da loja', { required: true }),
+    owner_name: nameText(body.owner_name, 80, 'Seu nome'),
     whatsapp: whatsapp(body.whatsapp, { required: true }),
     avatar_url: httpUrl(body.avatar_url, 'Foto/logo', { allowData: true }),
     cover_url: body.cover_url === undefined ? tenant.cover_url || null : httpUrl(body.cover_url, 'Foto de capa', { allowData: true }),
@@ -2363,12 +2387,12 @@ async function handleAdminConfigPut(request, env) {
 
 // Cria uma loja dentro de uma conta (o status/plano vem da conta).
 async function createStore(env, account, body) {
-  const storeName = text(body.store_name, 80, 'Nome da loja', { required: true });
+  const storeName = nameText(body.store_name, 80, 'Nome da loja', { required: true });
   const id = storeSlug(body.id ? slugify(body.id) : slugify(storeName));
   const data = {
     id,
     store_name: storeName,
-    owner_name: text(body.owner_name, 80, 'Seu nome'),
+    owner_name: nameText(body.owner_name, 80, 'Seu nome'),
     whatsapp: whatsapp(body.whatsapp, { required: true }),
     avatar_url: httpUrl(body.avatar_url, 'Foto/logo'),
     theme_color: color(body.theme_color),
@@ -2403,10 +2427,10 @@ async function createStore(env, account, body) {
 
 async function createAccountWithStore(env, body, { plan = 'basic', origin = { source: 'master', campaign: '' } } = {}) {
   const phone = whatsapp(body.whatsapp, { required: true });
-  const ownerName = text(body.owner_name, 80, 'Seu nome');
+  const ownerName = nameText(body.owner_name, 80, 'Seu nome');
   const hash = await hashPassword(password(body.password));
   // Valida a loja antes de criar a conta (evita conta sem loja).
-  const storeName = text(body.store_name, 80, 'Nome da loja', { required: true });
+  const storeName = nameText(body.store_name, 80, 'Nome da loja', { required: true });
   const slug = storeSlug(body.id ? slugify(body.id) : slugify(storeName));
   if (await env.DB.prepare('SELECT 1 FROM tenants WHERE id = ?').bind(slug).first()) {
     throw new HttpError(409, `O endereço "${slug}" já está em uso. Escolha outro.`, { code: 'slug_taken' });
@@ -2599,7 +2623,7 @@ async function handleAdminPatch(request, env, rawId) {
       await env.DB.prepare('UPDATE accounts SET owner_name = ?, whatsapp = ?, updated_at = ? WHERE id = ?')
         .bind(ownerName, phone, ts, id).run();
       if (body.store_name !== undefined && body.store_id) {
-        const storeName = text(body.store_name, 80, 'Nome da loja', { required: true });
+        const storeName = nameText(body.store_name, 80, 'Nome da loja', { required: true });
         await env.DB.prepare('UPDATE tenants SET store_name = ?, updated_at = ? WHERE id = ? AND account_id = ?')
           .bind(storeName, ts, String(body.store_id).toLowerCase(), id).run();
       }
@@ -2855,7 +2879,7 @@ async function applyPayment(env, pay) {
   const paidUntil = addDays(Math.max(now, current), pay.days || 30);
   await env.DB.prepare("UPDATE accounts SET status = 'active', plan = ?, paid_until = ?, updated_at = ? WHERE id = ?")
     .bind(PLANS[pay.plan] ? pay.plan : 'basic', paidUntil, nowIso(), acc.id).run();
-  if (acc.referred_by) await rewardReferrer(env, acc).catch(() => {});
+  if (acc.referred_by) await rewardReferrer(env, { ...acc, plan: PLANS[pay.plan] ? pay.plan : 'basic' }).catch(() => {});
   return true;
 }
 
@@ -2874,17 +2898,22 @@ async function rewardReferrer(env, acc) {
   if (!claim.meta || !claim.meta.changes) return false;
   const ref = await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(acc.referred_by).first();
   if (!ref) return false;
+  // O prêmio vale o mesmo que o indicado pagou: indicado no Básico rende 30 dias para quem é Básico
+  // e ~20 dias para quem é Completo. Assim não compensa criar conta falsa para pagar menos.
+  const paid = priceNumber(planPrice(env, PLANS[acc.plan] ? acc.plan : 'basic'));
+  const refPrice = priceNumber(planPrice(env, PLANS[ref.plan] ? ref.plan : 'basic'));
+  const days = refPrice > 0 && paid > 0 ? Math.max(1, Math.round(REF_REWARD_DAYS * Math.min(1, paid / refPrice))) : REF_REWARD_DAYS;
   const now = Date.now();
   const ts = nowIso();
   if (ref.status === 'trial' && ref.trial_ends_at && Date.parse(ref.trial_ends_at) > now) {
     // Ainda no teste: o teste ganha +30 dias.
     await env.DB.prepare('UPDATE accounts SET trial_ends_at = ?, ref_new = ref_new + 1, updated_at = ? WHERE id = ?')
-      .bind(addDays(Date.parse(ref.trial_ends_at), REF_REWARD_DAYS), ts, ref.id).run();
+      .bind(addDays(Date.parse(ref.trial_ends_at), days), ts, ref.id).run();
   } else {
     // Plano ativo: soma 30 dias ao que resta. Vencido: volta ao ar por 30 dias no plano dele.
     const current = ref.status === 'active' && ref.paid_until ? Date.parse(ref.paid_until) : 0;
     await env.DB.prepare("UPDATE accounts SET status = 'active', paid_until = ?, ref_new = ref_new + 1, updated_at = ? WHERE id = ?")
-      .bind(addDays(Math.max(now, current), REF_REWARD_DAYS), ts, ref.id).run();
+      .bind(addDays(Math.max(now, current), days), ts, ref.id).run();
   }
   return true;
 }
