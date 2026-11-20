@@ -1171,7 +1171,7 @@
       state.editing = null;
       state.prefill = {
         title: o.title, affiliate_link: o.link, platform: o.platform, image_url: o.image,
-        price: parseMoney(o.price), original_price: parseMoney(o.original), show_price: 0,
+        price: parseMoney(o.price), original_price: parseMoney(o.original), show_price: 1,
       };
       state.tab = 'form';
       render();
@@ -1183,7 +1183,7 @@
       const p = state.products.find((x) => x.id === id);
       if (!p) return;
       const link = safeImg(p.affiliate_link) ? p.affiliate_link : (/^https?:/i.test(p.affiliate_link || '') ? p.affiliate_link : `${state.storeUrl}?p=${p.id}`);
-      state.offerProduct = { title: p.title, price: p.price, original: p.original_price, link, image: p.image_url };
+      state.offerProduct = { title: p.title, price: p.price, original: p.original_price, link, image: p.image_url, platform: p.platform };
       const ov = $('#dialogOverlay');
       $('#dialog').innerHTML = `<h3 id="dlgTitle">📣 Mensagem de oferta</h3>
         <p>Escolha o modelo, ajuste se quiser e envie.</p>
@@ -1477,6 +1477,11 @@
       const price = parseMoney(o.price), orig = parseMoney(o.original);
       const hasOff = price && orig && orig > price;
       const off = hasOff ? Math.round((1 - price / orig) * 100) : 0;
+      // Produto de afiliado: o preço é do site parceiro e pode mudar — a arte avisa. Produto próprio não precisa.
+      const plat = o.platform === 'shopee' || o.platform === 'mercadolivre' ? o.platform
+        : /shopee\./i.test(o.link || '') ? 'shopee' : /(meli\.la|mercadoli[bv]re)/i.test(o.link || '') ? 'mercadolivre' : '';
+      const priceNote = price && plat ? `Preço sujeito a alteração · confira ${plat === 'shopee' ? 'na Shopee' : 'no Mercado Livre'}` : '';
+      const noteH = priceNote ? (story ? 76 : 54) : 0;
       const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, color); g.addColorStop(1, mixHex(color, '#000000', 0.45));
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
       // brilhos
@@ -1493,7 +1498,7 @@
       const titleLines = wrapLines(ctx, o.title || 'Produto em oferta', W - 140, story ? 3 : 2);
       const lineH = story ? 72 : 52;
       const box = story ? 880 : 480;
-      const blockH = box + (story ? 110 : 70) + titleLines.length * lineH + (hasOff ? (story ? 120 : 78) : 0) + (story ? 100 : 74);
+      const blockH = box + (story ? 110 : 70) + titleLines.length * lineH + (hasOff ? (story ? 120 : 78) : 0) + (story ? 100 : 74) + noteH;
       const areaTop = story ? 210 : 140, areaBottom = H - (story ? 200 : 150);
       const bx = (W - box) / 2, by = areaTop + Math.max(0, (areaBottom - areaTop - blockH) / 2);
       ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.3)'; ctx.shadowBlur = 40; ctx.fillStyle = '#fff'; rr(ctx, bx, by, box, box, 48); ctx.fill(); ctx.restore();
@@ -1518,10 +1523,18 @@
         const deTxt = `De ${brl(orig)}`; ctx.fillText(deTxt, W / 2, y);
         const dw = ctx.measureText(deTxt).width; ctx.fillRect(W / 2 - dw / 2, y - (story ? 15 : 12), dw, story ? 4 : 3);
         ctx.globalAlpha = 1; y += story ? 100 : 72;
+      } else {
+        y += story ? 70 : 50; // sem "De": afasta o preço grande do nome
       }
       if (price) {
         ctx.font = `900 ${story ? 104 : 74}px ${FONT}`; ctx.fillStyle = '#fff';
         ctx.fillText(`${hasOff ? 'Por ' : ''}${brl(price)}`, W / 2, y);
+        if (priceNote) {
+          ctx.font = `700 ${story ? 32 : 24}px ${FONT}`;
+          const nw = ctx.measureText(priceNote).width + (story ? 56 : 40), nh = story ? 56 : 42, ny = y + (story ? 34 : 24);
+          ctx.fillStyle = 'rgba(0,0,0,.22)'; rr(ctx, W / 2 - nw / 2, ny, nw, nh, nh / 2); ctx.fill();
+          ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(priceNote, W / 2, ny + nh / 2); ctx.textBaseline = 'alphabetic';
+        }
       } else {
         ctx.font = `800 ${story ? 54 : 40}px ${FONT}`; ctx.fillText('Confira o preço no link', W / 2, y);
       }
