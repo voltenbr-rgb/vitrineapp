@@ -449,9 +449,38 @@
     .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 15px; color: var(--ink); }
 
     .plist { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr); }
-    .pitem { min-width: 0; display: flex; align-items: center; gap: 12px; background: var(--card); border-radius: 18px; box-shadow: var(--shadow); padding: 10px; }
-    .pitem .thumb { width: 64px; height: 64px; border-radius: 14px; background: #f3f4f7; flex-shrink: 0; display: grid; place-items: center; overflow: hidden; color: var(--muted); }
-    .pitem .thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .pitem { min-width: 0; display: flex; flex-direction: column; gap: 10px; background: var(--card); border-radius: 20px; box-shadow: var(--shadow); padding: 12px; border: 1px solid transparent; }
+    .pitem.is-feat { border-color: #ffe08a; background: linear-gradient(180deg, #fffbeb, var(--card) 60%); }
+    .pitem .pmain { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .pitem .thumb { position: relative; width: 78px; height: 78px; border-radius: 16px; background: #fff; border: 1px solid #edf0f4; flex-shrink: 0; display: grid; place-items: center; overflow: hidden; color: var(--muted); }
+    .pitem .thumb img { width: 88%; height: 88%; object-fit: contain; }
+    .pitem .tstar { position: absolute; top: 4px; left: 4px; width: 22px; height: 22px; border-radius: 50%; background: #f59e0b; color: #fff; display: grid; place-items: center; box-shadow: 0 2px 6px rgba(245, 158, 11, .4); }
+    .pitem .tstar svg { width: 13px; height: 13px; }
+    .pitem .toff { position: absolute; bottom: 4px; right: 4px; font-size: 10.5px; font-weight: 900; color: #fff; background: #16a34a; border-radius: 999px; padding: 2px 6px; }
+    .pacts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) 44px; gap: 6px; }
+    .pacts .pa { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0; height: 50px; padding: 0 4px; border-radius: 12px; border: 1px solid #e8ecf2; background: #f7f9fc; color: var(--ink-2, #334155); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .pacts .pa span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; font-size: 11px; }
+    .pacts .pa svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .pacts .pa.on { background: #fff4d6; border-color: #fcd877; color: #b45309; }
+    .pacts .pa.danger { color: #dc2626; }
+    .pacts .pa:active { transform: scale(.97); }
+
+    /* Atalhos do início */
+    .dock { margin: 0 0 18px; }
+    .dock-tiles { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px 2px 4px; margin: 0 -2px; }
+    .dock-tiles::-webkit-scrollbar { display: none; }
+    .dock-tile { position: relative; flex: 1 1 0; min-width: 78px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 11px 12px; border-radius: 18px; border: 1px solid #e6ebf2; background: var(--card); box-shadow: var(--shadow); cursor: pointer; font: inherit; color: var(--ink); text-align: left; transition: background .15s, border-color .15s, transform .15s; }
+    .dock-tile .di { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: #eef5ff; color: var(--accent-deep, #0f7fd0); }
+    .dock-tile .dl { font-size: 12px; font-weight: 800; line-height: 1.15; }
+    .dock-tile .db { position: absolute; top: 9px; right: 10px; font-size: 10.5px; font-weight: 900; color: #fff; background: var(--accent); border-radius: 999px; padding: 2px 7px; }
+    .dock-tile.on { background: linear-gradient(150deg, var(--accent), var(--accent-2, #0f7fd0)); border-color: transparent; color: #fff; }
+    .dock-tile.on .di { background: rgba(255, 255, 255, .2); color: #fff; }
+    .dock-tile.on .db { background: #fff; color: var(--accent-deep, #0f7fd0); }
+    .dock-tile:active { transform: scale(.97); }
+    .dock-panel { margin-top: 10px; animation: dockIn .22s ease both; }
+    .dock-panel > section, .dock-panel > .offer-card { margin: 0; }
+    @keyframes dockIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { .dock-panel { animation: none; } }
     .pitem .meta { flex: 1; min-width: 0; }
     .pitem .meta strong { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pitem .meta .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--muted); }
@@ -600,6 +629,13 @@
     const PALETTE = ['#16a6e0', '#6366f1', '#8b5cf6', '#ec4899', '#e11d48', '#f97316', '#f59e0b', '#16a34a', '#0d9488', '#14161b'];
 
     const I = {
+      star: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>',
+      starFill: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>',
+      mega: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
+      bolt: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>',
+      rocket: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 15c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.8-.9.7-2.3-.1-3.1A2.2 2.2 0 0 0 5 15z"/><path d="m12 15-3-3a22 22 0 0 1 2-4A12.9 12.9 0 0 1 22 2c0 2.7-.8 7.5-6 11a22.4 22.4 0 0 1-4 2z"/><path d="M9 12H4s.6-3 2-4c1.6-1.1 5 0 5 0"/><path d="M12 15v5s3-.6 4-2c1.1-1.6 0-5 0-5"/></svg>',
+      gift: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5"/></svg>',
+      play: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3z" fill="currentColor"/></svg>',
       eyeOff: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17.7 17.7 0 0 1-3.2 4.1M6.6 6.6C3.9 8.3 2 12 2 12s3.6 7 10 7c1.9 0 3.5-.6 4.9-1.4"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
       eye: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
       copy: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>',
@@ -1602,6 +1638,19 @@
       setTimeout(() => area.focus(), 80);
     }
 
+    async function toggleFeatured(id) {
+      const p = state.products.find((x) => x.id === id);
+      if (!p) return;
+      const on = !(p.sort_order < 0);
+      try {
+        await api(`/api/me/products/${id}/featured`, { method: 'PATCH', body: { featured: on ? 1 : 0 } });
+        p.sort_order = on ? -1 : 0;
+        state.products.sort((a, b) => a.sort_order - b.sort_order || b.id - a.id);
+        toast(on ? '⭐ Em destaque no topo da vitrine' : 'Destaque removido');
+        const y = window.scrollY; render(); window.scrollTo(0, y);
+      } catch (err) { handleError(err); }
+    }
+
     async function toggleVisible(id) {
       const p = state.products.find((x) => x.id === id);
       if (!p) return;
@@ -2166,8 +2215,7 @@
         </section>
         ${tempPassNotice()}
         ${planBanner()}
-        ${withPerf ? startChecklist() : ''}
-        ${withPerf ? referralCard() : ''}`;
+        ${withPerf ? homeDock() : ''}`;
     }
 
     /* ---------------- Indique e ganhe ---------------- */
@@ -2176,15 +2224,15 @@
       const r = state.referral || {};
       return `Oi! 😊 Tô usando o *Vitrine App* pra montar minha vitrine de achadinhos num link só (Shopee, Mercado Livre e produtos da região).\n\nÉ bem fácil e dá pra testar *7 dias grátis*, sem cartão:\n${r.link}`;
     }
-    function referralCard() {
+    function referralCard(inDock = false) {
       const r = state.referral;
       if (!r || !r.link) return '';
       const stats = r.signups ? `<div class="ref-stats"><span><b>${nfmt(r.signups)}</b> ${r.signups === 1 ? 'cadastro' : 'cadastros'}</span><span><b>${nfmt(r.paid)}</b> ${r.paid === 1 ? 'assinou' : 'assinaram'}</span><span><b>${nfmt(r.paid)}</b> ${r.paid === 1 ? 'mês ganho' : 'meses ganhos'}</span></div>` : '';
-      if (ls.get(refHideKey())) {
+      if (!inDock && ls.get(refHideKey())) {
         return `<button type="button" class="ref-mini" data-act="ref-show"><span>🎁 <b>Indique e ganhe</b> 1 mês grátis</span><span class="go">Abrir ›</span></button>`;
       }
       return `<section class="ref-card" aria-label="Indique e ganhe">
-        <button type="button" class="plan-x" data-act="ref-hide" aria-label="Recolher indique e ganhe">✕</button>
+        ${inDock ? '' : '<button type="button" class="plan-x" data-act="ref-hide" aria-label="Recolher indique e ganhe">✕</button>'}
         <div class="ref-head"><span class="ref-emoji">🎁</span><div><strong>Indique e ganhe 1 mês grátis</strong>
           <small>Mande seu link para um amigo. Quando ele assinar um plano, você ganha <b>+1 mês</b> automaticamente.</small></div></div>
         <div class="ref-link">${esc(r.link.replace(/^https?:\/\//, ''))}</div>
@@ -2200,6 +2248,33 @@
       r.new_rewards = 0;
       api('/api/me/referral/seen', { method: 'POST', body: {} }).catch(() => {});
       await confirmDialog({ title: '🎉 Você ganhou!', text: `${n === 1 ? 'Um amigo assinou' : `${n} amigos assinaram`} pelo seu link de indicação. Somamos ${n === 1 ? '+1 mês grátis' : `+${n} meses grátis`} no seu plano. Obrigado por indicar! 💙`, ok: 'Oba!', cancel: '' }).catch(() => {});
+    }
+
+    /* ---------------- Atalhos do início (um painel aberto por vez) ---------------- */
+    const dockKey = () => `vitrine:dock:${state.storeId || ''}`;
+    function dockItems() {
+      const steps = checklistSteps();
+      const done = steps.filter((x) => x.done).length;
+      const showSteps = !!state.tenant && !isExpired() && !ls.get(stepKey('hide')) && !(done === steps.length && ls.get(stepKey('celebrated')));
+      const hasLearn = !!(state.config.tutorial || (state.config.tips || []).length);
+      return [
+        showSteps && { id: 'steps', icon: I.rocket, label: 'Primeiros passos', badge: `${done}/${steps.length}`, html: startChecklist },
+        { id: 'offer', icon: I.bolt, label: 'Gerar oferta', html: offerCard },
+        state.referral && state.referral.link && { id: 'ref', icon: I.gift, label: 'Indique e ganhe', html: () => referralCard(true) },
+        hasLearn && !wantsPicker() && { id: 'learn', icon: I.play, label: 'Aprender', html: learnBlock },
+      ].filter(Boolean);
+    }
+    function homeDock() {
+      const items = dockItems();
+      let open = ls.get(dockKey());
+      if (open === 'none') open = '';
+      else if (!items.some((x) => x.id === open)) open = items[0] ? items[0].id : '';
+      const cur = items.find((x) => x.id === open);
+      return `<section class="dock" aria-label="Atalhos">
+        <div class="dock-tiles" role="tablist">${items.map((x) => `<button type="button" class="dock-tile ${x.id === open ? 'on' : ''}" role="tab" aria-selected="${x.id === open}" data-act="dock" data-id="${x.id}">
+          <span class="di">${x.icon}</span><span class="dl">${esc(x.label)}</span>${x.badge ? `<span class="db">${esc(x.badge)}</span>` : ''}</button>`).join('')}</div>
+        ${cur ? `<div class="dock-panel" role="tabpanel">${cur.html()}</div>` : ''}
+      </section>`;
     }
 
     /* ---------------- Primeiros passos (checklist) ---------------- */
@@ -2249,9 +2324,12 @@
       const plat = PLATFORM[p.platform] || PLATFORM.proprio;
       const img = safeImg(p.image_url);
       const hidden = Number(p.is_visible) === 0;
-      return `<div class="pitem fade-in ${hidden ? 'hidden-item' : ''}">
-        <div class="thumb">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : I.box}</div>
-        <div class="meta"><strong>${p.sort_order < 0 ? '📌 ' : ''}${esc(p.title)}</strong>
+      const feat = p.sort_order < 0;
+      const off = Number(p.original_price) > Number(p.price) && Number(p.price) > 0 ? Math.round((1 - Number(p.price) / Number(p.original_price)) * 100) : 0;
+      return `<div class="pitem fade-in ${hidden ? 'hidden-item' : ''} ${feat ? 'is-feat' : ''}">
+        <div class="pmain">
+        <div class="thumb">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : I.box}${feat ? `<span class="tstar" title="Em destaque">${I.starFill}</span>` : ''}${off ? `<span class="toff">-${off}%</span>` : ''}</div>
+        <div class="meta"><strong>${esc(p.title)}</strong>
           <div class="line"><span class="badge ${plat.cls}">${esc(plat.label)}</span>
             ${p.price !== null && p.price !== undefined ? `<span class="price" ${Number(p.show_price) === 0 ? 'style="text-decoration:line-through;opacity:.6" title="Preço oculto na vitrine"' : ''}>${brl(p.price)}</span>` : '<span>sem preço</span>'}
             ${Number(p.show_price) === 0 ? '<span class="tag-hidden">preço oculto</span>' : ''}
@@ -2259,11 +2337,13 @@
             ${p.is_physical ? '<span>· 📍 entrega local</span>' : ''}
             ${Number(p.clicks) > 0 ? `<span>· 👆 ${nfmt(p.clicks)} ${Number(p.clicks) === 1 ? 'clique' : 'cliques'}</span>` : ''}
             ${hidden ? '<span class="tag-hidden">Oculto</span>' : ''}</div></div>
-        <div class="acts">
-          <button type="button" class="icon-btn" data-act="offer" data-id="${p.id}" aria-label="Gerar mensagem de oferta de ${esc(p.title)}" title="Mensagem de oferta">📣</button>
-          <button type="button" class="icon-btn" data-act="toggle-visible" data-id="${p.id}" aria-label="${hidden ? 'Mostrar na vitrine' : 'Ocultar da vitrine'}" title="${hidden ? 'Mostrar na vitrine' : 'Ocultar da vitrine'}">${hidden ? I.eyeOff : I.eye}</button>
-          <button type="button" class="icon-btn" data-act="edit" data-id="${p.id}" aria-label="Editar ${esc(p.title)}">${I.edit}</button>
-          <button type="button" class="icon-btn danger" data-act="delete" data-id="${p.id}" aria-label="Excluir ${esc(p.title)}">${I.trash}</button>
+        </div>
+        <div class="pacts">
+          <button type="button" class="pa ${feat ? 'on' : ''}" data-act="feature" data-id="${p.id}" aria-pressed="${feat}" title="Destaque no topo da vitrine (até 5)">${feat ? I.starFill : I.star}<span>${feat ? 'Destaque' : 'Destacar'}</span></button>
+          <button type="button" class="pa" data-act="offer" data-id="${p.id}" title="Mensagem de oferta">${I.mega}<span>Oferta</span></button>
+          <button type="button" class="pa" data-act="toggle-visible" data-id="${p.id}" title="${hidden ? 'Mostrar na vitrine' : 'Ocultar da vitrine'}">${hidden ? I.eyeOff : I.eye}<span>${hidden ? 'Mostrar' : 'Ocultar'}</span></button>
+          <button type="button" class="pa" data-act="edit" data-id="${p.id}" aria-label="Editar ${esc(p.title)}">${I.edit}<span>Editar</span></button>
+          <button type="button" class="pa danger" data-act="delete" data-id="${p.id}" aria-label="Excluir ${esc(p.title)}">${I.trash}</button>
         </div></div>`;
     }
 
@@ -2271,8 +2351,6 @@
       const q = state.query.trim().toLowerCase();
       const list = state.products.filter((p) => !q || `${p.title} ${p.description}`.toLowerCase().includes(q));
       return `${header(true)}
-        ${wantsPicker() ? '' : learnBlock()}
-        ${offerCard()}
         <div class="section-title"><h2>Seus produtos</h2>
           <div style="display:flex;gap:8px"><button type="button" class="btn btn-sm btn-ghost" data-act="bulk-open" ${isExpired() ? 'disabled' : ''}>⚡ Vários${bulkAllowed() ? '' : ' 🔒'}</button>
           <button type="button" class="btn btn-sm btn-primary" data-tab="new" ${isExpired() ? 'disabled' : ''}>+ Novo</button></div></div>
@@ -2502,7 +2580,7 @@
             </label>
             <div id="cityChipsWrap" ${p.is_physical ? '' : 'hidden'}>${citiesChips(p.delivery_cities)}</div>
             <div class="switch-row">
-              <div><strong>Fixar no topo</strong><small>Aparece primeiro na sua vitrine.</small></div>
+              <div><strong>⭐ Destaque da vitrine</strong><small>Entra no carrossel do topo e aparece primeiro (até 5 produtos).</small></div>
               <label class="switch"><input type="checkbox" name="pinned" ${p.sort_order < 0 ? 'checked' : ''}><span class="track"></span></label>
             </div>
           </div>
@@ -2622,6 +2700,10 @@
             <label class="field"><span>Seu nome</span><input class="input" name="owner_name" maxlength="80" value="${esc(t.owner_name)}"></label>
             <label class="field"><span>WhatsApp</span><input class="input" name="whatsapp" inputmode="tel" required value="${esc(fmtPhone(t.whatsapp))}" placeholder="(67) 99999-9999"></label>
           </div>
+          <label class="field"><span>Sobre a loja <small style="font-weight:500;color:var(--muted)">aparece no fim da vitrine</small></span>
+            <textarea class="input" name="bio" maxlength="200" rows="2" placeholder="Ex.: Achadinhos testados e aprovados, com entrega rápida 💙">${esc(t.bio || '')}</textarea></label>
+          <label class="field"><span>Instagram da loja <small style="font-weight:500;color:var(--muted)">opcional</small></span>
+            <input class="input" name="instagram" maxlength="60" placeholder="@minhaloja" value="${t.instagram ? '@' + esc(t.instagram) : ''}" autocapitalize="off" autocomplete="off" spellcheck="false"></label>
           <div class="field"><span class="field-label">Cor da vitrine</span>
             <div class="colors" id="colors">
               ${PALETTE.map((c) => `<button type="button" data-color="${c}" style="background:${c}" aria-label="Cor ${c}" aria-pressed="${c === t.theme_color}"></button>`).join('')}
@@ -2772,7 +2854,7 @@
 
     async function saveProfile(form) {
       const fd = new FormData(form);
-      const body = Object.fromEntries(['store_name', 'owner_name', 'whatsapp', 'avatar_url', 'cover_url', 'theme_color'].map((k) => [k, fd.get(k) || '']));
+      const body = Object.fromEntries(['store_name', 'owner_name', 'whatsapp', 'avatar_url', 'cover_url', 'theme_color', 'bio', 'instagram'].map((k) => [k, fd.get(k) || '']));
       const btn = $('#saveProfile');
       setBusy(btn, true);
       try {
@@ -3066,6 +3148,14 @@
       }
       if (act === 'delete') return deleteProduct(Number(t.dataset.id));
       if (act === 'clear-img') return setProductImage('');
+      if (act === 'dock') {
+        const cur = ls.get(dockKey());
+        const items = dockItems();
+        const isOpen = cur === t.dataset.id || (!cur && items[0] && items[0].id === t.dataset.id);
+        ls.set(dockKey(), isOpen ? 'none' : t.dataset.id);
+        const y = window.scrollY; render(); window.scrollTo(0, y); return;
+      }
+      if (act === 'feature') return toggleFeatured(Number(t.dataset.id));
       if (act === 'bulk-open') return openBulk();
       if (act === 'bulk-go') return runBulk();
       if (act === 'autofill') return autoFill(true);

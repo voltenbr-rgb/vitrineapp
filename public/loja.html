@@ -463,6 +463,95 @@
     }
     .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
+
+    /* ---------- Fotos uniformes: cada foto num quadro claro do mesmo tamanho ---------- */
+    .card-media .frame, .hl-media .frame {
+      position: relative; display: grid; place-items: center; overflow: hidden;
+      width: 80%; aspect-ratio: 1; border-radius: 20px; background: #fff;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, .10), 0 0 0 1px rgba(15, 23, 42, .04);
+      transition: transform .35s ease;
+    }
+    .card-media .frame img, .hl-media .frame img {
+      width: 90%; height: 90%; object-fit: contain; filter: none; transform: none; mix-blend-mode: multiply;
+    }
+    .card:hover .card-media .frame { transform: translateY(-2px) scale(1.02); }
+    .card:hover .card-media img { transform: none; }
+    .products.list .card-media .frame { width: 86%; border-radius: 16px; }
+    html.dark .card-media .frame, html.dark .hl-media .frame { background: #f5f6f8; box-shadow: 0 10px 24px rgba(0, 0, 0, .35); }
+
+    /* ---------- Selo de desconto grande ---------- */
+    .disc {
+      position: absolute; z-index: 3; right: 9px; bottom: 9px;
+      display: grid; place-items: center; line-height: 1; text-align: center;
+      min-width: 52px; padding: 7px 8px 6px; border-radius: 14px;
+      background: linear-gradient(135deg, #ff5a1f, #e11d48); color: #fff;
+      box-shadow: 0 8px 18px rgba(225, 29, 72, .35); transform: rotate(-4deg);
+    }
+    /* O selo grande já mostra a porcentagem: no card fica só o preço riscado. */
+    .card .old-price .off, .hl-price .off { display: none; }
+    .disc b { font-size: 17px; font-weight: 900; letter-spacing: -.03em; }
+    .disc small { font-size: 9px; font-weight: 900; letter-spacing: .08em; opacity: .9; margin-top: 1px; }
+    .products.list .disc { right: 6px; bottom: 6px; min-width: 44px; padding: 5px 6px; }
+    .products.list .disc b { font-size: 14px; }
+
+    /* ---------- Destaques (carrossel) ---------- */
+    .hl { margin: 6px 0 18px; }
+    .hl-head { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 10px; }
+    .hl-head h2 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
+    .hl-dots { display: flex; gap: 5px; }
+    .hl-dots i { width: 7px; height: 7px; border-radius: 99px; background: color-mix(in srgb, var(--ink) 18%, transparent); transition: width .25s, background .25s; }
+    .hl-dots i.on { width: 20px; background: var(--accent); }
+    .hl-track { display: grid; grid-auto-flow: column; grid-auto-columns: 86%; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 2px 2px 10px; margin: 0 -2px; overscroll-behavior-x: contain; }
+    .hl-track::-webkit-scrollbar { display: none; }
+    .hl-slide { scroll-snap-align: start; display: grid; grid-template-columns: 44% 1fr; gap: 12px; align-items: center; padding: 12px; border-radius: 24px; background: linear-gradient(150deg, color-mix(in srgb, var(--accent) 16%, var(--card)), var(--card) 70%); box-shadow: var(--shadow); min-width: 0; }
+    .hl-media { position: relative; display: grid; place-items: center; border: 0; padding: 0; background: none; cursor: pointer; aspect-ratio: 1; }
+    .hl-media .frame { width: 100%; }
+    .hl-media .disc { right: -4px; bottom: -4px; }
+    .hl-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+    .hl-plat { align-self: flex-start; font-size: 10.5px; font-weight: 800; color: var(--accent-deep); background: var(--accent-soft); padding: 3px 8px; border-radius: 99px; }
+    .hl-body h3 { margin: 0; font-size: 14.5px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .hl-price .price { font-size: 19px; }
+    .hl-price .price small { display: none; }
+    .hl-btn { align-self: flex-start; border: 0; cursor: pointer; font: inherit; font-weight: 800; font-size: 13px; color: var(--accent-ink); background: var(--accent); border-radius: 999px; padding: 9px 14px; box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 35%, transparent); }
+    .hl-btn:active { transform: scale(.97); }
+    @media (min-width: 720px) { .hl-track { grid-auto-columns: 48%; } }
+    @media (min-width: 1100px) { .hl-track { grid-auto-columns: 32%; } }
+
+    /* ---------- Animações leves ---------- */
+    .card.reveal { animation: none; opacity: 0; transform: translateY(18px) scale(.98); transition: opacity .5s ease var(--d, 0ms), transform .55s cubic-bezier(.2, .8, .2, 1) var(--d, 0ms); }
+    .card.reveal.in { opacity: 1; transform: none; }
+    .card.reveal.in .btn-buy { animation: nudge .6s ease calc(var(--d, 0ms) + .35s) both; }
+    @keyframes nudge { 0% { transform: scale(1); } 40% { transform: scale(1.05); } 70% { transform: scale(.98); } 100% { transform: scale(1); } }
+    .btn-buy { transition: transform .15s ease, filter .15s ease; }
+    .btn-buy:active { transform: scale(.96); }
+    .disc { animation: discPop .5s cubic-bezier(.2, 1.6, .4, 1) both; }
+    @keyframes discPop { from { transform: rotate(-4deg) scale(.4); opacity: 0; } to { transform: rotate(-4deg) scale(1); opacity: 1; } }
+
+    /* ---------- Sobre a loja ---------- */
+    .about { margin: 28px 0 0; padding: 18px; border-radius: 24px; background: var(--card); box-shadow: var(--shadow); }
+    .about-top { display: flex; align-items: center; gap: 12px; }
+    .about-av { width: 54px; height: 54px; border-radius: 18px; object-fit: cover; flex-shrink: 0; display: grid; place-items: center; font-weight: 900; font-size: 18px; color: var(--accent-ink); background: var(--accent); box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent); }
+    .about-top small { display: block; font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+    .about-top strong { display: block; font-size: 17px; letter-spacing: -.02em; }
+    .about p { margin: 12px 0 14px; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+    .about-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+    .ab { display: inline-flex; align-items: center; gap: 7px; padding: 10px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--chip); color: var(--ink); font: inherit; font-size: 13px; font-weight: 800; text-decoration: none; cursor: pointer; }
+    .ab.wa { background: var(--wa); border-color: transparent; color: #fff; }
+    .ab.ig { background: linear-gradient(45deg, #f58529, #dd2a7b 50%, #8134af); border-color: transparent; color: #fff; }
+    .about-trust { list-style: none; margin: 14px 0 0; padding: 12px 0 0; border-top: 1px dashed var(--line); display: grid; gap: 6px; font-size: 12.5px; color: var(--muted); }
+
+    /* ---------- Estilo Vidro: versões das novidades ---------- */
+    html.glass .card-media .frame, html.glass .hl-media .frame { background: #f4f4f6; box-shadow: 0 14px 30px rgba(0, 0, 0, .45); }
+    html.glass .hl-slide, html.glass .about { background: var(--card); border: 1px solid var(--glass-line); -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); }
+    html.glass .hl-slide { background: linear-gradient(150deg, color-mix(in srgb, var(--glow) 22%, transparent), rgba(255, 255, 255, .04) 70%); }
+    html.glass .hl-head h2 { font-weight: 500; }
+    html.glass .hl-plat { background: rgba(255, 255, 255, .1); color: var(--ink-2); }
+    html.glass .hl-btn { background: #fff; color: #111; box-shadow: none; }
+    html.glass .hl-dots i { background: rgba(255, 255, 255, .2); }
+    html.glass .hl-dots i.on { background: #fff; }
+    html.glass .ab:not(.wa):not(.ig) { background: rgba(255, 255, 255, .08); border-color: var(--glass-line); }
+    html.glass .disc { background: linear-gradient(135deg, var(--lime), color-mix(in srgb, var(--lime) 70%, #9bd400)); color: #141a05; box-shadow: 0 8px 22px color-mix(in srgb, var(--lime) 30%, transparent); }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
     }
@@ -952,8 +1041,21 @@
       }
       return `<button type="button" class="card-media" data-open="${p.id}" style="--halo:${esc(halo)}" aria-label="Ver detalhes de ${esc(p.title)}">
           <span class="halo"></span>
-          ${img ? `<img src="${esc(img)}" alt="" loading="lazy" decoding="async">` : `<span class="placeholder">${ICON.box}</span>`}
+          ${img ? `<span class="frame"><img src="${esc(img)}" alt="" loading="lazy" decoding="async"></span>` : `<span class="placeholder">${ICON.box}</span>`}
+          ${discHtml(p)}
         </button>`;
+    }
+
+    // Selo grande de desconto em cima da foto (só quando o preço aparece e há preço "De").
+    function discPct(p) {
+      const o = Number(p.original_price), v = Number(p.price);
+      if (!state.settings.show_prices || !(v > 0) || !(o > v)) return 0;
+      const pct = Math.round((1 - v / o) * 100);
+      return pct >= 3 ? pct : 0;
+    }
+    function discHtml(p) {
+      const pct = discPct(p);
+      return pct ? `<span class="disc" aria-label="${pct}% de desconto"><b>-${pct}%</b><small>OFF</small></span>` : '';
     }
 
     function tagHtml(p) {
@@ -965,7 +1067,7 @@
     function cardHtml(p, i) {
       const plat = PLATFORM[p.platform] || PLATFORM.proprio;
       const fav = state.favs.has(p.id);
-      return `<article class="card" style="animation-delay:${Math.min(i, 12) * 30}ms">
+      return `<article class="card reveal" style="--d:${(i % 2) * 70}ms">
         ${mediaHtml(p, i)}
         <span class="badge ${plat.cls}"><i>${plat.mark}</i>${esc(plat.short)}</span>
         ${tagHtml(p)}
@@ -985,6 +1087,22 @@
       </article>`;
     }
 
+    // Cards aparecem suavemente quando entram na tela.
+    let revealObs = null;
+    function observeReveal(root) {
+      const cards = root.querySelectorAll('.reveal:not(.in)');
+      if (!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        cards.forEach((c) => c.classList.add('in'));
+        return;
+      }
+      if (!revealObs) {
+        revealObs = new IntersectionObserver((entries) => {
+          entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add('in'); revealObs.unobserve(en.target); } });
+        }, { rootMargin: '0px 0px -6% 0px', threshold: 0.08 });
+      }
+      cards.forEach((c) => revealObs.observe(c));
+    }
+
     function renderProducts() {
       const box = $('#products');
       if (!box) return;
@@ -1000,6 +1118,7 @@
         box.innerHTML = `<div class="empty">${msg}</div>`;
       } else {
         box.innerHTML = list.map(cardHtml).join('');
+        observeReveal(box);
       }
       document.querySelectorAll('[data-filter]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.filter === state.filter)));
       document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
@@ -1017,8 +1136,9 @@
       const s = state.store;
       const avatar = safeUrl(s.avatar_url, true);
       const cover = safeUrl(s.cover_url, true);
-      // Cartão de apresentação mostra o produto em destaque (o 1º da ordem da loja: fixados primeiro), não a logo.
-      const featured = state.products.find((p) => safeUrl(p.image_url, true));
+      // Destaques escolhidos pelo lojista viram carrossel; sem destaques, o topo mostra o 1º produto com foto.
+      const highlights = state.products.filter((p) => p.sort_order < 0 && safeUrl(p.image_url, true)).slice(0, 5);
+      const featured = highlights.length ? null : state.products.find((p) => safeUrl(p.image_url, true));
       const heroImg = featured ? safeUrl(featured.image_url, true) : '';
       const showWa = state.settings.show_whatsapp !== 0 && !!s.whatsapp;
       const platforms = new Set(state.products.map((p) => p.platform));
@@ -1066,6 +1186,8 @@
             <span class="feat-tag">⭐ Destaque</span><img src="${esc(heroImg)}" alt=""></button></div>` : ''}
         </section>`}
 
+        ${highlightsHtml(highlights)}
+
         <nav class="chips" aria-label="Filtrar por categoria e origem">
           ${chips.map((c) => `<button type="button" class="chip" data-filter="${esc(c.id)}" aria-pressed="false">${c.icon}${esc(c.label)}</button>`).join('')}
         </nav>
@@ -1080,6 +1202,8 @@
 
         <section id="products" class="products grid" aria-label="Lista de produtos"></section>
 
+        ${aboutHtml(showWa)}
+
         <footer class="footer">Vitrine criada com <a href="/">Vitrine App</a> · Crie a sua grátis por 7 dias</footer>
       `;
       $('#bottomNav').hidden = false;
@@ -1087,6 +1211,81 @@
       $('[data-nav="contact"]').hidden = !showContact;
       $('#bottomNav').classList.toggle('no-contact', !showContact);
       renderProducts();
+      startCarousel();
+    }
+
+    function highlightsHtml(list) {
+      if (!list.length) return '';
+      return `<section class="hl" aria-label="Destaques da loja" aria-roledescription="carrossel">
+        <div class="hl-head"><h2>⭐ Destaques</h2>${list.length > 1 ? `<div class="hl-dots" aria-hidden="true">${list.map((_, i) => `<i class="${i ? '' : 'on'}"></i>`).join('')}</div>` : ''}</div>
+        <div class="hl-track" id="hlTrack">${list.map((p, i) => {
+          const pct = discPct(p);
+          return `<article class="hl-slide" aria-roledescription="slide" aria-label="${i + 1} de ${list.length}">
+            <button type="button" class="hl-media" data-open="${p.id}" aria-label="Ver ${esc(p.title)}">
+              <span class="frame"><img src="${esc(safeUrl(p.image_url, true))}" alt="" ${i ? 'loading="lazy"' : ''} decoding="async"></span>
+              ${pct ? `<span class="disc"><b>-${pct}%</b><small>OFF</small></span>` : ''}</button>
+            <div class="hl-body">
+              <span class="hl-plat">${esc((PLATFORM[p.platform] || PLATFORM.proprio).label)}</span>
+              <h3>${esc(p.title)}</h3>
+              <div class="hl-price">${priceBlock(p)}</div>
+              <button type="button" class="hl-btn" data-open="${p.id}">Ver oferta ›</button>
+            </div>
+          </article>`;
+        }).join('')}</div>
+      </section>`;
+    }
+
+    let carouselTimer = null;
+    function startCarousel() {
+      clearInterval(carouselTimer);
+      const track = $('#hlTrack');
+      if (!track || track.children.length < 2) return;
+      const dots = [...document.querySelectorAll('.hl-dots i')];
+      const index = () => Math.round(track.scrollLeft / Math.max(1, track.children[0].getBoundingClientRect().width + 12));
+      let paused = false;
+      const pause = () => { paused = true; clearTimeout(track._resume); track._resume = setTimeout(() => { paused = false; }, 6000); };
+      track.addEventListener('pointerdown', pause, { passive: true });
+      track.addEventListener('touchstart', pause, { passive: true });
+      track.addEventListener('scroll', () => {
+        const i = index();
+        dots.forEach((d, k) => d.classList.toggle('on', k === i));
+      }, { passive: true });
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      carouselTimer = setInterval(() => {
+        if (paused || document.hidden || !document.body.contains(track)) return;
+        const next = (index() + 1) % track.children.length;
+        track.scrollTo({ left: track.children[next].offsetLeft - track.children[0].offsetLeft, behavior: 'smooth' });
+      }, 4500);
+    }
+
+    // Rodapé "Sobre a loja": quem vende, redes e um selo de confiança.
+    function aboutHtml(showWa) {
+      const s = state.store;
+      const avatar = safeUrl(s.avatar_url, true);
+      const mode = state.settings.store_mode;
+      const bio = String(s.bio || '').trim() || (mode === 'local'
+        ? 'Produtos com entrega na região. Faça seu pedido pelo WhatsApp que a gente combina tudo com você.'
+        : 'Seleção de achadinhos com bom preço, escolhidos a dedo para você economizar.');
+      const ig = /^[a-z0-9._]{1,30}$/.test(s.instagram || '') ? s.instagram : '';
+      const hasAff = state.products.some(isAffiliate);
+      const hasLocal = state.products.some((p) => !isAffiliate(p));
+      const trust = [
+        hasAff ? '🔒 Os links levam direto ao site oficial da Shopee e do Mercado Livre' : '',
+        hasLocal && s.whatsapp ? '💬 Pedidos combinados direto com a loja pelo WhatsApp' : '',
+      ].filter(Boolean);
+      return `<section class="about" aria-label="Sobre a loja">
+        <div class="about-top">
+          ${avatar ? `<img class="about-av" src="${esc(avatar)}" alt="" loading="lazy">` : `<div class="about-av" aria-hidden="true">${esc(initials(s.store_name))}</div>`}
+          <div><small>Sobre a loja</small><strong>${esc(s.store_name)}</strong></div>
+        </div>
+        <p>${esc(bio)}</p>
+        <div class="about-btns">
+          ${showWa ? `<a class="ab wa" href="${esc(waLink(s.whatsapp, `Olá! Vim pela sua vitrine ${s.store_name} 😊`))}" target="_blank" rel="noopener noreferrer">${ICON.wa}WhatsApp</a>` : ''}
+          ${ig ? `<a class="ab ig" href="https://instagram.com/${encodeURIComponent(ig)}" target="_blank" rel="noopener noreferrer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>@${esc(ig)}</a>` : ''}
+          <button type="button" class="ab" data-about-share>${ICON.external}Compartilhar loja</button>
+        </div>
+        ${trust.length ? `<ul class="about-trust">${trust.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+      </section>`;
     }
 
     // Faixa de números do topo (aparece no estilo Vidro).
@@ -1181,6 +1380,7 @@
       if (t.matches('[data-close]')) return closeSheet();
       if (t.matches('a.btn-buy')) hit(t.classList.contains('wa') ? 'order' : 'click', t.dataset.pid);
       if (t.dataset.open) return openProduct(Number(t.dataset.open));
+      if (t.matches('[data-about-share]')) return shareStore();
       if (t.dataset.add) {
         hit('click', t.dataset.add);
         const id = Number(t.dataset.add);

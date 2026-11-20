@@ -34,6 +34,7 @@
  *   POST   /api/me/products
  *   PUT    /api/me/products/:id
  *   PATCH  /api/me/products/:id/visibility { is_visible }
+ *   PATCH  /api/me/products/:id/featured   { featured }  (máx. 5 destaques)
  *   DELETE /api/me/products/:id
  *
  * Rotas Master (X-Master-Password)
@@ -188,6 +189,15 @@ function text(value, max, field, { required = false } = {}) {
   if (required && !v) throw new HttpError(400, `Preencha o campo "${field}".`);
   if (v.length > max) throw new HttpError(400, `"${field}" deve ter no máximo ${max} caracteres.`);
   return v;
+}
+
+// @ do Instagram: aceita "@loja", "loja" ou o link do perfil; guarda só o nome de usuário.
+function instagramHandle(v) {
+  let h = String(v || '').trim();
+  if (!h) return '';
+  h = h.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?#].*$/, '').replace(/^@/, '');
+  if (!/^[a-zA-Z0-9._]{1,30}$/.test(h)) throw new HttpError(400, 'Instagram inválido. Use só o @ da loja, ex.: @minhaloja');
+  return h.toLowerCase();
 }
 
 // Nomes aparecem em várias telas: não aceitam caracteres de HTML (defesa extra contra XSS).
@@ -417,6 +427,8 @@ function ensureSchema(env) {
       if (!sc.has('offer_template')) alters.push('ALTER TABLE tenant_settings ADD COLUMN offer_template INTEGER NOT NULL DEFAULT 1');
       if (!tc.has('account_id')) alters.push('ALTER TABLE tenants ADD COLUMN account_id INTEGER');
       if (!tc.has('cover_url')) alters.push('ALTER TABLE tenants ADD COLUMN cover_url TEXT');
+      if (!tc.has('bio')) alters.push("ALTER TABLE tenants ADD COLUMN bio TEXT NOT NULL DEFAULT ''");
+      if (!tc.has('instagram')) alters.push("ALTER TABLE tenants ADD COLUMN instagram TEXT NOT NULL DEFAULT ''");
       if (!sc.has('theme_mode')) alters.push("ALTER TABLE tenant_settings ADD COLUMN theme_mode TEXT NOT NULL DEFAULT 'light'");
       if (!sc.has('card_tone')) alters.push("ALTER TABLE tenant_settings ADD COLUMN card_tone TEXT NOT NULL DEFAULT 'white'");
       if (!sc.has('show_whatsapp')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_whatsapp INTEGER NOT NULL DEFAULT 1');
@@ -1667,6 +1679,8 @@ function tenantPublic(t) {
     whatsapp: t.whatsapp,
     avatar_url: t.avatar_url,
     cover_url: t.cover_url || null,
+    bio: t.bio || '',
+    instagram: t.instagram || '',
     theme_color: t.theme_color,
     status: t.status,
     trial_ends_at: t.trial_ends_at,
@@ -2068,6 +2082,27 @@ async function handleVisibility(request, env, tenant, rawId) {
   return json({ product: { ...current, is_visible: visible } });
 }
 
+// Destaque: aparece no carrossel do topo da vitrine e primeiro na lista (no máximo 5 por loja).
+const MAX_FEATURED = 5;
+async function assertFeaturedRoom(env, tenant) {
+  const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM products WHERE tenant_id = ? AND sort_order < 0').bind(tenant.id).first();
+  if (Number(row && row.n) >= MAX_FEATURED) {
+    throw new HttpError(400, `Você já tem ${MAX_FEATURED} destaques. Tire o destaque de um produto para colocar outro.`, { code: 'featured_limit' });
+  }
+}
+
+async function handleFeatured(request, env, tenant, rawId) {
+  assertCanEdit(tenant);
+  const current = await getOwnedProduct(env, tenant, rawId);
+  const body = await readJson(request);
+  const on = bool01(body.featured) === 1;
+  if (on && current.sort_order >= 0) await assertFeaturedRoom(env, tenant);
+  const order = on ? -1 : 0;
+  await env.DB.prepare('UPDATE products SET sort_order = ?, updated_at = ? WHERE id = ? AND tenant_id = ?')
+    .bind(order, nowIso(), current.id, tenant.id).run();
+  return json({ product: { ...current, sort_order: order } });
+}
+
 async function handleMe(request, env, tenant) {
   await touchPresence(env, tenant.account_id).catch(() => {});
   const plan = effectivePlan(tenant.account);
@@ -2136,13 +2171,15 @@ async function handleProfile(request, env, tenant) {
     avatar_url: httpUrl(body.avatar_url, 'Foto/logo', { allowData: true }),
     cover_url: body.cover_url === undefined ? tenant.cover_url || null : httpUrl(body.cover_url, 'Foto de capa', { allowData: true }),
     theme_color: color(body.theme_color, tenant.theme_color),
+    bio: body.bio === undefined ? tenant.bio || '' : text(body.bio, 200, 'Sobre a loja'),
+    instagram: body.instagram === undefined ? tenant.instagram || '' : instagramHandle(body.instagram),
   };
   const ts = nowIso();
   await env.DB.batch([
     env.DB.prepare(
-      `UPDATE tenants SET store_name = ?, whatsapp = ?, avatar_url = ?, cover_url = ?, theme_color = ?, updated_at = ?
+      `UPDATE tenants SET store_name = ?, whatsapp = ?, avatar_url = ?, cover_url = ?, theme_color = ?, bio = ?, instagram = ?, updated_at = ?
        WHERE id = ?`,
-    ).bind(data.store_name, data.whatsapp, data.avatar_url, data.cover_url, data.theme_color, ts, tenant.id),
+    ).bind(data.store_name, data.whatsapp, data.avatar_url, data.cover_url, data.theme_color, data.bio, data.instagram, ts, tenant.id),
     // "Seu nome" é da conta: vale para todas as lojas.
     env.DB.prepare('UPDATE tenants SET owner_name = ? WHERE account_id = ?').bind(data.owner_name, tenant.account_id),
     env.DB.prepare('UPDATE accounts SET owner_name = ?, updated_at = ? WHERE id = ?').bind(data.owner_name, ts, tenant.account_id),
@@ -2249,6 +2286,7 @@ async function getOwnedProduct(env, tenant, rawId) {
 async function handleCreateProduct(request, env, tenant) {
   assertCanEdit(tenant);
   const p = productInput(await readJson(request));
+  if (p.sort_order < 0) await assertFeaturedRoom(env, tenant);
   return json({ product: await insertProduct(env, tenant, p) }, 201);
 }
 
@@ -2309,6 +2347,7 @@ async function handleUpdateProduct(request, env, tenant, rawId) {
   assertCanEdit(tenant);
   const current = await getOwnedProduct(env, tenant, rawId);
   const p = productInput(await readJson(request));
+  if (p.sort_order < 0 && current.sort_order >= 0) await assertFeaturedRoom(env, tenant);
   const row = await env.DB.prepare(
     `UPDATE products SET title = ?, description = ?, price = ?, image_url = ?, affiliate_link = ?, platform = ?,
                          is_physical = ?, delivery_cities = ?, sort_order = ?, show_price = ?, original_price = ?, category = ?, updated_at = ?,
@@ -3185,6 +3224,7 @@ async function routeApi(request, env, path, ctx = null) {
     if (path === '/api/me/upload' && method === 'POST') return handleUpload(request, env, tenant);
     if (path === '/api/me/products' && method === 'POST') return handleCreateProduct(request, env, tenant);
     if (path === '/api/me/products/from-link' && method === 'POST') return handleProductFromLink(request, env, tenant);
+    if ((m = path.match(/^\/api\/me\/products\/(\d+)\/featured$/)) && method === 'PATCH') return handleFeatured(request, env, tenant, m[1]);
     if ((m = path.match(/^\/api\/me\/products\/(\d+)\/visibility$/)) && method === 'PATCH') {
       return handleVisibility(request, env, tenant, m[1]);
     }
