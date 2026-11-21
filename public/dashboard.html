@@ -2708,13 +2708,13 @@
                 <span class="sp-card"><span class="sp-prev glass" style="--c:${esc(state.tenant.theme_color || '#16a6e0')}"><i></i><b></b><b></b></span><span class="sp-name">Vidro</span><small>Escuro, com brilho e vidro fosco</small></span></label>
               <label class="sp-wide ${landingAllowed() ? '' : 'locked'}"><input type="radio" name="store_style" value="landing" data-setting="store_style" ${s.store_style === 'landing' ? 'checked' : ''} ${landingAllowed() ? '' : 'disabled'}>
                 <span class="sp-card"><span class="sp-prev landing" style="--c:${esc(state.tenant.theme_color || '#16a6e0')}"><span class="lz"></span><span class="lz l2"></span><span class="lt">Sua loja</span><span class="lf"></span></span>
-                  <span class="sp-name">Landing <em>Completo</em></span><small>Abre como um site: apresentação em tela cheia com efeitos de luz, vantagens e a vitrine logo abaixo.</small>
+                  <span class="sp-name">Landing <em>Completo</em></span><small>Abre como um site: apresentação em tela cheia com efeitos de luz, vantagens e a vitrine logo abaixo. Funciona no tema claro ou escuro.</small>
                   ${landingAllowed() ? '' : '<span class="sp-lock" data-act="landing-locked">🔒 Liberar no plano Completo</span>'}</span></label>
             </div>
           </div>
           <div class="switch-row landing-only" ${s.store_style === 'landing' ? '' : 'hidden'}><div><strong>Apresentação no início</strong><small>Ligado: a vitrine abre com a tela de apresentação e a pessoa rola para ver os produtos. Desligado: abre direto nos produtos, mantendo o visual Landing.</small></div>
             <label class="switch"><input type="checkbox" data-setting="landing_intro" ${s.landing_intro !== 0 ? 'checked' : ''}><span class="track"></span></label></div>
-          <div class="switch-row glass-off" style="display:block" ${s.store_style !== 'classic' ? 'hidden' : ''}>
+          <div class="switch-row theme-row" style="display:block" ${s.store_style === 'glass' ? 'hidden' : ''}>
             <div style="margin-bottom:10px"><strong>Tema</strong></div>
             <div class="seg two">
               <label><input type="radio" name="theme_mode" value="light" data-setting="theme_mode" ${s.theme_mode !== 'dark' ? 'checked' : ''}><span class="opt">☀️ Claro</span></label>
@@ -3277,6 +3277,7 @@
       if (el.dataset && el.dataset.setting === 'store_style') {
         document.querySelectorAll('.glass-off').forEach((x) => { x.hidden = el.value !== 'classic'; });
         document.querySelectorAll('.landing-only').forEach((x) => { x.hidden = el.value !== 'landing'; });
+        document.querySelectorAll('.theme-row').forEach((x) => { x.hidden = el.value === 'glass'; });
       }
       if (el.dataset && el.dataset.setting) saveSettings();
       if (el.id === 'imgFile' && el.files[0]) { await handleProductImage(el.files[0]); el.value = ''; }

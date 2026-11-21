@@ -578,29 +578,9 @@
     .lp-cover { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: .32; filter: saturate(1.2);
       -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent 85%); mask-image: linear-gradient(180deg, #000 30%, transparent 85%); }
     .lp-glow { position: absolute; border-radius: 50%; pointer-events: none; }
-    .lp-glow.g1 { width: 90vmax; height: 90vmax; left: 35%; top: -45vmax; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 55%, transparent), transparent 60%); animation: lpDrift 14s ease-in-out infinite alternate; }
-    .lp-glow.g2 { width: 70vmax; height: 70vmax; left: -35vmax; top: 30%; background: radial-gradient(circle, color-mix(in srgb, var(--lp-hot) 40%, transparent), transparent 60%); animation: lpDrift 18s ease-in-out infinite alternate-reverse; }
-    .lp-glow.g3 { width: 50vmax; height: 50vmax; right: -25vmax; bottom: -20vmax; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 35%, transparent), transparent 60%); animation: lpDrift 16s ease-in-out infinite alternate; }
-    @keyframes lpDrift { to { transform: translate3d(-6%, 5%, 0) scale(1.08); } }
-    /* Lasers: feixes finos que cruzam a tela */
-    .lp-lasers { position: absolute; inset: 0; overflow: hidden; }
-    .lp-lasers i {
-      position: absolute; left: -40%; width: 180%; height: 2px; top: 0;
-      background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 70%, transparent) 30%, #fff 50%, color-mix(in srgb, var(--accent) 70%, transparent) 70%, transparent);
-      box-shadow: 0 0 10px var(--accent), 0 0 26px color-mix(in srgb, var(--accent) 70%, transparent);
-      opacity: 0; transform-origin: center; animation: lpLaser 7s cubic-bezier(.45, 0, .2, 1) infinite;
-    }
-    .lp-lasers i:nth-child(1) { --r: -16deg; animation-delay: 0s; }
-    .lp-lasers i:nth-child(2) { --r: 12deg; animation-delay: 1.4s; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--lp-hot) 75%, transparent) 30%, #fff 50%, color-mix(in srgb, var(--lp-hot) 75%, transparent) 70%, transparent); box-shadow: 0 0 10px var(--lp-hot), 0 0 26px var(--lp-hot); }
-    .lp-lasers i:nth-child(3) { --r: -6deg; animation-delay: 2.8s; height: 1px; }
-    .lp-lasers i:nth-child(4) { --r: 22deg; animation-delay: 4.2s; }
-    .lp-lasers i:nth-child(5) { --r: -26deg; animation-delay: 5.6s; height: 1px; }
-    @keyframes lpLaser {
-      0% { opacity: 0; transform: translateY(-10vh) rotate(var(--r)); }
-      12% { opacity: .95; }
-      55% { opacity: .7; }
-      100% { opacity: 0; transform: translateY(112vh) rotate(var(--r)); }
-    }
+    .lp-glow.g1 { width: 90vmax; height: 90vmax; left: 35%; top: -45vmax; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 55%, transparent), transparent 60%); }
+    .lp-glow.g2 { width: 70vmax; height: 70vmax; left: -35vmax; top: 30%; background: radial-gradient(circle, color-mix(in srgb, var(--lp-hot) 40%, transparent), transparent 60%); }
+    .lp-glow.g3 { width: 50vmax; height: 50vmax; right: -25vmax; bottom: -20vmax; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 35%, transparent), transparent 60%); }
     /* Chão de grade em perspectiva andando */
     .lp-floor {
       position: absolute; left: -50%; right: -50%; bottom: -8%; height: 52%;
@@ -609,9 +589,8 @@
         repeating-linear-gradient(0deg, color-mix(in srgb, var(--accent) 55%, transparent) 0 1px, transparent 1px 56px);
       transform: perspective(380px) rotateX(64deg); transform-origin: 50% 100%;
       -webkit-mask-image: linear-gradient(0deg, #000 10%, transparent 85%); mask-image: linear-gradient(0deg, #000 10%, transparent 85%);
-      opacity: .38; animation: lpFloor 2.6s linear infinite;
+      opacity: .34;
     }
-    @keyframes lpFloor { to { background-position: 0 56px, 0 56px; } }
     .lp-stars { position: absolute; inset: 0; opacity: .55;
       background-image: radial-gradient(1.5px 1.5px at 12% 22%, #fff, transparent), radial-gradient(1px 1px at 78% 14%, #fff, transparent),
         radial-gradient(1.5px 1.5px at 64% 38%, #fff, transparent), radial-gradient(1px 1px at 30% 48%, #fff, transparent),
@@ -693,10 +672,53 @@
     }
     @media (prefers-reduced-motion: reduce) {
       .lp-hero *, .lp-hero *::before, .lp-hero *::after, html.landing .disc::after, .lp-cta.primary::after { animation: none !important; }
-      .lp-lasers i { opacity: .5; transform: translateY(30vh) rotate(var(--r)); }
-      .lp-lasers i:nth-child(2) { transform: translateY(55vh) rotate(var(--r)); }
-      .lp-lasers i:nth-child(n+3) { display: none; }
     }
+
+
+    /* ---------- Landing: leveza para qualquer celular ---------- */
+    .lp-hero.lp-paused *, .lp-hero.lp-paused *::before, .lp-hero.lp-paused *::after { animation-play-state: paused !important; }
+    html.landing body::before { filter: none; }
+    html.landing .card, html.landing .lp-perk, html.landing .hl-slide, html.landing .about, html.landing .chip, html.landing .search, html.landing .icon-btn, html.landing .filter-btn, html.landing .view-toggle {
+      -webkit-backdrop-filter: none; backdrop-filter: none;
+    }
+    html.landing.glass .card, html.landing.glass .hl-slide, html.landing.glass .about { background: rgba(255, 255, 255, .055); }
+    html.landing.glass .lp-perk { background: rgba(255, 255, 255, .05); }
+    html.lite .lp-float, html.lite .lp-stars, html.lite .lp-brand::before, html.lite .lp-grad, html.lite .lp-cta.primary::after,
+    html.lite.landing .disc::after, html.lite .lp-text, html.lite .lp-show { animation: none !important; }
+    html.lite .lp-float, html.lite .lp-kicker, html.lite .lp-cta.ghost { -webkit-backdrop-filter: none; backdrop-filter: none; }
+    html.lite .lp-float { background: rgba(30, 30, 40, .85); }
+
+    /* ---------- Landing clara ---------- */
+    html.landing:not(.dark) { --lp-hot: color-mix(in srgb, var(--accent) 55%, #ff4fd8); }
+    html.landing:not(.dark) body { background: #f4f6fb; }
+    html.landing:not(.dark) .lp-hero { color: var(--ink); }
+    html.landing:not(.dark) .lp-bg { background: radial-gradient(120% 80% at 50% 0%, #ffffff, #eef1f8 70%); }
+    html.landing:not(.dark) .lp-cover { opacity: .2; }
+    html.landing:not(.dark) .lp-glow.g1 { background: radial-gradient(circle, color-mix(in srgb, var(--accent) 30%, transparent), transparent 60%); }
+    html.landing:not(.dark) .lp-glow.g2 { background: radial-gradient(circle, color-mix(in srgb, var(--lp-hot) 20%, transparent), transparent 60%); }
+    html.landing:not(.dark) .lp-glow.g3 { background: radial-gradient(circle, color-mix(in srgb, var(--accent) 18%, transparent), transparent 60%); }
+    html.landing:not(.dark) .lp-floor { opacity: .2; }
+    html.landing:not(.dark) .lp-stars { display: none; }
+    html.landing:not(.dark) .lp-brand { box-shadow: 0 10px 30px color-mix(in srgb, var(--accent) 35%, transparent); }
+    html.landing:not(.dark) .lp-brand img, html.landing:not(.dark) .lp-brand span { background: #fff; color: var(--ink); }
+    html.landing:not(.dark) .lp-kicker { color: var(--ink-2); background: rgba(255, 255, 255, .8); border-color: rgba(15, 23, 42, .08); }
+    html.landing:not(.dark) .lp-grad { background-image: linear-gradient(100deg, var(--accent-deep) 0%, var(--accent) 30%, var(--lp-hot) 55%, var(--accent-deep) 80%); }
+    html.landing:not(.dark) .lp-sub { color: var(--ink-2); }
+    html.landing:not(.dark) .lp-cta.primary { background: var(--ink); color: #fff; box-shadow: 0 14px 34px color-mix(in srgb, var(--accent) 30%, transparent); }
+    html.landing:not(.dark) .lp-cta.ghost { color: var(--ink); background: #fff; border-color: rgba(15, 23, 42, .1); }
+    html.landing:not(.dark) .lp-float { background: rgba(255, 255, 255, .8); border-color: rgba(15, 23, 42, .06); box-shadow: 0 20px 40px rgba(15, 23, 42, .14); }
+    html.landing:not(.dark) .lp-float .frame { background: #fff; }
+    html.landing:not(.dark) .lp-fprice { color: var(--accent-deep); }
+    html.landing:not(.dark) .lp-perk { background: #fff; border-color: rgba(15, 23, 42, .06); box-shadow: 0 8px 24px rgba(15, 23, 42, .06); }
+    html.landing:not(.dark) .lp-scroll { border-color: rgba(15, 23, 42, .3); }
+    html.landing:not(.dark) .lp-scroll span { background: var(--ink); }
+    html.landing:not(.dark) .lp-text .hero-stats { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; padding: 12px 10px; border-radius: 22px; background: rgba(255, 255, 255, .85); border: 1px solid rgba(15, 23, 42, .06); box-shadow: 0 8px 24px rgba(15, 23, 42, .06); }
+    html.landing:not(.dark) .hero-stats div { min-width: 0; padding: 0 6px; }
+    html.landing:not(.dark) .hero-stats div + div { border-left: 1px solid var(--line); }
+    html.landing:not(.dark) .hero-stats b { display: block; font-size: 24px; font-weight: 600; letter-spacing: -.03em; line-height: 1.1; }
+    html.landing:not(.dark) .hero-stats span { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); margin-top: 3px; white-space: nowrap; }
+    html.landing:not(.dark) .hero-stats span i { width: 7px; height: 7px; border-radius: 50%; background: var(--d, var(--accent)); }
+    html.landing:not(.dark) .card:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), 0 18px 40px color-mix(in srgb, var(--accent) 16%, transparent); }
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
@@ -1364,7 +1386,14 @@
       $('#bottomNav').classList.toggle('no-contact', !showContact);
       renderProducts();
       startCarousel();
-      if (landing) observeReveal(app);
+      if (landing) {
+        observeReveal(app);
+        const hero = app.querySelector('.lp-hero');
+        if (hero && 'IntersectionObserver' in window) {
+          // Fora da tela, as animações da apresentação param (economiza bateria e processamento).
+          new IntersectionObserver(([en]) => hero.classList.toggle('lp-paused', !en.isIntersecting), { threshold: 0 }).observe(hero);
+        }
+      }
     }
 
     /* ---------- Estilo Landing (plano Completo) ---------- */
@@ -1381,7 +1410,6 @@
         <div class="lp-bg" aria-hidden="true">
           ${cover ? `<div class="lp-cover" style="background-image:url('${esc(cover)}')"></div>` : ''}
           <div class="lp-glow g1"></div><div class="lp-glow g2"></div><div class="lp-glow g3"></div>
-          <div class="lp-lasers"><i></i><i></i><i></i><i></i><i></i></div>
           <div class="lp-floor"></div>
           <div class="lp-stars"></div>
         </div>
@@ -1684,12 +1712,18 @@
         }
         state.view = storage.get(`vitrine:view:${state.slug}`) || state.settings.view_mode || 'grid';
         const landing = state.settings.store_style === 'landing';
-        const glass = landing || state.settings.store_style === 'glass';
+        const wantDark = state.settings.theme_mode === 'dark';
+        // Landing segue o tema escolhido: escuro usa a base de vidro; claro usa a base clássica.
+        const glass = state.settings.store_style === 'glass' || (landing && wantDark);
         document.documentElement.classList.toggle('landing', landing);
         document.documentElement.classList.toggle('glass', glass);
-        document.documentElement.classList.toggle('dark', glass || state.settings.theme_mode === 'dark');
-        document.documentElement.classList.toggle('tinted', !glass && state.settings.card_tone === 'tinted');
+        document.documentElement.classList.toggle('dark', glass || wantDark);
+        // Celular mais simples: menos animação para continuar fluido.
+        const lite = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || (navigator.deviceMemory && navigator.deviceMemory <= 3);
+        document.documentElement.classList.toggle('lite', !!lite);
+        document.documentElement.classList.toggle('tinted', !glass && !landing && state.settings.card_tone === 'tinted');
         if (glass) { const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = landing ? '#06060a' : '#0c0c10'; }
+        else if (landing) { const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = '#f4f6fb'; }
         renderStore();
 
         const pid = Number(new URLSearchParams(location.search).get('p'));

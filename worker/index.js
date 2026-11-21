@@ -2502,7 +2502,8 @@ async function createStore(env, account, body) {
       ),
       // Só afiliados: começa sem o botão de WhatsApp (dá para ligar depois).
       env.DB.prepare(
-        'INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, store_mode, show_whatsapp) VALUES (?, 1, 1, ?, ?, ?)',
+        // Lojas novas já nascem no estilo Landing escuro (o teste grátis libera o Completo); no Básico cai para o Vidro.
+        "INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, store_mode, show_whatsapp, store_style, theme_mode) VALUES (?, 1, 1, ?, ?, ?, 'landing', 'dark')",
       ).bind(data.id, 'grid', mode, mode === 'affiliate' ? 0 : 1),
     ]);
   } catch (err) {
