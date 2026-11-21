@@ -435,6 +435,7 @@ function ensureSchema(env) {
       if (!sc.has('store_mode')) alters.push("ALTER TABLE tenant_settings ADD COLUMN store_mode TEXT NOT NULL DEFAULT 'mixed'");
       if (!sc.has('show_tags')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_tags INTEGER NOT NULL DEFAULT 1');
       if (!sc.has('store_style')) alters.push("ALTER TABLE tenant_settings ADD COLUMN store_style TEXT NOT NULL DEFAULT 'classic'");
+      if (!sc.has('landing_intro')) alters.push('ALTER TABLE tenant_settings ADD COLUMN landing_intro INTEGER NOT NULL DEFAULT 1');
       if (!sc.has('offer_templates')) alters.push("ALTER TABLE tenant_settings ADD COLUMN offer_templates TEXT NOT NULL DEFAULT ''");
       for (const sql of alters) {
         try {
@@ -1628,6 +1629,7 @@ async function loadPublicStore(env, id) {
   const merged = mergeStore(t, a);
   // Loja pausada pelo limite do plano aparece como indisponível.
   if (merged.status !== 'expired' && await storeOverLimit(env, a, t.id)) merged.status = 'expired';
+  merged.effective_plan = effectivePlan(a);
   return merged;
 }
 
@@ -1706,7 +1708,7 @@ function tenantPrivate(t) {
 
 const DEFAULT_SETTINGS = {
   show_prices: 1, show_stock_warning: 1, view_mode: 'grid', show_banner: 1, share_message: '', offer_template: 1,
-  theme_mode: 'light', card_tone: 'white', offer_templates: '', show_whatsapp: 1, store_mode: 'mixed', show_tags: 1, store_style: 'classic',
+  theme_mode: 'light', card_tone: 'white', offer_templates: '', show_whatsapp: 1, store_mode: 'mixed', show_tags: 1, store_style: 'classic', landing_intro: 1,
 };
 // Tipo da loja: só afiliados, só catálogo da região (com carrinho) ou os dois.
 const STORE_MODES = ['affiliate', 'local', 'mixed'];
@@ -1715,7 +1717,7 @@ const storeMode = (v) => (STORE_MODES.includes(v) ? v : 'mixed');
 async function loadSettings(env, tenantId) {
   const row = await env.DB.prepare(
     `SELECT show_prices, show_stock_warning, view_mode, show_banner, share_message, offer_template,
-            theme_mode, card_tone, offer_templates, show_whatsapp, store_mode, show_tags, store_style FROM tenant_settings WHERE tenant_id = ?`,
+            theme_mode, card_tone, offer_templates, show_whatsapp, store_mode, show_tags, store_style, landing_intro FROM tenant_settings WHERE tenant_id = ?`,
   ).bind(tenantId).first();
   return row ? { ...DEFAULT_SETTINGS, ...row } : { ...DEFAULT_SETTINGS };
 }
@@ -1913,6 +1915,8 @@ async function handleStore(request, env, rawId, ctx = null) {
   delete settings.share_message;
   delete settings.offer_template;
   delete settings.offer_templates;
+  // Estilo Landing é do plano Completo (e do teste): se o plano mudou, a vitrine volta ao Vidro.
+  if (settings.store_style === 'landing' && tenant.effective_plan && tenant.effective_plan !== 'complete') settings.store_style = 'glass';
 
   // Preço oculto (geral ou do produto): o valor nem sai do servidor.
   const base = publicBase(request, env);
@@ -1931,8 +1935,8 @@ async function handleStore(request, env, rawId, ctx = null) {
   return json({ store, settings, products: visibleProducts });
 }
 
-// Estilos de vitrine: Clássico e Vidro (escuro, cards de vidro fosco com brilho na cor da loja).
-const STORE_STYLES = ['classic', 'glass'];
+// Estilos de vitrine: Clássico, Vidro (escuro, vidro fosco) e Landing (Completo: apresentação em tela cheia + vitrine).
+const STORE_STYLES = ['classic', 'glass', 'landing'];
 
 // Selos da vitrine: "Mais clicado" (os campeões, mínimo 5 cliques) e "Novo" (cadastrado há até 7 dias).
 function productTags(products, settings) {
@@ -2208,10 +2212,14 @@ async function handleSettings(request, env, tenant) {
     store_mode: storeMode(pick('store_mode')),
     show_tags: bool01(pick('show_tags')),
     store_style: STORE_STYLES.includes(pick('store_style')) ? pick('store_style') : 'classic',
+    landing_intro: bool01(pick('landing_intro')),
   };
   // Recursos do plano: modelos 2 e 3 e edição dos modelos são do plano Completo (e do teste grátis).
   const plan = PLANS[effectivePlan(tenant.account)];
   if (!plan.templates.includes(settings.offer_template)) settings.offer_template = 1;
+  if (settings.store_style === 'landing' && !plan.customTemplates && body.store_style === 'landing') {
+    throw new HttpError(403, 'O estilo Landing é exclusivo do plano Completo.', { code: 'plan_feature' });
+  }
   if (body.offer_templates !== undefined) {
     if (!plan.customTemplates) throw new HttpError(403, 'Editar os modelos de mensagem é um recurso do plano Completo.', { code: 'plan_feature' });
     const tpl = body.offer_templates && typeof body.offer_templates === 'object' ? body.offer_templates : {};
@@ -2223,8 +2231,8 @@ async function handleSettings(request, env, tenant) {
   }
   await env.DB.prepare(
     `INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, show_banner, share_message,
-                                  offer_template, theme_mode, card_tone, offer_templates, show_whatsapp, store_mode, show_tags, store_style)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  offer_template, theme_mode, card_tone, offer_templates, show_whatsapp, store_mode, show_tags, store_style, landing_intro)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (tenant_id) DO UPDATE SET
        show_prices = excluded.show_prices,
        show_stock_warning = excluded.show_stock_warning,
@@ -2238,9 +2246,10 @@ async function handleSettings(request, env, tenant) {
        show_whatsapp = excluded.show_whatsapp,
        store_mode = excluded.store_mode,
        show_tags = excluded.show_tags,
-       store_style = excluded.store_style`,
+       store_style = excluded.store_style,
+       landing_intro = excluded.landing_intro`,
   ).bind(tenant.id, settings.show_prices, settings.show_stock_warning, settings.view_mode, settings.show_banner, settings.share_message,
-    settings.offer_template, settings.theme_mode, settings.card_tone, settings.offer_templates, settings.show_whatsapp, settings.store_mode, settings.show_tags, settings.store_style).run();
+    settings.offer_template, settings.theme_mode, settings.card_tone, settings.offer_templates, settings.show_whatsapp, settings.store_mode, settings.show_tags, settings.store_style, settings.landing_intro).run();
   return json({ settings });
 }
 

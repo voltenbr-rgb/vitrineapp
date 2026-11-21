@@ -82,7 +82,8 @@ CREATE TABLE IF NOT EXISTS tenant_settings (
   share_message       TEXT NOT NULL DEFAULT '',       -- mensagem pronta personalizada ({loja} e {link})
   offer_template      INTEGER NOT NULL DEFAULT 1,     -- modelo de mensagem de oferta (1 a 3)
   show_tags           INTEGER NOT NULL DEFAULT 1,     -- selos "Novo" e "Mais clicado" na vitrine
-  store_style         TEXT NOT NULL DEFAULT 'classic' -- estilo da vitrine: classic | glass
+  store_style         TEXT NOT NULL DEFAULT 'classic', -- estilo da vitrine: classic | glass | landing (Completo)
+  landing_intro       INTEGER NOT NULL DEFAULT 1      -- Landing: mostra a apresentação em tela cheia no início
 );
 
 -- ---------------------------------------------------------------------

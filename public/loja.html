@@ -518,6 +518,8 @@
     @media (min-width: 1100px) { .hl-track { grid-auto-columns: 32%; } }
 
     /* ---------- Animações leves ---------- */
+    .lp-perk.reveal { opacity: 0; transform: translateY(18px); transition: opacity .5s ease var(--d, 0ms), transform .55s cubic-bezier(.2, .8, .2, 1) var(--d, 0ms); }
+    .lp-perk.reveal.in { opacity: 1; transform: none; }
     .card.reveal { animation: none; opacity: 0; transform: translateY(18px) scale(.98); transition: opacity .5s ease var(--d, 0ms), transform .55s cubic-bezier(.2, .8, .2, 1) var(--d, 0ms); }
     .card.reveal.in { opacity: 1; transform: none; }
     .card.reveal.in .btn-buy { animation: nudge .6s ease calc(var(--d, 0ms) + .35s) both; }
@@ -551,6 +553,150 @@
     html.glass .hl-dots i.on { background: #fff; }
     html.glass .ab:not(.wa):not(.ig) { background: rgba(255, 255, 255, .08); border-color: var(--glass-line); }
     html.glass .disc { background: linear-gradient(135deg, var(--lime), color-mix(in srgb, var(--lime) 70%, #9bd400)); color: #141a05; box-shadow: 0 8px 22px color-mix(in srgb, var(--lime) 30%, transparent); }
+
+
+    /* =========================================================
+       Estilo "Landing" (plano Completo): apresentação em tela cheia + vitrine
+       Tudo em CSS (sem vídeo/bibliotecas) para continuar leve no celular.
+       ========================================================= */
+    html.landing { --bg: #06060a; --lp-hot: color-mix(in srgb, var(--accent) 45%, #ff3df2); }
+    html.landing body::before {
+      background:
+        radial-gradient(40vmax 34vmax at 90% 10%, color-mix(in srgb, var(--glow) 40%, transparent), transparent 70%),
+        radial-gradient(34vmax 30vmax at 0% 60%, color-mix(in srgb, var(--lp-hot) 26%, transparent), transparent 70%);
+    }
+    .lp-anchor { scroll-margin-top: 8px; }
+    .lp-hero {
+      position: relative; overflow: hidden; isolation: isolate;
+      width: 100vw; margin: -14px calc(50% - 50vw) 0;
+      min-height: 100vh; min-height: 100svh;
+      display: flex; flex-direction: column; justify-content: center;
+      padding: calc(36px + env(safe-area-inset-top, 0px)) 22px 96px;
+      color: #fff;
+    }
+    .lp-bg { position: absolute; inset: 0; z-index: -1; background: radial-gradient(120% 80% at 50% 0%, #12121c, #06060a 70%); }
+    .lp-cover { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: .32; filter: saturate(1.2);
+      -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent 85%); mask-image: linear-gradient(180deg, #000 30%, transparent 85%); }
+    .lp-glow { position: absolute; border-radius: 50%; pointer-events: none; }
+    .lp-glow.g1 { width: 90vmax; height: 90vmax; left: 35%; top: -45vmax; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 55%, transparent), transparent 60%); animation: lpDrift 14s ease-in-out infinite alternate; }
+    .lp-glow.g2 { width: 70vmax; height: 70vmax; left: -35vmax; top: 30%; background: radial-gradient(circle, color-mix(in srgb, var(--lp-hot) 40%, transparent), transparent 60%); animation: lpDrift 18s ease-in-out infinite alternate-reverse; }
+    .lp-glow.g3 { width: 50vmax; height: 50vmax; right: -25vmax; bottom: -20vmax; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 35%, transparent), transparent 60%); animation: lpDrift 16s ease-in-out infinite alternate; }
+    @keyframes lpDrift { to { transform: translate3d(-6%, 5%, 0) scale(1.08); } }
+    /* Lasers: feixes finos que cruzam a tela */
+    .lp-lasers { position: absolute; inset: 0; overflow: hidden; }
+    .lp-lasers i {
+      position: absolute; left: -40%; width: 180%; height: 2px; top: 0;
+      background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 70%, transparent) 30%, #fff 50%, color-mix(in srgb, var(--accent) 70%, transparent) 70%, transparent);
+      box-shadow: 0 0 10px var(--accent), 0 0 26px color-mix(in srgb, var(--accent) 70%, transparent);
+      opacity: 0; transform-origin: center; animation: lpLaser 7s cubic-bezier(.45, 0, .2, 1) infinite;
+    }
+    .lp-lasers i:nth-child(1) { --r: -16deg; animation-delay: 0s; }
+    .lp-lasers i:nth-child(2) { --r: 12deg; animation-delay: 1.4s; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--lp-hot) 75%, transparent) 30%, #fff 50%, color-mix(in srgb, var(--lp-hot) 75%, transparent) 70%, transparent); box-shadow: 0 0 10px var(--lp-hot), 0 0 26px var(--lp-hot); }
+    .lp-lasers i:nth-child(3) { --r: -6deg; animation-delay: 2.8s; height: 1px; }
+    .lp-lasers i:nth-child(4) { --r: 22deg; animation-delay: 4.2s; }
+    .lp-lasers i:nth-child(5) { --r: -26deg; animation-delay: 5.6s; height: 1px; }
+    @keyframes lpLaser {
+      0% { opacity: 0; transform: translateY(-10vh) rotate(var(--r)); }
+      12% { opacity: .95; }
+      55% { opacity: .7; }
+      100% { opacity: 0; transform: translateY(112vh) rotate(var(--r)); }
+    }
+    /* Chão de grade em perspectiva andando */
+    .lp-floor {
+      position: absolute; left: -50%; right: -50%; bottom: -8%; height: 52%;
+      background:
+        repeating-linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent) 0 1px, transparent 1px 56px),
+        repeating-linear-gradient(0deg, color-mix(in srgb, var(--accent) 55%, transparent) 0 1px, transparent 1px 56px);
+      transform: perspective(380px) rotateX(64deg); transform-origin: 50% 100%;
+      -webkit-mask-image: linear-gradient(0deg, #000 10%, transparent 85%); mask-image: linear-gradient(0deg, #000 10%, transparent 85%);
+      opacity: .38; animation: lpFloor 2.6s linear infinite;
+    }
+    @keyframes lpFloor { to { background-position: 0 56px, 0 56px; } }
+    .lp-stars { position: absolute; inset: 0; opacity: .55;
+      background-image: radial-gradient(1.5px 1.5px at 12% 22%, #fff, transparent), radial-gradient(1px 1px at 78% 14%, #fff, transparent),
+        radial-gradient(1.5px 1.5px at 64% 38%, #fff, transparent), radial-gradient(1px 1px at 30% 48%, #fff, transparent),
+        radial-gradient(1px 1px at 88% 56%, #fff, transparent), radial-gradient(1.5px 1.5px at 44% 8%, #fff, transparent);
+      animation: lpTwinkle 4s ease-in-out infinite alternate; }
+    @keyframes lpTwinkle { to { opacity: .2; } }
+
+    .lp-inner { position: relative; width: 100%; max-width: 1120px; margin: 0 auto; display: grid; gap: 34px; align-items: center; }
+    .lp-text { display: flex; flex-direction: column; align-items: flex-start; animation: lpIn .9s cubic-bezier(.2, .8, .2, 1) both; }
+    @keyframes lpIn { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+    .lp-brand { position: relative; width: 68px; height: 68px; border-radius: 50%; padding: 3px; margin-bottom: 18px; isolation: isolate;
+      box-shadow: 0 0 40px color-mix(in srgb, var(--accent) 55%, transparent); }
+    .lp-brand::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 50%;
+      background: conic-gradient(from 0deg, var(--accent), var(--lp-hot), #fff, var(--accent)); animation: lpSpin 5s linear infinite; }
+    .lp-brand img, .lp-brand span { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: grid; place-items: center; background: #111; color: #fff; font-weight: 900; font-size: 22px; }
+    @keyframes lpSpin { to { transform: rotate(360deg); } }
+    .lp-kicker { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #dfe3ff;
+      padding: 7px 12px; border-radius: 999px; background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .14); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+    .lp-title { margin: 14px 0 10px; font-size: clamp(40px, 12vw, 84px); line-height: .96; font-weight: 800; letter-spacing: -.045em; overflow-wrap: anywhere; }
+    .lp-grad { background: linear-gradient(100deg, #fff 0%, color-mix(in srgb, var(--accent) 60%, #fff) 30%, var(--lp-hot) 55%, #fff 80%); background-size: 220% 100%;
+      -webkit-background-clip: text; background-clip: text; color: transparent; animation: lpShine 5s linear infinite; }
+    @keyframes lpShine { to { background-position: -220% 0; } }
+    .lp-sub { margin: 0 0 22px; max-width: 34ch; font-size: 16px; line-height: 1.5; color: #c9cbd8; }
+    .lp-ctas { display: flex; flex-wrap: wrap; gap: 10px; }
+    .lp-cta { display: inline-flex; align-items: center; gap: 8px; border: 0; cursor: pointer; font: inherit; font-weight: 800; font-size: 15px; text-decoration: none; padding: 15px 22px; border-radius: 999px; transition: transform .15s ease; }
+    .lp-cta:active { transform: scale(.97); }
+    .lp-cta.primary { position: relative; overflow: hidden; background: #fff; color: #0b0b12; box-shadow: 0 0 0 1px rgba(255, 255, 255, .4), 0 14px 40px color-mix(in srgb, var(--accent) 45%, transparent); }
+    .lp-cta.primary::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, var(--accent) 35%, transparent) 50%, transparent 70%); transform: translateX(-120%); animation: lpSweep 3.2s ease-in-out infinite 1s; }
+    @keyframes lpSweep { 60%, 100% { transform: translateX(120%); } }
+    .lp-cta.ghost { color: #fff; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .18); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+    .lp-cta.ghost svg { width: 18px; height: 18px; }
+    html.landing .lp-text .hero-stats { width: 100%; max-width: 420px; margin-top: 22px; }
+
+    /* Produtos flutuando */
+    .lp-show { position: relative; height: 230px; animation: lpIn 1s .2s cubic-bezier(.2, .8, .2, 1) both; }
+    .lp-float { position: absolute; top: 18px; width: 40%; max-width: 210px; border: 1px solid rgba(255, 255, 255, .16); border-radius: 26px; padding: 9px; cursor: pointer;
+      background: linear-gradient(160deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .04)); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+      box-shadow: 0 24px 50px rgba(0, 0, 0, .5), 0 0 30px color-mix(in srgb, var(--accent) 25%, transparent); display: flex; flex-direction: column; gap: 8px; }
+    .lp-float .frame { position: relative; width: 100%; aspect-ratio: 1; border-radius: 18px; background: #f4f4f6; display: grid; place-items: center; overflow: hidden; }
+    .lp-float .frame img { width: 88%; height: 88%; object-fit: contain; mix-blend-mode: multiply; }
+    .lp-float .disc { right: -6px; top: -8px; bottom: auto; min-width: 46px; padding: 6px 7px 5px; }
+    .lp-float .disc b { font-size: 14px; }
+    .lp-fprice { align-self: center; font-weight: 800; font-size: 14px; color: var(--lime); }
+    .lp-float.f0 { left: 0; transform: rotate(-9deg); animation: lpBob 5s ease-in-out infinite; z-index: 1; }
+    .lp-float.f1 { left: 30%; top: 0; transform: rotate(0deg); animation: lpBob 5s ease-in-out infinite -1.6s; z-index: 5; }
+    .lp-float.f2 { left: 60%; transform: rotate(9deg); animation: lpBob 5s ease-in-out infinite -3.2s; z-index: 2; }
+    .lp-show .lp-float:only-child { left: 30%; }
+    @keyframes lpBob { 50% { translate: 0 -12px; } }
+    .lp-scroll { display: none; position: absolute; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: 28px; height: 44px; border-radius: 16px; border: 2px solid rgba(255, 255, 255, .5); background: transparent; cursor: pointer; padding: 0; }
+    .lp-scroll span { position: absolute; left: 50%; top: 8px; width: 4px; height: 9px; margin-left: -2px; border-radius: 4px; background: #fff; animation: lpWheel 1.6s ease-in-out infinite; }
+    @keyframes lpWheel { 0% { opacity: 0; transform: translateY(0); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(14px); } }
+
+    /* Vantagens */
+    .lp-perks { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 18px 0 22px; }
+    .lp-perk { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 22px; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .1); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+    .lp-pi { width: 46px; height: 46px; border-radius: 15px; display: grid; place-items: center; flex-shrink: 0; color: #fff;
+      background: linear-gradient(135deg, var(--accent), var(--lp-hot)); box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 45%, transparent); }
+    .lp-perk strong { display: block; font-size: 15px; letter-spacing: -.01em; }
+    .lp-perk small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; line-height: 1.4; }
+
+    /* Vitrine no estilo Landing */
+    html.landing .card { transition: border-color .25s ease, box-shadow .25s ease, opacity .5s ease var(--d, 0ms), transform .55s cubic-bezier(.2, .8, .2, 1) var(--d, 0ms); }
+    html.landing .card:hover { border-color: color-mix(in srgb, var(--accent) 60%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent), 0 18px 40px color-mix(in srgb, var(--accent) 22%, transparent); }
+    html.landing .disc { overflow: hidden; }
+    html.landing .disc::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .75) 50%, transparent 65%); transform: translateX(-130%); animation: lpSweep 2.8s ease-in-out infinite; }
+    html.landing .section-head h2 { font-size: 24px; }
+    html.landing .hl-head h2 { font-size: 22px; }
+
+    @media (min-width: 720px) {
+      .lp-hero { padding: 60px 40px 110px; }
+      .lp-scroll { display: block; bottom: 110px; }
+      .lp-inner { grid-template-columns: 1.1fr .9fr; }
+      .lp-show { height: 380px; }
+      .lp-float { width: 44%; max-width: 230px; top: 50px; }
+      .lp-float.f0 { left: 0; } .lp-float.f1 { left: 28%; } .lp-float.f2 { left: 56%; }
+      .lp-float.f1 { top: 10px; }
+      .lp-perks { grid-template-columns: repeat(3, 1fr); }
+      .lp-perk { flex-direction: column; align-items: flex-start; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .lp-hero *, .lp-hero *::before, .lp-hero *::after, html.landing .disc::after, .lp-cta.primary::after { animation: none !important; }
+      .lp-lasers i { opacity: .5; transform: translateY(30vh) rotate(var(--r)); }
+      .lp-lasers i:nth-child(2) { transform: translateY(55vh) rotate(var(--r)); }
+      .lp-lasers i:nth-child(n+3) { display: none; }
+    }
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
@@ -1159,7 +1305,12 @@
       const kicker = mode === 'local' ? '📍 Entrega na região' : mode === 'affiliate' ? '✨ Achadinhos selecionados' : '✨ Seleção especial';
       const tagline = mode === 'local' ? 'Escolha seus produtos e faça o pedido pelo WhatsApp.' : 'Achados escolhidos a dedo para você.';
 
+      const landing = state.settings.store_style === 'landing';
+      const intro = landing && state.settings.landing_intro !== 0;
       app.innerHTML = `
+        ${intro ? landingHeroHtml({ avatar, cover, showWa, kicker, tagline }) : ''}
+        ${intro ? perksHtml() : ''}
+        <div id="loja" class="lp-anchor"></div>
         <header class="topbar">
           <button type="button" class="icon-btn" id="btnTop" aria-label="Voltar ao início">${ICON.grid}</button>
           <div class="topbar-title"><strong>${esc(s.store_name)}</strong><span>${state.products.length} produtos selecionados</span></div>
@@ -1173,7 +1324,7 @@
           <button type="button" class="filter-btn" id="btnSort" aria-label="Ordenar produtos">${ICON.sliders}</button>
         </div>
 
-        ${state.settings.show_banner === 0 ? '' : `<section class="hero${cover ? ' has-cover' : ''}${featured ? '' : ' no-art'}" aria-label="Sobre a loja">
+        ${state.settings.show_banner === 0 || intro ? '' : `<section class="hero${cover ? ' has-cover' : ''}${featured ? '' : ' no-art'}" aria-label="Sobre a loja">
           ${cover ? `<div class="hero-bg" id="heroBg" style="background-image:url('${esc(cover)}')"></div><div class="hero-shade"></div>` : ''}
           <div class="hero-text">
             <span class="hero-kicker">${kicker}</span>
@@ -1186,6 +1337,7 @@
             <span class="feat-tag">⭐ Destaque</span><img src="${esc(heroImg)}" alt=""></button></div>` : ''}
         </section>`}
 
+        ${landing && !intro ? perksHtml() : ''}
         ${highlightsHtml(highlights)}
 
         <nav class="chips" aria-label="Filtrar por categoria e origem">
@@ -1212,6 +1364,72 @@
       $('#bottomNav').classList.toggle('no-contact', !showContact);
       renderProducts();
       startCarousel();
+      if (landing) observeReveal(app);
+    }
+
+    /* ---------- Estilo Landing (plano Completo) ---------- */
+    function landingHeroHtml({ avatar, cover, showWa, kicker, tagline }) {
+      const s = state.store;
+      const sub = String(s.bio || '').trim() || tagline;
+      const shots = state.products.filter((p) => safeUrl(p.image_url, true))
+        .sort((a, b) => (a.sort_order - b.sort_order) || discPct(b) - discPct(a)).slice(0, 3);
+      const words = String(s.store_name).split(/\s+/);
+      const title = words.length > 1
+        ? `${esc(words.slice(0, -1).join(' '))} <span class="lp-grad">${esc(words[words.length - 1])}</span>`
+        : `<span class="lp-grad">${esc(s.store_name)}</span>`;
+      return `<section class="lp-hero" aria-label="Apresentação da loja">
+        <div class="lp-bg" aria-hidden="true">
+          ${cover ? `<div class="lp-cover" style="background-image:url('${esc(cover)}')"></div>` : ''}
+          <div class="lp-glow g1"></div><div class="lp-glow g2"></div><div class="lp-glow g3"></div>
+          <div class="lp-lasers"><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="lp-floor"></div>
+          <div class="lp-stars"></div>
+        </div>
+        <div class="lp-inner">
+          <div class="lp-text">
+            <div class="lp-brand">
+              ${avatar ? `<img src="${esc(avatar)}" alt="">` : `<span>${esc(initials(s.store_name))}</span>`}
+            </div>
+            <span class="lp-kicker">${kicker}</span>
+            <h1 class="lp-title">${title}</h1>
+            <p class="lp-sub">${esc(sub)}</p>
+            <div class="lp-ctas">
+              <button type="button" class="lp-cta primary" data-lp-go>Ver produtos <span aria-hidden="true">↓</span></button>
+              ${showWa ? `<a class="lp-cta ghost" href="${esc(waLink(s.whatsapp, `Olá! Vim pela sua vitrine ${s.store_name} 😊`))}" target="_blank" rel="noopener noreferrer">${ICON.wa}WhatsApp</a>` : ''}
+            </div>
+            ${heroStats()}
+          </div>
+          ${shots.length ? `<div class="lp-show" aria-hidden="true">${shots.map((p, i) => {
+            const pct = discPct(p);
+            return `<button type="button" class="lp-float f${i}" data-open="${p.id}" tabindex="-1">
+              <span class="frame"><img src="${esc(safeUrl(p.image_url, true))}" alt="" decoding="async"></span>
+              ${pct ? `<span class="disc"><b>-${pct}%</b><small>OFF</small></span>` : ''}
+              ${state.settings.show_prices && Number(p.price) > 0 ? `<span class="lp-fprice">${esc(brl(p.price))}</span>` : ''}
+            </button>`;
+          }).join('')}</div>` : ''}
+        </div>
+        <button type="button" class="lp-scroll" data-lp-go aria-label="Ver a vitrine"><span></span></button>
+      </section>`;
+    }
+
+    function perksHtml() {
+      const mode = state.settings.store_mode;
+      const hasAff = state.products.some(isAffiliate);
+      const hasLocal = state.products.some((p) => !isAffiliate(p));
+      const svg = (d) => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+      const P = {
+        official: [svg('<path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/>'), 'Links oficiais', 'Você compra direto no site da Shopee e do Mercado Livre.'],
+        price: [svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>'), 'Preço sempre em dia', 'Os valores são conferidos todo dia, sem susto.'],
+        picked: [svg('<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>'), 'Escolhidos a dedo', 'Só o que vale a pena entra na vitrine.'],
+        delivery: [svg('<path d="M3 7h11v10H3z"/><path d="M14 10h4l3 3v4h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>'), 'Entrega na região', 'Combine a entrega direto com a loja.'],
+        chat: [svg('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>'), 'Pedido pelo WhatsApp', 'Monte o carrinho e envie em um toque.'],
+      };
+      const list = (mode === 'local' || (hasLocal && !hasAff)) ? [P.delivery, P.chat, P.picked]
+        : (mode === 'affiliate' || !hasLocal) ? [P.official, P.price, P.picked]
+        : [P.official, P.delivery, P.chat];
+      return `<section class="lp-perks" aria-label="Por que comprar aqui">${list.map(([ic, t, d], i) => `
+        <div class="lp-perk reveal" style="--d:${i * 90}ms"><span class="lp-pi">${ic}</span><div><strong>${t}</strong><small>${d}</small></div></div>`).join('')}
+      </section>`;
     }
 
     function highlightsHtml(list) {
@@ -1381,6 +1599,7 @@
       if (t.matches('a.btn-buy')) hit(t.classList.contains('wa') ? 'order' : 'click', t.dataset.pid);
       if (t.dataset.open) return openProduct(Number(t.dataset.open));
       if (t.matches('[data-about-share]')) return shareStore();
+      if (t.matches('[data-lp-go]')) { const a = $('#loja'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
       if (t.dataset.add) {
         hit('click', t.dataset.add);
         const id = Number(t.dataset.add);
@@ -1464,11 +1683,13 @@
           if (p && isLocal(p) && Number(q) > 0) state.cart[id] = Math.min(Number(q), 99);
         }
         state.view = storage.get(`vitrine:view:${state.slug}`) || state.settings.view_mode || 'grid';
-        const glass = state.settings.store_style === 'glass';
+        const landing = state.settings.store_style === 'landing';
+        const glass = landing || state.settings.store_style === 'glass';
+        document.documentElement.classList.toggle('landing', landing);
         document.documentElement.classList.toggle('glass', glass);
         document.documentElement.classList.toggle('dark', glass || state.settings.theme_mode === 'dark');
         document.documentElement.classList.toggle('tinted', !glass && state.settings.card_tone === 'tinted');
-        if (glass) { const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = '#0c0c10'; }
+        if (glass) { const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = landing ? '#06060a' : '#0c0c10'; }
         renderStore();
 
         const pid = Number(new URLSearchParams(location.search).get('p'));

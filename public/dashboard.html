@@ -153,6 +153,15 @@
     .sp-prev.glass { background: radial-gradient(80% 90% at 85% 0%, color-mix(in srgb, var(--c) 70%, transparent), transparent 70%), radial-gradient(70% 70% at 0% 100%, rgba(255, 140, 60, .45), transparent 70%), #121216; }
     .sp-prev.glass i, .sp-prev.glass b { background: rgba(255, 255, 255, .10); border: 1px solid rgba(255, 255, 255, .16); }
     .sp-name { display: block; font-weight: 800; font-size: 14px; margin-top: 8px; }
+    .style-pick .sp-wide { grid-column: 1 / -1; }
+    .style-pick .sp-wide.locked .sp-card { cursor: default; }
+    .style-pick .sp-wide.locked .sp-prev { filter: saturate(.6); }
+    .sp-lock { display: inline-block; margin-top: 8px; font-size: 12px; font-weight: 800; color: #fff; background: linear-gradient(135deg, #7c5cff, #19a7ff); border-radius: 99px; padding: 6px 11px; cursor: pointer; }
+    .sp-prev.landing { position: relative; display: block; height: 96px; background: radial-gradient(80% 90% at 70% 0%, color-mix(in srgb, var(--c) 75%, transparent), transparent 70%), #07070c; }
+    .sp-prev.landing .lz { position: absolute; left: -20%; width: 140%; height: 2px; top: 34%; transform: rotate(-12deg); background: linear-gradient(90deg, transparent, var(--c), #fff, var(--c), transparent); box-shadow: 0 0 8px var(--c); }
+    .sp-prev.landing .lz.l2 { top: 58%; transform: rotate(9deg); background: linear-gradient(90deg, transparent, #ff3df2, #fff, #ff3df2, transparent); box-shadow: 0 0 8px #ff3df2; }
+    .sp-prev.landing .lt { position: absolute; left: 12px; top: 14px; color: #fff; font-weight: 900; font-size: 20px; letter-spacing: -.03em; }
+    .sp-prev.landing .lf { position: absolute; left: -30%; right: -30%; bottom: -10px; height: 40px; background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--c) 60%, transparent) 0 1px, transparent 1px 16px), repeating-linear-gradient(0deg, color-mix(in srgb, var(--c) 60%, transparent) 0 1px, transparent 1px 12px); transform: perspective(120px) rotateX(55deg); opacity: .5; }
     .sp-name em { font-style: normal; font-size: 10px; font-weight: 800; color: #fff; background: linear-gradient(135deg, #7c5cff, #19a7ff); border-radius: 99px; padding: 2px 6px; vertical-align: 2px; }
     .sp-card small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.3; }
     /* Indique e ganhe */
@@ -914,7 +923,7 @@
         ['3 modelos de mensagem, com textos editáveis'],
         ['Troca de loja com um toque'],
         ['⚡ Adicionar até 10 produtos de uma vez'],
-        ['3º estilo de vitrine exclusivo', true],
+        ['✨ Estilo Landing: a vitrine com cara de site'],
       ],
     };
 
@@ -2378,6 +2387,8 @@
 
     /* ---------------- Vários de uma vez (plano Completo) ---------------- */
     const bulkAllowed = () => !!(state.bulk && state.bulk.allowed);
+    // Estilo Landing: plano Completo ou teste grátis (que libera os recursos do Completo).
+    const landingAllowed = () => !!(state.account && (state.account.status === 'trial' || state.account.plan === 'complete'));
     const bulkMax = () => (state.bulk && state.bulk.max) || 10;
     let bulkText = '';
     let bulkCat = '';
@@ -2670,17 +2681,23 @@
               <label><input type="radio" name="store_style" value="classic" data-setting="store_style" ${s.store_style !== 'glass' ? 'checked' : ''}>
                 <span class="sp-card"><span class="sp-prev classic"><i></i><b></b><b></b></span><span class="sp-name">Clássico</span><small>Leve, claro ou escuro</small></span></label>
               <label><input type="radio" name="store_style" value="glass" data-setting="store_style" ${s.store_style === 'glass' ? 'checked' : ''}>
-                <span class="sp-card"><span class="sp-prev glass" style="--c:${esc(state.tenant.theme_color || '#16a6e0')}"><i></i><b></b><b></b></span><span class="sp-name">Vidro <em>novo</em></span><small>Escuro, com brilho e vidro fosco</small></span></label>
+                <span class="sp-card"><span class="sp-prev glass" style="--c:${esc(state.tenant.theme_color || '#16a6e0')}"><i></i><b></b><b></b></span><span class="sp-name">Vidro</span><small>Escuro, com brilho e vidro fosco</small></span></label>
+              <label class="sp-wide ${landingAllowed() ? '' : 'locked'}"><input type="radio" name="store_style" value="landing" data-setting="store_style" ${s.store_style === 'landing' ? 'checked' : ''} ${landingAllowed() ? '' : 'disabled'}>
+                <span class="sp-card"><span class="sp-prev landing" style="--c:${esc(state.tenant.theme_color || '#16a6e0')}"><span class="lz"></span><span class="lz l2"></span><span class="lt">Sua loja</span><span class="lf"></span></span>
+                  <span class="sp-name">Landing <em>Completo</em></span><small>Abre como um site: apresentação em tela cheia com efeitos de luz, vantagens e a vitrine logo abaixo.</small>
+                  ${landingAllowed() ? '' : '<span class="sp-lock" data-act="landing-locked">🔒 Liberar no plano Completo</span>'}</span></label>
             </div>
           </div>
-          <div class="switch-row glass-off" style="display:block" ${s.store_style === 'glass' ? 'hidden' : ''}>
+          <div class="switch-row landing-only" ${s.store_style === 'landing' ? '' : 'hidden'}><div><strong>Apresentação no início</strong><small>Ligado: a vitrine abre com a tela de apresentação e a pessoa rola para ver os produtos. Desligado: abre direto nos produtos, mantendo o visual Landing.</small></div>
+            <label class="switch"><input type="checkbox" data-setting="landing_intro" ${s.landing_intro !== 0 ? 'checked' : ''}><span class="track"></span></label></div>
+          <div class="switch-row glass-off" style="display:block" ${s.store_style !== 'classic' ? 'hidden' : ''}>
             <div style="margin-bottom:10px"><strong>Tema</strong></div>
             <div class="seg two">
               <label><input type="radio" name="theme_mode" value="light" data-setting="theme_mode" ${s.theme_mode !== 'dark' ? 'checked' : ''}><span class="opt">☀️ Claro</span></label>
               <label><input type="radio" name="theme_mode" value="dark" data-setting="theme_mode" ${s.theme_mode === 'dark' ? 'checked' : ''}><span class="opt">🌙 Escuro</span></label>
             </div>
           </div>
-          <div class="switch-row glass-off" style="display:block" ${s.store_style === 'glass' ? 'hidden' : ''}>
+          <div class="switch-row glass-off" style="display:block" ${s.store_style !== 'classic' ? 'hidden' : ''}>
             <div style="margin-bottom:10px"><strong>Cor dos cards</strong><small>Tingido usa um tom suave da cor da sua loja.</small></div>
             <div class="seg two">
               <label><input type="radio" name="card_tone" value="white" data-setting="card_tone" ${s.card_tone !== 'tinted' ? 'checked' : ''}><span class="opt">⬜ Neutro</span></label>
@@ -2855,6 +2872,7 @@
         card_tone: ($('[data-setting="card_tone"]:checked') || {}).value || 'white',
         show_tags: get('show_tags').checked ? 1 : 0,
         store_style: ($('[data-setting="store_style"]:checked') || {}).value || 'classic',
+        landing_intro: get('landing_intro') ? (get('landing_intro').checked ? 1 : 0) : 1,
       };
       try {
         const before = state.settings && state.settings.store_mode;
@@ -3169,6 +3187,10 @@
         const y = window.scrollY; render(); window.scrollTo(0, y); return;
       }
       if (act === 'feature') return toggleFeatured(Number(t.dataset.id));
+      if (act === 'landing-locked') {
+        return confirmDialog({ title: '✨ Estilo Landing', text: 'A vitrine abre como um site, com apresentação em tela cheia, efeitos de luz e a loja logo abaixo. É exclusivo do plano Completo.', ok: 'Ver o plano Completo' })
+          .then((ok) => { if (ok) openPay('complete'); });
+      }
       if (act === 'bulk-open') return openBulk();
       if (act === 'bulk-go') return runBulk();
       if (act === 'autofill') return autoFill(true);
@@ -3228,7 +3250,10 @@
           toast('Cidades preenchidas com as últimas que você usou 📍');
         }
       }
-      if (el.dataset && el.dataset.setting === 'store_style') document.querySelectorAll('.glass-off').forEach((x) => { x.hidden = el.value === 'glass'; });
+      if (el.dataset && el.dataset.setting === 'store_style') {
+        document.querySelectorAll('.glass-off').forEach((x) => { x.hidden = el.value !== 'classic'; });
+        document.querySelectorAll('.landing-only').forEach((x) => { x.hidden = el.value !== 'landing'; });
+      }
       if (el.dataset && el.dataset.setting) saveSettings();
       if (el.id === 'imgFile' && el.files[0]) { await handleProductImage(el.files[0]); el.value = ''; }
       if (el.id === 'imgUrl') {
