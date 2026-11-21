@@ -385,6 +385,8 @@
     /* ---------- Carrinho (produtos da região) ---------- */
     .btn-buy.in-cart { background: color-mix(in srgb, var(--accent) 16%, var(--card)); color: var(--accent-deep); box-shadow: none; }
     html.dark .btn-buy.in-cart { color: var(--ink); }
+    .btn-buy span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    html.glass .btn-buy.in-cart { background: rgba(255, 255, 255, .12); color: #fff; border: 1px solid rgba(255, 255, 255, .18); }
     .btn-wa-mini { width: 42px; height: 42px; flex-shrink: 0; display: grid; place-items: center; border-radius: 12px; background: var(--wa-deep); color: #fff; }
     .cart-bar {
       position: fixed; left: 50%; transform: translateX(-50%); z-index: 41;
@@ -414,6 +416,14 @@
     .btn-checkout { width: 100%; height: 52px; border-radius: 16px; background: var(--wa-deep); color: #fff; font-weight: 800; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 8px; }
     .cart-empty-btn { width: 100%; margin-top: 8px; height: 40px; border-radius: 12px; color: var(--muted); font-weight: 700; font-size: 13px; }
     .bottom-nav.no-contact { grid-template-columns: repeat(3, 1fr); }
+    .bottom-nav .nav-cart { color: var(--accent); }
+    .bottom-nav .nav-cart svg { padding: 6px; width: 34px; height: 34px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 40%, transparent); }
+    .bottom-nav .nav-cart span { margin-top: 1px; }
+    .bottom-nav .nav-cart .count { left: 58%; top: 0; }
+    .bottom-nav .nav-cart.pop { animation: navPop .45s cubic-bezier(.2, 1.6, .4, 1); }
+    .bottom-nav .count.bump { animation: navPop .35s ease; }
+    @keyframes navPop { 0% { transform: scale(.6); } 100% { transform: scale(1); } }
+    html.glass .bottom-nav .nav-cart { color: #fff; }
     .hero-art .feat { position: relative; display: grid; justify-items: center; cursor: pointer; }
     .hero-art .feat-tag { position: absolute; top: -4px; right: -2px; z-index: 2; background: #fff; color: #14161b; font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 999px; box-shadow: 0 4px 12px rgba(0,0,0,.18); white-space: nowrap; }
     .hero.no-art { grid-template-columns: 1fr; }
@@ -902,6 +912,11 @@
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>
       <span>Divulgar</span>
     </button>
+    <button type="button" data-nav="cart" class="nav-cart" aria-label="Ver carrinho" hidden>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.6 12.2a2 2 0 0 0 2 1.6h8.3a2 2 0 0 0 2-1.5L22 8H6"/></svg>
+      <span>Carrinho</span>
+      <i class="count" id="cartCount" hidden></i>
+    </button>
     <button type="button" data-nav="contact" aria-label="Falar com a loja no WhatsApp">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-11.8 7L4 20l1.5-4.1A8 8 0 1 1 20 11.5z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5" stroke-linecap="round"/></svg>
       <span>Contato</span>
@@ -1086,20 +1101,29 @@
       window.open(waLink(state.store.whatsapp, orderMessage([{ p, qty: 1 }])), '_blank', 'noopener');
     }
 
+    // O carrinho fica no menu de baixo (não ocupa a tela): aparece quando há itens, com o número em cima.
     function renderCartBar() {
-      let bar = $('#cartBar');
+      const btn = $('[data-nav="cart"]');
+      if (!btn) return;
       const n = cartCount();
-      if (!n || !state.store || !state.store.whatsapp) { if (bar) bar.remove(); return; }
-      if (!bar) {
-        bar = document.createElement('div');
-        bar.id = 'cartBar';
-        bar.className = 'cart-bar';
-        document.body.appendChild(bar);
+      const show = !!(n && state.store && state.store.whatsapp);
+      const wasHidden = btn.hidden;
+      btn.hidden = !show;
+      const c = $('#cartCount');
+      if (c) { c.hidden = !show; c.textContent = n > 99 ? '99+' : String(n); }
+      if (show) {
+        const { total, allPriced } = totalOf(cartLines());
+        btn.setAttribute('aria-label', `Ver carrinho: ${n} ${n === 1 ? 'item' : 'itens'}${total > 0 ? `, ${brl(total)}${allPriced ? '' : ' mais itens a combinar'}` : ''}`);
+        if (wasHidden) { btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop'); }
+        else if (c) { c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump'); }
       }
-      const { total, allPriced } = totalOf(cartLines());
-      bar.innerHTML = `${ICON.cart}<div class="cart-info">${n} ${n === 1 ? 'item' : 'itens'} no carrinho
-          <small>${total > 0 ? `${brl(total)}${allPriced ? '' : ' + a combinar'}` : 'Valores a combinar'}</small></div>
-        <button type="button" data-cart="open">Ver pedido</button>`;
+      updateNavCols();
+    }
+    function updateNavCols() {
+      const nav = $('#bottomNav');
+      if (!nav) return;
+      const n = [...nav.querySelectorAll('button')].filter((b) => !b.hidden).length;
+      nav.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
     }
 
     function openCart() {
@@ -1148,7 +1172,7 @@
     function buyButton(p, extraClass = '') {
       if (isLocal(p) && state.store.whatsapp) {
         const q = state.cart[p.id] || 0;
-        return `<button type="button" class="btn-buy ${q ? 'in-cart' : ''} ${extraClass}" data-add="${p.id}">${q ? ICON.check : ICON.cart}<span>${q ? `No carrinho (${q})` : 'Adicionar'}</span></button>`;
+        return `<button type="button" class="btn-buy ${q ? 'in-cart' : ''} ${extraClass}" data-add="${p.id}">${q ? ICON.check : ICON.cart}<span>${q ? (q === 1 ? 'Adicionado' : `${q} itens`) : 'Adicionar'}</span></button>`;
       }
       const link = safeUrl(p.affiliate_link);
       if (link) {
@@ -1384,6 +1408,7 @@
       const showContact = state.settings.show_whatsapp !== 0 && !!s.whatsapp;
       $('[data-nav="contact"]').hidden = !showContact;
       $('#bottomNav').classList.toggle('no-contact', !showContact);
+      updateNavCols();
       renderProducts();
       startCarousel();
       if (landing) {
@@ -1661,6 +1686,7 @@
         if (nav === 'home') { state.filter = 'all'; renderProducts(); window.scrollTo({ top: 0 }); }
         if (nav === 'favs') { state.filter = 'favs'; renderProducts(); $('#products').scrollIntoView({ block: 'start' }); }
         if (nav === 'share') shareStore();
+        if (nav === 'cart') openCart();
         if (nav === 'contact') {
           if (state.store.whatsapp) window.open(waLink(state.store.whatsapp, `Olá! Vim pela sua vitrine ${state.store.store_name} 😊`), '_blank', 'noopener');
           else toast('Contato indisponível');
