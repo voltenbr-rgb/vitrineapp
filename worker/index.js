@@ -1915,8 +1915,11 @@ async function handleStore(request, env, rawId, ctx = null) {
   delete settings.share_message;
   delete settings.offer_template;
   delete settings.offer_templates;
-  // Estilo Landing é do plano Completo (e do teste): se o plano mudou, a vitrine volta ao Vidro.
-  if (settings.store_style === 'landing' && tenant.effective_plan && tenant.effective_plan !== 'complete') settings.store_style = 'glass';
+  // Estilo Landing é do plano Completo (e do teste). No Básico, a vitrine segue o tema escolhido:
+  // claro vira o Clássico, escuro vira o Vidro.
+  if (settings.store_style === 'landing' && tenant.effective_plan && tenant.effective_plan !== 'complete') {
+    settings.store_style = settings.theme_mode === 'dark' ? 'glass' : 'classic';
+  }
 
   // Preço oculto (geral ou do produto): o valor nem sai do servidor.
   const base = publicBase(request, env);
@@ -2502,8 +2505,8 @@ async function createStore(env, account, body) {
       ),
       // Só afiliados: começa sem o botão de WhatsApp (dá para ligar depois).
       env.DB.prepare(
-        // Lojas novas já nascem no estilo Landing escuro (o teste grátis libera o Completo); no Básico cai para o Vidro.
-        "INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, store_mode, show_whatsapp, store_style, theme_mode) VALUES (?, 1, 1, ?, ?, ?, 'landing', 'dark')",
+        // Lojas novas já nascem no estilo Landing claro (o teste grátis libera o Completo); no Básico vira o Clássico claro.
+        "INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, store_mode, show_whatsapp, store_style, theme_mode) VALUES (?, 1, 1, ?, ?, ?, 'landing', 'light')",
       ).bind(data.id, 'grid', mode, mode === 'affiliate' ? 0 : 1),
     ]);
   } catch (err) {
