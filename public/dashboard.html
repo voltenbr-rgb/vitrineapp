@@ -153,6 +153,15 @@
     .sp-prev.glass { background: radial-gradient(80% 90% at 85% 0%, color-mix(in srgb, var(--c) 70%, transparent), transparent 70%), radial-gradient(70% 70% at 0% 100%, rgba(255, 140, 60, .45), transparent 70%), #121216; }
     .sp-prev.glass i, .sp-prev.glass b { background: rgba(255, 255, 255, .10); border: 1px solid rgba(255, 255, 255, .16); }
     .sp-name { display: block; font-weight: 800; font-size: 14px; margin-top: 8px; }
+    .trial-note { margin: 0 0 12px; padding: 10px 12px; border-radius: 14px; background: #fff7e6; color: #7a4b00; font-size: 13px; line-height: 1.45; }
+    .pp-lose { margin-top: 10px; padding: 9px 11px; border-radius: 12px; background: #fff1f2; color: #9f1239; font-size: 12.5px; }
+    .pp-lose ul { margin: 4px 0 0; padding-left: 0; }
+    .pp-lose li { list-style: none; margin: 2px 0; }
+    .lose-box { margin: 8px 0 2px; font-size: 13px; }
+    .lose-box summary { cursor: pointer; font-weight: 800; color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+    .lose-box ul { margin: 6px 0 0; padding: 0; }
+    .lose-box li { list-style: none; margin: 3px 0; }
+    .lose-box li::before { content: "✕ "; font-weight: 900; color: #e11d48; }
     .style-pick .sp-wide { grid-column: 1 / -1; }
     .style-pick .sp-wide.locked .sp-card { cursor: default; }
     .style-pick .sp-wide.locked .sp-prev { filter: saturate(.6); }
@@ -242,6 +251,8 @@
     .pay-plans ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 3px; font-size: 12.5px; color: var(--ink-2, #3b4150); }
     .pay-plans li::before { content: "✓ "; color: #16a34a; font-weight: 800; }
     .pay-plans li.soon::before { content: "✦ "; color: var(--accent); }
+    .pay-plans .pp-lose ul { color: #9f1239; }
+    .pay-plans .pp-lose li::before { content: "✕ "; color: #e11d48; font-weight: 900; }
     .pay-plans .tag { font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 999px; background: #fff1c7; color: #8a5a00; margin-left: 6px; vertical-align: middle; }
     .pay-plans label { cursor: pointer; }
     .pay-plans input { position: absolute; opacity: 0; pointer-events: none; }
@@ -927,6 +938,16 @@
       ],
     };
 
+    // O que a pessoa deixa de ter no Básico (comparado ao Completo / teste grátis).
+    const BASIC_LOSES = [
+      'Só 1 loja (no Completo são até 3)',
+      '15 buscas automáticas por hora (em vez de 30)',
+      'Só o modelo de mensagem 🔥 Destaque do dia, sem editar os textos',
+      'Sem ⚡ adicionar vários produtos de uma vez',
+      'Sem o estilo ✨ Landing',
+    ];
+    const isTrial = () => !!(state.account && state.account.status === 'trial');
+
     function openPay(planId) {
       stopPayPoll();
       const ov = $('#dialogOverlay');
@@ -935,10 +956,12 @@
       const email = ls.get('vitrine:email') || '';
       dlg.innerHTML = `<h3 id="dlgTitle">💳 Planos do Vitrine App</h3>
         <p>30 dias de acesso. Ativa na hora que o pagamento é aprovado.</p>
+        ${isTrial() ? '<div class="trial-note">🎁 No teste você está usando <b>tudo do Completo</b>. Veja abaixo o que muda se escolher o Básico.</div>' : ''}
         <div class="pay-plans">
           ${['basic', 'complete'].map((id) => `<label><input type="radio" name="payPlan" value="${id}" ${id === chosen ? 'checked' : ''}><span>
             <div class="pp-head"><b>${id === 'complete' ? '⭐ Completo' : 'Básico'}${id === 'complete' ? '<span class="tag">Mais escolhido</span>' : ''}</b><span class="pp-price">R$ ${esc(priceOf(id))}<small>/mês</small></span></div>
             <ul>${PLAN_FEATURES[id].map(([txt, soon]) => `<li class="${soon ? 'soon' : ''}">${esc(txt)}${soon ? ' <small>(em breve)</small>' : ''}</li>`).join('')}</ul>
+            ${id === 'basic' ? `<div class="pp-lose"><b>${isTrial() ? 'Você deixa de ter:' : 'Não inclui:'}</b><ul>${BASIC_LOSES.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
           </span></label>`).join('')}
         </div>
         <label class="field"><span>Seu e-mail <small>o comprovante chega nele</small></span><input class="input" id="payEmail" type="email" inputmode="email" autocomplete="email" value="${esc(email)}" placeholder="voce@email.com"></label>
@@ -2016,7 +2039,8 @@
           <strong>🎁 Você está no teste grátis · ${leftTxt}</strong>
           ${lastDay
             ? `Hoje é o último dia com tudo do plano <b>Completo</b> liberado. Escolha seu plano para sua vitrine continuar no ar sem parar.`
-            : `Está tudo liberado do plano <b>Completo</b> (até 3 lojas, 3 modelos editáveis, 30 buscas/h) até ${fmtDate(a.trial_ends_at)}. Depois, escolha seu plano.`}
+            : `Está tudo liberado do plano <b>Completo</b> até ${fmtDate(a.trial_ends_at)}: até 3 lojas, 30 buscas/h, 3 modelos editáveis, ⚡ vários produtos de uma vez e estilo ✨ Landing. Aproveite para testar tudo!`}
+          <details class="lose-box"><summary>O que muda se eu escolher o Básico?</summary><ul>${BASIC_LOSES.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>
           ${left <= 2 ? trialResults() : ''}
           <div class="progress" aria-hidden="true"><i style="width:${pct}%"></i></div>
           <div class="pay-row">${lastDay ? plansBtn.replace('Ver planos', 'Conhecer os planos') : plansBtn}</div></div></div>`;

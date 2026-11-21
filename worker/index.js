@@ -2317,17 +2317,18 @@ async function insertProduct(env, tenant, p) {
   return row;
 }
 
-/* Vários de uma vez (plano Completo pago): um link por chamada, o painel mostra o progresso.
+/* Vários de uma vez (plano Completo e teste grátis): um link por chamada, o painel mostra o progresso.
    Busca nome, preço e foto pelo link e já publica na vitrine. Usa a mesma cota de buscas. */
 const BULK_MAX_LINKS = 10;
 function canBulk(account) {
-  return !!account && account.status === 'active' && account.plan === 'complete';
+  // Plano Completo pago ou teste grátis (o teste libera tudo do Completo para a pessoa conhecer).
+  return !!account && (account.status === 'trial' || (account.status === 'active' && account.plan === 'complete'));
 }
 
 async function handleProductFromLink(request, env, tenant) {
   assertCanEdit(tenant);
   if (!canBulk(tenant.account)) {
-    throw new HttpError(403, 'Adicionar vários de uma vez é exclusivo do plano Completo.', { code: 'plan_required' });
+    throw new HttpError(403, 'Adicionar vários de uma vez é um recurso do plano Completo.', { code: 'plan_required' });
   }
   const body = await readJson(request);
   const link = httpUrl(body.url, 'Link', { required: true });
