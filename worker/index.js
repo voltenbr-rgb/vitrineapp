@@ -2963,6 +2963,133 @@ async function applyPayment(env, pay) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Porta do Nexus Central: resumo só de leitura, protegido por chave   */
+/* ------------------------------------------------------------------ */
+// GET /api/hub/resumo   Header: Authorization: Bearer <HUB_API_KEY>   (?detalhes=1 inclui a lista de clientes)
+// Só números e dados de gestão: nunca senhas, tokens nem WhatsApp dos clientes.
+const HUB_SCHEMA_VERSION = 1;
+async function handleHubResumo(request, env) {
+  const expected = String(env.HUB_API_KEY || '');
+  if (expected.length < 24) throw new HttpError(503, 'Porta do hub desativada: configure o secret HUB_API_KEY (mínimo 24 caracteres).');
+  const auth = request.headers.get('Authorization') || '';
+  const given = auth.startsWith('Bearer ') ? auth.slice(7).trim() : (request.headers.get('X-Hub-Key') || '').trim();
+  const ipKey = `hub:${clientIp(request)}`;
+  await checkLocked(env, [ipKey]).catch(() => { throw new HttpError(429, 'Muitas tentativas. Aguarde alguns minutos.'); });
+  if (!given || !timingSafeEqual(await sha256(given), await sha256(expected))) {
+    await registerFail(env, ipKey, { max: 10, windowMin: 15, lockMin: 30 }).catch(() => {});
+    throw new HttpError(401, 'Chave do hub inválida.');
+  }
+  const now = Date.now();
+  const iso = (ms) => new Date(ms).toISOString();
+  const monthKey = (ms) => dayKey(ms).slice(0, 7);
+  const base = publicBase(request, env);
+  const { results: accs } = await env.DB.prepare(
+    `SELECT id, owner_name, status, plan, trial_ends_at, paid_until, temp_password, source, referred_by, last_seen_at, created_at
+     FROM accounts ORDER BY id`,
+  ).all();
+  // Status calculado na hora (a conta só é marcada como vencida no banco quando o cliente entra).
+  const accounts = (accs || []).map((a) => {
+    const end = Date.parse(a.status === 'trial' ? a.trial_ends_at : a.paid_until) || 0;
+    return (a.status === 'trial' || a.status === 'active') && end && end < now ? { ...a, status: 'expired' } : a;
+  });
+  const count = (fn) => accounts.filter(fn).length;
+  const active = (a) => a.status === 'active';
+  const priceOf = (plan) => priceNumber(planPrice(env, PLANS[plan] ? plan : 'basic'));
+
+  const { results: pays } = await env.DB.prepare(
+    `SELECT account_id, plan, amount, method, status, updated_at, created_at FROM payments
+     WHERE created_at >= ? ORDER BY created_at`,
+  ).bind(iso(now - 400 * DAY_MS)).all();
+  const approved = (pays || []).filter((p) => p.status === 'approved');
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(dayKey(now) + 'T12:00:00Z'); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - (11 - i));
+    return d.toISOString().slice(0, 7);
+  });
+  const byMonth = Object.fromEntries(months.map((m) => [m, { mes: m, valor: 0, pagamentos: 0 }]));
+  for (const p of approved) {
+    const m = monthKey(Date.parse(p.updated_at || p.created_at));
+    if (byMonth[m]) { byMonth[m].valor = Math.round((byMonth[m].valor + Number(p.amount || 0)) * 100) / 100; byMonth[m].pagamentos += 1; }
+  }
+  const thisMonth = byMonth[months[11]];
+  const lastMonth = byMonth[months[10]];
+
+  const [stores, products, usage, pending] = await Promise.all([
+    env.DB.prepare('SELECT COUNT(*) AS n FROM tenants').first(),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM products').first(),
+    env.DB.prepare('SELECT COALESCE(SUM(views),0) AS v, COALESCE(SUM(clicks),0) AS c, COALESCE(SUM(orders),0) AS o FROM store_daily WHERE day >= ?').bind(dayKey(now - 6 * DAY_MS)).first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM payments WHERE status = 'pending' AND created_at >= ?").bind(iso(now - 2 * DAY_MS)).first(),
+  ]);
+  const ends = (a) => Date.parse(a.status === 'trial' ? a.trial_ends_at : a.paid_until) || 0;
+
+  const body = {
+    contrato: 'nexus-hub', versao: HUB_SCHEMA_VERSION,
+    sistema: { id: 'vitrine-app', nome: 'Vitrine App', site: base, master: `${base}/admin` },
+    gerado_em: iso(now), fuso: 'America/Campo_Grande', moeda: 'BRL',
+    clientes: {
+      total: accounts.length,
+      ativos: count(active),
+      em_teste: count((a) => a.status === 'trial'),
+      vencidos: count((a) => a.status === 'expired'),
+      novos_7d: count((a) => Date.parse(a.created_at) > now - 7 * DAY_MS),
+      novos_30d: count((a) => Date.parse(a.created_at) > now - 30 * DAY_MS),
+      online_agora: count((a) => Date.parse(a.last_seen_at) > now - 7 * 60_000),
+      ativos_7d: count((a) => Date.parse(a.last_seen_at) > now - 7 * DAY_MS),
+    },
+    planos: Object.values(PLANS).map((pl) => ({
+      id: pl.id, nome: pl.name, preco: priceOf(pl.id),
+      ativos: count((a) => active(a) && a.plan === pl.id),
+      em_teste: count((a) => a.status === 'trial' && a.plan === pl.id),
+    })),
+    receita: {
+      mrr: Math.round(accounts.filter(active).reduce((n, a) => n + priceOf(a.plan), 0) * 100) / 100,
+      mes_atual: thisMonth.valor,
+      mes_anterior: lastMonth.valor,
+      pagamentos_mes: thisMonth.pagamentos,
+      ticket_medio_mes: thisMonth.pagamentos ? Math.round((thisMonth.valor / thisMonth.pagamentos) * 100) / 100 : 0,
+      total_12_meses: Math.round(months.reduce((n, m) => n + byMonth[m].valor, 0) * 100) / 100,
+      por_mes: months.map((m) => byMonth[m]),
+      metodos_mes: approved.filter((p) => monthKey(Date.parse(p.updated_at || p.created_at)) === months[11])
+        .reduce((o, p) => { o[p.method] = (o[p.method] || 0) + 1; return o; }, {}),
+    },
+    pendencias: {
+      senhas_temporarias: count((a) => Number(a.temp_password) === 1),
+      testes_acabando_3d: count((a) => a.status === 'trial' && ends(a) > now && ends(a) < now + 3 * DAY_MS),
+      planos_vencendo_7d: count((a) => active(a) && ends(a) > now && ends(a) < now + 7 * DAY_MS),
+      pagamentos_aguardando: Number((pending && pending.n) || 0),
+    },
+    uso: {
+      lojas: Number((stores && stores.n) || 0),
+      produtos: Number((products && products.n) || 0),
+      visitas_7d: Number((usage && usage.v) || 0),
+      cliques_7d: Number((usage && usage.c) || 0),
+      pedidos_7d: Number((usage && usage.o) || 0),
+    },
+  };
+
+  if (new URL(request.url).searchParams.get('detalhes') === '1') {
+    const { results: ts } = await env.DB.prepare('SELECT account_id, COUNT(*) AS n FROM tenants GROUP BY account_id').all();
+    const storesBy = new Map((ts || []).map((r) => [r.account_id, Number(r.n)]));
+    body.clientes_lista = accounts.map((a) => ({
+      id: a.id,
+      nome: a.owner_name,
+      status: a.status === 'active' ? 'ativo' : a.status === 'trial' ? 'teste' : 'vencido',
+      plano: a.plan,
+      valor_plano: priceOf(a.plan),
+      vence_em: (a.status === 'trial' ? a.trial_ends_at : a.paid_until) || null,
+      lojas: storesBy.get(a.id) || 0,
+      origem: a.source || null,
+      indicado: !!a.referred_by,
+      senha_temporaria: Number(a.temp_password) === 1,
+      ultimo_acesso: a.last_seen_at || null,
+      criado_em: a.created_at,
+    }));
+  }
+  return new Response(JSON.stringify(body), {
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' },
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* Indique e ganhe                                                     */
 /* ------------------------------------------------------------------ */
 const REF_REWARD_DAYS = 30;
@@ -3194,6 +3321,7 @@ async function routeApi(request, env, path, ctx = null) {
   if (path === '/api/health' && method === 'GET') return json({ ok: true, time: nowIso() });
   await ensureSchema(env);
   if (path === '/api/config' && method === 'GET') return handleConfig(request, env);
+  if (path === '/api/hub/resumo' && method === 'GET') return handleHubResumo(request, env);
   if ((m = path.match(/^\/api\/store\/([^/]+)$/)) && method === 'GET') return handleStore(request, env, decodeURIComponent(m[1]), ctx);
   if ((m = path.match(/^\/api\/store\/([^/]+)\/hit$/)) && method === 'POST') return handleStoreHit(request, env, decodeURIComponent(m[1]));
   if (path === '/api/img' && method === 'GET') return handleImgProxy(request);
