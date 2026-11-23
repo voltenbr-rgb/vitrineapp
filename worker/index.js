@@ -390,9 +390,38 @@ const DUMMY_HASH = 'pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAA
 
 // Garante tabelas/colunas novas em bancos criados por versões anteriores (roda 1x por instância).
 let schemaReady = null;
+// Versão = "impressão digital" do próprio código de migração: mudou o código, roda de novo; senão, 1 consulta só.
+let schemaHash = null;
+function migrationHash() {
+  if (schemaHash) return schemaHash;
+  const src = String(runMigrations);
+  let h = 5381;
+  for (let i = 0; i < src.length; i++) h = ((h * 33) ^ src.charCodeAt(i)) >>> 0;
+  schemaHash = `m${h.toString(36)}`;
+  return schemaHash;
+}
 function ensureSchema(env) {
   if (!schemaReady) {
     schemaReady = (async () => {
+      try {
+        const row = await env.DB.prepare("SELECT value FROM app_config WHERE key = 'schema_version'").first();
+        if (row && row.value === migrationHash()) return;
+      } catch { /* banco novo: segue para criar tudo */ }
+      await runMigrations(env);
+      await env.DB.prepare(
+        "INSERT INTO app_config (key, value, updated_at) VALUES ('schema_version', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+      ).bind(migrationHash(), nowIso()).run();
+    })().catch((err) => {
+      schemaReady = null;
+      throw err;
+    });
+  }
+  return schemaReady;
+}
+
+async function runMigrations(env) {
+  {
+    {
       await env.DB.prepare(
         'CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT)',
       ).run();
@@ -536,12 +565,12 @@ function ensureSchema(env) {
           ),
         ]);
       }
-    })().catch((err) => {
-      schemaReady = null;
-      throw err;
-    });
+      await env.DB.prepare(
+        `CREATE TABLE IF NOT EXISTS error_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, method TEXT, path TEXT,
+           message TEXT, stack TEXT)`,
+      ).run();
+    }
   }
-  return schemaReady;
 }
 
 async function getConfig(env) {
@@ -3481,6 +3510,24 @@ async function serveAsset(request, env, url) {
   return rewriter.transform(plain);
 }
 
+// Falhas momentâneas do D1 (rede, tempo esgotado, instância reiniciando) — vale tentar de novo uma vez.
+function isTransientError(err) {
+  const msg = String((err && (err.message || err)) || '');
+  return /D1_ERROR|network connection lost|connection (was )?reset|timed? ?out|timeout|overloaded|internal error|try again|storage (operation|caused)|reset because|Cannot resolve|fetch failed/i.test(msg);
+}
+
+// Guarda os últimos erros inesperados (sem dados pessoais) para diagnóstico.
+async function logError(env, method, path, err) {
+  try {
+    const safePath = String(path || '').replace(/\/\d+/g, '/:id').slice(0, 120);
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO error_log (at, method, path, message, stack) VALUES (?, ?, ?, ?, ?)')
+        .bind(nowIso(), method, safePath, String((err && err.message) || err).slice(0, 500), String((err && err.stack) || '').slice(0, 1500)),
+      env.DB.prepare('DELETE FROM error_log WHERE id <= (SELECT MAX(id) - 200 FROM error_log)'),
+    ]);
+  } catch { /* sem log, sem problema */ }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -3490,14 +3537,27 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
     let response;
+    const path = url.pathname.replace(/\/+$/, '') || '/';
+    // Pedidos que podem ser repetidos sem efeito colateral: tenta de novo se o banco falhar por um instante.
+    const retryable = request.method === 'GET' || ['/api/auth/login', '/api/me/ping'].includes(path);
+    const spare = retryable && request.method !== 'GET' ? request.clone() : null;
     try {
       if (!env.DB) throw new HttpError(500, 'Banco D1 (binding DB) não configurado.');
-      response = await routeApi(request, env, url.pathname.replace(/\/+$/, '') || '/', ctx);
+      try {
+        response = await routeApi(request, env, path, ctx);
+      } catch (err) {
+        if (!retryable || err instanceof HttpError || !isTransientError(err)) throw err;
+        await new Promise((r) => setTimeout(r, 250));
+        schemaReady = null;
+        response = await routeApi(spare || request, env, path, ctx);
+      }
     } catch (err) {
       if (err instanceof HttpError) {
         response = json({ error: err.message, ...err.extra }, err.status);
       } else {
         console.error('Erro inesperado:', err && err.stack ? err.stack : err);
+        const log = logError(env, request.method, path, err);
+        if (ctx && ctx.waitUntil) ctx.waitUntil(log); else await log;
         response = json({ error: 'Erro interno. Tente novamente em instantes.' }, 500);
       }
     }

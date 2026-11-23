@@ -153,6 +153,8 @@
     .sp-prev.glass { background: radial-gradient(80% 90% at 85% 0%, color-mix(in srgb, var(--c) 70%, transparent), transparent 70%), radial-gradient(70% 70% at 0% 100%, rgba(255, 140, 60, .45), transparent 70%), #121216; }
     .sp-prev.glass i, .sp-prev.glass b { background: rgba(255, 255, 255, .10); border: 1px solid rgba(255, 255, 255, .16); }
     .sp-name { display: block; font-weight: 800; font-size: 14px; margin-top: 8px; }
+    #loginError.soft { background: #eef6ff; color: #1e4f8a; }
+    .retry-link { display: inline; border: 0; background: none; padding: 0; margin-left: 4px; font: inherit; font-weight: 800; color: inherit; text-decoration: underline; cursor: pointer; }
     .trial-note { margin: 0 0 12px; padding: 10px 12px; border-radius: 14px; background: #fff7e6; color: #7a4b00; font-size: 13px; line-height: 1.45; }
     .pp-lose { margin-top: 10px; padding: 9px 11px; border-radius: 12px; background: #fff1f2; color: #9f1239; font-size: 12.5px; }
     .pp-lose ul { margin: 4px 0 0; padding-left: 0; }
@@ -753,8 +755,17 @@
       if (raw) { opts.body = raw; headers['Content-Type'] = contentType; }
       else if (body !== undefined) { opts.body = JSON.stringify(body); headers['Content-Type'] = 'application/json'; }
       let res;
-      try { res = await fetch(API + path, opts); }
-      catch { throw Object.assign(new Error('Sem conexão. Verifique sua internet.'), { status: 0 }); }
+      const tries = method === 'GET' ? 2 : 1;
+      for (let i = 0; i < tries; i++) {
+        try {
+          res = await fetch(API + path, opts);
+          if (res.status >= 500 && i < tries - 1) { await new Promise((r) => setTimeout(r, 700)); continue; }
+          break;
+        } catch {
+          if (i < tries - 1) { await new Promise((r) => setTimeout(r, 700)); continue; }
+          throw Object.assign(new Error('Sem conexão. Verifique sua internet.'), { status: 0 });
+        }
+      }
       const data = await res.json().catch(() => ({}));
       if (res.status === 401 && path !== '/api/auth/login') {
         logout();
@@ -1776,6 +1787,7 @@
       $('#appView').hidden = true;
       $('#loginView').hidden = false;
       const box = $('#loginError');
+      box.classList.remove('soft');
       box.hidden = !message;
       box.textContent = message || '';
       setTimeout(() => ($('#loginStore').value ? $('#loginPass') : $('#loginStore')).focus(), 50);
@@ -3345,7 +3357,43 @@
 
       state.token = ls.get(TOKEN_KEY);
       if (!state.token) return showLogin();
-      try {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await restoreSession();
+          return;
+        } catch (err) {
+          if (err.status === 401) return;
+          const temporary = err.status === 0 || err.status >= 500;
+          if (temporary && attempt < 3) {
+            showConnecting(attempt);
+            await new Promise((r) => setTimeout(r, attempt * 1500));
+            continue;
+          }
+          return temporary ? showOffline() : showLogin(err.message);
+        }
+      }
+    }
+
+    // Enquanto tenta reconectar: tela leve, sem pedir senha de novo (a sessão continua guardada).
+    function showConnecting(attempt) {
+      $('#appView').hidden = true;
+      $('#loginView').hidden = false;
+      const box = $('#loginError');
+      box.hidden = false;
+      box.classList.add('soft');
+      box.textContent = `Conectando à sua vitrine... (tentativa ${attempt + 1} de 3)`;
+    }
+    function showOffline() {
+      $('#appView').hidden = true;
+      $('#loginView').hidden = false;
+      const box = $('#loginError');
+      box.hidden = false;
+      box.classList.add('soft');
+      box.innerHTML = 'A conexão está instável agora. Sua sessão continua salva. <button type="button" class="retry-link" onclick="location.reload()">Tentar de novo</button>';
+    }
+
+    async function restoreSession() {
+      {
         const welcome = new URLSearchParams(location.search).get('bemvindo');
         const paidId = new URLSearchParams(location.search).get('pago');
         if (paidId) {
@@ -3375,9 +3423,9 @@
             await afterLogin();
           }
         }
-      } catch (err) {
-        if (err.status !== 401) showLogin(err.message);
       }
+      const box = $('#loginError');
+      if (box) box.classList.remove('soft');
     }
 
     init();
