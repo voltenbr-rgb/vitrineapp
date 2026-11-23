@@ -509,6 +509,7 @@
               <span class="pill ${esc(t.status)}"><span class="dot"></span>${esc(STATUS[t.status] || t.status)}</span>
               <span class="pill" style="background:${t.plan === 'complete' ? '#fff1c7' : '#eef2ff'};color:${t.plan === 'complete' ? '#8a5a00' : '#3730a3'}">${t.status === 'trial' ? 'Teste do Completo' : esc(PLAN_NAME[t.plan] || 'Essencial')}</span>
               ${t.source ? `<span class="src-chip" title="Origem do cadastro${t.campaign ? ' · ' + esc(t.campaign) : ''}">${esc(srcName(t.source))}</span>` : ''}
+              ${t.founder ? '<span class="src-chip" style="background:#fff4cc;color:#8a5a00" title="Garantiu o preço de fundador do Completo">🏅 Fundador</span>' : ''}
               ${t.referred_by_name ? `<span class="src-chip ref-chip" title="Veio pelo link de indicação">🎁 por ${esc(String(t.referred_by_name).split(' ')[0])}</span>` : ''}
               ${t.ref_signups ? `<span class="src-chip ref-chip" title="Cadastros pelo link dele · quantos já pagaram">🎁 indicou ${t.ref_signups}${t.ref_paid ? ` · ${t.ref_paid} pagou` : ''}</span>` : ''}
             </div></div>

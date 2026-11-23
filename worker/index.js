@@ -525,6 +525,7 @@ async function runMigrations(env) {
       await addAcc('referred_by', 'referred_by INTEGER');
       await addAcc('ref_rewarded', 'ref_rewarded INTEGER NOT NULL DEFAULT 0');
       await addAcc('ref_new', 'ref_new INTEGER NOT NULL DEFAULT 0');
+      await addAcc('founder', 'founder INTEGER NOT NULL DEFAULT 0'); // garantiu o preço de fundador do Completo
       await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_ref_code ON accounts (ref_code) WHERE ref_code IS NOT NULL').run();
       await env.DB.prepare(
         `CREATE TABLE IF NOT EXISTS site_daily (
@@ -1585,6 +1586,29 @@ const PLANS = {
   complete: { id: 'complete', name: 'Completo', stores: 3, templates: [1, 2, 3], customTemplates: true },
 };
 const planPrice = (env, plan) => (plan === 'complete' ? env.PLAN_PRICE_COMPLETE || '29,90' : env.PLAN_PRICE || '19,90');
+// Preço de fundador: os primeiros N assinantes do Completo pagam PLAN_PRICE_COMPLETE para sempre;
+// esgotadas as vagas, quem não é fundador paga PLAN_PRICE_COMPLETE_AFTER.
+const founderLimit = (env) => Math.max(0, Number(env.FOUNDER_SLOTS || 50) || 0);
+const founderPrice = (env) => env.PLAN_PRICE_COMPLETE || '29,90';
+const afterFounderPrice = (env) => env.PLAN_PRICE_COMPLETE_AFTER || '34,90';
+async function founderInfo(env) {
+  let taken = 0;
+  try { taken = Number((await env.DB.prepare('SELECT COUNT(*) AS n FROM accounts WHERE founder = 1').first('n')) || 0); } catch { /* coluna nova */ }
+  const limit = founderLimit(env);
+  const left = Math.max(0, limit - taken);
+  return { limit, taken, left, open: left > 0, price: founderPrice(env), next_price: afterFounderPrice(env) };
+}
+// Preço mensal do Completo para esta conta (fundador mantém o preço; com vagas abertas, todos pagam o de fundador).
+function completePriceFor(env, account, info) {
+  return (account && Number(account.founder) === 1) || (info && info.open) ? founderPrice(env) : afterFounderPrice(env);
+}
+async function markFounder(env, accountId) {
+  const limit = founderLimit(env);
+  await env.DB.prepare(
+    'UPDATE accounts SET founder = 1 WHERE id = ? AND founder = 0 AND (SELECT COUNT(*) FROM accounts WHERE founder = 1) < ?',
+  ).bind(accountId, limit).run();
+}
+
 // Completo anual: pagamento único de 365 dias ("2 meses grátis").
 const planPriceYear = (env) => env.PLAN_PRICE_COMPLETE_YEAR || '299,00';
 const lookupLimitFor = (env, plan) => (plan === 'complete'
@@ -1613,6 +1637,7 @@ function plansCatalog(env) {
 function accountPrivate(env, a) {
   return {
     id: a.id,
+    founder: Number(a.founder) === 1,
     owner_name: a.owner_name,
     whatsapp: a.whatsapp,
     plan: PLANS[a.plan] ? a.plan : 'basic',
@@ -1872,11 +1897,13 @@ async function deleteAllTenantImages(env, tenantId) {
 
 async function handleConfig(request, env) {
   const cfg = await getConfig(env);
+  const founder = await founderInfo(env);
   return json({
     app_name: 'Vitrine App',
     trial_days: trialDays(env),
     plan_price: env.PLAN_PRICE || '19,90',
-    plan_price_complete: env.PLAN_PRICE_COMPLETE || '29,90',
+    plan_price_complete: founder.open ? founderPrice(env) : afterFounderPrice(env),
+    founder,
     plan_price_complete_year: planPriceYear(env),
     plans: plansCatalog(env),
     payments: mpConfigured(env),
@@ -3081,6 +3108,7 @@ async function applyPayment(env, pay) {
   const paidUntil = addDays(Math.max(now, current), pay.days || 30);
   await env.DB.prepare("UPDATE accounts SET status = 'active', plan = ?, paid_until = ?, updated_at = ? WHERE id = ?")
     .bind(PLANS[pay.plan] ? pay.plan : 'basic', paidUntil, nowIso(), acc.id).run();
+  if (pay.plan === 'complete') await markFounder(env, acc.id).catch(() => {});
   if (acc.referred_by) await rewardReferrer(env, { ...acc, plan: PLANS[pay.plan] ? pay.plan : 'basic' }).catch(() => {});
   return true;
 }
@@ -3107,7 +3135,7 @@ async function handleHubResumo(request, env) {
   const monthKey = (ms) => dayKey(ms).slice(0, 7);
   const base = publicBase(request, env);
   const { results: accs } = await env.DB.prepare(
-    `SELECT id, owner_name, status, plan, trial_ends_at, paid_until, temp_password, source, referred_by, last_seen_at, created_at
+    `SELECT id, owner_name, status, plan, trial_ends_at, paid_until, temp_password, source, referred_by, founder, last_seen_at, created_at
      FROM accounts ORDER BY id`,
   ).all();
   // Status calculado na hora (a conta só é marcada como vencida no banco quando o cliente entra).
@@ -3117,7 +3145,8 @@ async function handleHubResumo(request, env) {
   });
   const count = (fn) => accounts.filter(fn).length;
   const active = (a) => a.status === 'active';
-  const priceOf = (plan) => priceNumber(planPrice(env, PLANS[plan] ? plan : 'basic'));
+  const fInfo = await founderInfo(env);
+  const priceOf = (plan, acc) => priceNumber(plan === 'complete' ? completePriceFor(env, acc, fInfo) : planPrice(env, 'basic'));
 
   const { results: pays } = await env.DB.prepare(
     `SELECT account_id, plan, amount, method, status, updated_at, created_at FROM payments
@@ -3164,7 +3193,7 @@ async function handleHubResumo(request, env) {
       em_teste: count((a) => a.status === 'trial' && a.plan === pl.id),
     })),
     receita: {
-      mrr: Math.round(accounts.filter(active).reduce((n, a) => n + priceOf(a.plan), 0) * 100) / 100,
+      mrr: Math.round(accounts.filter(active).reduce((n, a) => n + priceOf(a.plan, a), 0) * 100) / 100,
       mes_atual: thisMonth.valor,
       mes_anterior: lastMonth.valor,
       pagamentos_mes: thisMonth.pagamentos,
@@ -3197,7 +3226,8 @@ async function handleHubResumo(request, env) {
       nome: a.owner_name,
       status: a.status === 'active' ? 'ativo' : a.status === 'trial' ? 'teste' : 'vencido',
       plano: a.plan,
-      valor_plano: priceOf(a.plan),
+      valor_plano: priceOf(a.plan, a),
+      fundador: Number(a.founder) === 1,
       vence_em: (a.status === 'trial' ? a.trial_ends_at : a.paid_until) || null,
       lojas: storesBy.get(a.id) || 0,
       origem: a.source || null,
@@ -3323,7 +3353,8 @@ async function handlePayCreate(request, env, account) {
   const method = body.method === 'card' ? 'card' : 'pix';
   const yearly = plan === 'complete' && body.period === 'year';
   const days = yearly ? 365 : 30;
-  const amount = priceNumber(yearly ? planPriceYear(env) : planPrice(env, plan));
+  const founder = plan === 'complete' && !yearly ? await founderInfo(env) : null;
+  const amount = priceNumber(yearly ? planPriceYear(env) : plan === 'complete' ? completePriceFor(env, account, founder) : planPrice(env, plan));
   if (!(amount > 0)) throw new HttpError(500, 'Preço do plano não configurado.');
   const email = String(body.email || '').trim().toLowerCase();
   if (method === 'pix' && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
