@@ -730,6 +730,27 @@
     html.landing:not(.dark) .hero-stats span i { width: 7px; height: 7px; border-radius: 50%; background: var(--d, var(--accent)); }
     html.landing:not(.dark) .card:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), 0 18px 40px color-mix(in srgb, var(--accent) 16%, transparent); }
 
+
+    /* ---------- Convite para o grupo de WhatsApp ---------- */
+    .grp {
+      position: relative; display: flex; align-items: center; gap: 12px; margin: 14px 0 16px; padding: 14px;
+      border-radius: 22px; color: #fff; overflow: hidden;
+      background: linear-gradient(135deg, #25d366, #128c7e); box-shadow: 0 14px 34px rgba(18, 140, 126, .32);
+    }
+    .grp::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .22) 50%, transparent 65%); transform: translateX(-120%); animation: grpShine 4s ease-in-out infinite 1.5s; pointer-events: none; }
+    @keyframes grpShine { 55%, 100% { transform: translateX(120%); } }
+    .grp-ic { width: 46px; height: 46px; flex-shrink: 0; border-radius: 15px; display: grid; place-items: center; background: rgba(255, 255, 255, .2); }
+    .grp-ic svg { width: 26px; height: 26px; }
+    .grp-tx { flex: 1; min-width: 0; }
+    .grp-tx strong { display: block; font-size: 15px; letter-spacing: -.01em; line-height: 1.2; }
+    .grp-tx small { display: block; font-size: 12px; opacity: .92; margin-top: 3px; line-height: 1.35; }
+    .grp-btn { position: relative; z-index: 1; flex-shrink: 0; padding: 11px 16px; border-radius: 999px; background: #fff; color: #0b7a52; font-weight: 900; font-size: 14px; text-decoration: none; box-shadow: 0 6px 16px rgba(0, 0, 0, .15); }
+    .grp-btn:active { transform: scale(.97); }
+    .grp.in-hero { margin-top: -84px; z-index: 2; }
+    @media (min-width: 720px) { .grp.in-hero { margin-top: -96px; max-width: 760px; margin-left: auto; margin-right: auto; } }
+    @media (prefers-reduced-motion: reduce) { .grp::after { animation: none; } }
+    html.lite .grp::after { animation: none; }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
     }
@@ -1355,6 +1376,7 @@
       const intro = landing && state.settings.landing_intro !== 0;
       app.innerHTML = `
         ${intro ? landingHeroHtml({ avatar, cover, showWa, kicker, tagline }) : ''}
+        ${intro ? groupHtml(true) : ''}
         ${intro ? perksHtml() : ''}
         <div id="loja" class="lp-anchor"></div>
         <header class="topbar">
@@ -1383,6 +1405,7 @@
             <span class="feat-tag">⭐ Destaque</span><img src="${esc(heroImg)}" alt=""></button></div>` : ''}
         </section>`}
 
+        ${intro ? '' : groupHtml(false)}
         ${landing && !intro ? perksHtml() : ''}
         ${highlightsHtml(highlights)}
 
@@ -1462,6 +1485,19 @@
           }).join('')}</div>` : ''}
         </div>
         <button type="button" class="lp-scroll" data-lp-go aria-label="Ver a vitrine"><span></span></button>
+      </section>`;
+    }
+
+    // Convite para o grupo/canal de ofertas do lojista (configurado no painel).
+    function groupHtml(inHero) {
+      const st = state.settings;
+      if (!st.show_group || !/^https:\/\/(chat\.whatsapp\.com|(www\.)?whatsapp\.com\/channel)\//.test(st.group_url || '')) return '';
+      const channel = /\/channel\//.test(st.group_url);
+      const title = String(st.group_title || '').trim() || (channel ? 'Siga nosso canal de ofertas' : 'Entre no grupo de ofertas');
+      return `<section class="grp ${inHero ? 'in-hero' : ''}" aria-label="Grupo de ofertas no WhatsApp">
+        <span class="grp-ic">${ICON.wa}</span>
+        <div class="grp-tx"><strong>${esc(title)}</strong><small>Receba os achadinhos e cupons primeiro, direto no seu WhatsApp.</small></div>
+        <a class="grp-btn" href="${esc(st.group_url)}" target="_blank" rel="noopener noreferrer" data-grp>${channel ? 'Seguir' : 'Entrar'}</a>
       </section>`;
     }
 
@@ -1652,6 +1688,7 @@
       if (t.matches('a.btn-buy')) hit(t.classList.contains('wa') ? 'order' : 'click', t.dataset.pid);
       if (t.dataset.open) return openProduct(Number(t.dataset.open));
       if (t.matches('[data-about-share]')) return shareStore();
+      if (t.matches('[data-grp]')) hit('click');
       if (t.matches('[data-lp-go]')) { const a = $('#loja'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
       if (t.dataset.add) {
         hit('click', t.dataset.add);

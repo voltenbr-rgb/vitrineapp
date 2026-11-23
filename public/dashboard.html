@@ -2710,6 +2710,17 @@
         </div>
 
         <div class="card">
+          <h2>Grupo de ofertas no WhatsApp</h2><p class="sub">Um card verde na vitrine convida os clientes para o seu grupo ou canal.</p>
+          <div class="switch-row" style="padding-top:0"><div><strong>Mostrar convite do grupo</strong><small>Aparece logo abaixo da apresentação da vitrine.</small></div>
+            <label class="switch"><input type="checkbox" data-setting="show_group" ${s.show_group ? 'checked' : ''}><span class="track"></span></label></div>
+          <label class="field" style="margin-top:10px"><span>Link do grupo ou canal</span>
+            <input class="input" data-setting="group_url" inputmode="url" placeholder="https://chat.whatsapp.com/..." value="${esc(s.group_url || '')}" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+          <label class="field" style="margin-bottom:0"><span>Título do card <small style="font-weight:500;color:var(--muted)">opcional</small></span>
+            <input class="input" data-setting="group_title" maxlength="60" placeholder="Entre no grupo de ofertas" value="${esc(s.group_title || '')}"></label>
+          <p class="sub" style="margin:8px 0 0">No WhatsApp: abra o grupo → nome do grupo → <b>Convidar via link</b> → Copiar link.</p>
+        </div>
+
+        <div class="card">
           <h2>Aparência</h2><p class="sub">Estilo da vitrine, tema e cor dos cards dos produtos.</p>
           <div class="switch-row" style="display:block;padding-top:0">
             <div style="margin-bottom:10px"><strong>Estilo da vitrine</strong></div>
@@ -2905,6 +2916,9 @@
         theme_mode: ($('[data-setting="theme_mode"]:checked') || {}).value || 'light',
         store_mode: ($('[data-setting="store_mode"]:checked') || {}).value || 'mixed',
         show_whatsapp: get('show_whatsapp').checked ? 1 : 0,
+        show_group: get('show_group') && get('show_group').checked ? 1 : 0,
+        group_url: get('group_url') ? get('group_url').value.trim() : undefined,
+        group_title: get('group_title') ? get('group_title').value.trim() : undefined,
         card_tone: ($('[data-setting="card_tone"]:checked') || {}).value || 'white',
         show_tags: get('show_tags').checked ? 1 : 0,
         store_style: ($('[data-setting="store_style"]:checked') || {}).value || 'classic',

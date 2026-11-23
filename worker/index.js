@@ -191,6 +191,20 @@ function text(value, max, field, { required = false } = {}) {
   return v;
 }
 
+// Link de grupo/canal do WhatsApp: só aceita os endereços oficiais de convite.
+function whatsappGroupUrl(v) {
+  const raw = String(v || '').trim();
+  if (!raw) return '';
+  let u;
+  try { u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`); } catch { u = null; }
+  const ok = u && u.protocol === 'https:' && (
+    (u.hostname === 'chat.whatsapp.com' && /^\/[A-Za-z0-9]{10,40}\/?$/.test(u.pathname)) ||
+    (/^(www\.)?whatsapp\.com$/.test(u.hostname) && /^\/channel\/[A-Za-z0-9]{10,40}\/?$/.test(u.pathname))
+  );
+  if (!ok) throw new HttpError(400, 'Link do grupo inválido. Use o link de convite do WhatsApp (chat.whatsapp.com/...) ou de um canal (whatsapp.com/channel/...).');
+  return `https://${u.hostname}${u.pathname.replace(/\/$/, '')}`;
+}
+
 // @ do Instagram: aceita "@loja", "loja" ou o link do perfil; guarda só o nome de usuário.
 function instagramHandle(v) {
   let h = String(v || '').trim();
@@ -465,6 +479,9 @@ async function runMigrations(env) {
       if (!sc.has('show_tags')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_tags INTEGER NOT NULL DEFAULT 1');
       if (!sc.has('store_style')) alters.push("ALTER TABLE tenant_settings ADD COLUMN store_style TEXT NOT NULL DEFAULT 'classic'");
       if (!sc.has('landing_intro')) alters.push('ALTER TABLE tenant_settings ADD COLUMN landing_intro INTEGER NOT NULL DEFAULT 1');
+      if (!sc.has('show_group')) alters.push('ALTER TABLE tenant_settings ADD COLUMN show_group INTEGER NOT NULL DEFAULT 0');
+      if (!sc.has('group_url')) alters.push("ALTER TABLE tenant_settings ADD COLUMN group_url TEXT NOT NULL DEFAULT ''");
+      if (!sc.has('group_title')) alters.push("ALTER TABLE tenant_settings ADD COLUMN group_title TEXT NOT NULL DEFAULT ''");
       if (!sc.has('offer_templates')) alters.push("ALTER TABLE tenant_settings ADD COLUMN offer_templates TEXT NOT NULL DEFAULT ''");
       for (const sql of alters) {
         try {
@@ -697,13 +714,42 @@ function readMeta(html) {
     const val = (tag.match(/content=["']([^"']*)/i) || [])[1];
     if (key && val && all.length < 30) all.push(`${key}=${decodeEntities(val).slice(0, 140)}`);
   }
+  const priceNum = price && Number(price.replace(',', '.')) > 0 ? Number(price.replace(',', '.')) : null;
   return {
     all,
     title: get('og:title') || decodeEntities((html.match(/<title>([^<]{3,200})<\/title>/i) || [])[1] || ''),
     image: get('og:image'),
     url: get('og:url') || decodeEntities(canonical),
-    price: price && Number(price.replace(',', '.')) > 0 ? Number(price.replace(',', '.')) : null,
+    price: priceNum,
+    original: readOriginalPrice(html),
+    discount_pct: readDiscountPct(html),
   };
+}
+
+// Preço "De" (riscado) na página do produto — vários formatos usados pelo Mercado Livre.
+function readOriginalPrice(html) {
+  const num = (v) => { const n = Number(String(v).replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); return n > 0 ? n : null; };
+  const pats = [
+    /aria-label=["']Antes:\s*([\d.]+)\s*reais(?:\s*(?:com|con|e)\s*(\d{1,2})\s*centavos)?/i,
+    /"original_price"\s*:\s*(\d+(?:\.\d+)?)/,
+    /"previous_price"\s*:\s*\{[^}]{0,80}?"value"\s*:\s*(\d+(?:\.\d+)?)/,
+    /"original_value"\s*:\s*(\d+(?:\.\d+)?)/,
+  ];
+  for (const re of pats) {
+    const m = html.match(re);
+    if (!m) continue;
+    if (re === pats[0]) { const v = num(m[1]); if (v) return m[2] ? v + Number(m[2]) / 100 : v; }
+    else { const v = Number(m[1]); if (v > 0) return v; }
+  }
+  // <s class="andes-money-amount--previous"> ... fraction 129 ... cents 90
+  const prev = html.match(/andes-money-amount--previous[\s\S]{0,600}?andes-money-amount__fraction[^>]*>([\d.]+)<[\s\S]{0,200}?(?:andes-money-amount__cents[^>]*>(\d{1,2})<)?/i);
+  if (prev) { const v = num(prev[1]); if (v) return prev[2] ? v + Number(prev[2]) / 100 : v; }
+  return null;
+}
+function readDiscountPct(html) {
+  const m = html.match(/andes-money-amount__discount[^>]*>\s*(\d{1,2})\s*%\s*OFF/i) || html.match(/>\s*(\d{1,2})%\s*OFF\s*</i);
+  const n = m ? Number(m[1]) : 0;
+  return n >= 3 && n <= 95 ? n : null;
 }
 
 // Títulos genéricos (página inicial / bloqueio) não servem como nome de produto.
@@ -1063,10 +1109,14 @@ function splitTitlePrice(rawTitle) {
 // Prévia pública (cartão do link): nome limpo + preço que vem colado no nome ("... - R$ 64,74").
 function mlPreviewResult(meta) {
   const split = splitTitlePrice(meta.title);
+  const price = Number(meta.price) > 0 ? Number(meta.price) : split.price;
+  let original = Number(meta.original) > 0 ? Number(meta.original) : null;
+  if (!original && price && meta.discount_pct) original = Math.round((price / (1 - meta.discount_pct / 100)) * 100) / 100;
   return {
     platform: 'mercadolivre',
     title: split.title.slice(0, 120),
-    price: Number(meta.price) > 0 ? Number(meta.price) : split.price,
+    original_price: original && price && original > price * 1.02 && original < price * 10 ? original : null,
+    price,
     image_url: /^https:\/\//.test(meta.image || '') ? meta.image : null,
     shop_name: null,
     source: 'preview',
@@ -1115,9 +1165,18 @@ async function lookupMercadoLivre(env, token, url) {
   }
   // A API não liberou: usa a prévia pública da página do produto.
   let preview = usefulMeta(meta) ? meta : null;
-  if (!preview) {
-    const pageUrl = ids.itemId ? `https://produto.mercadolivre.com.br/MLB-${ids.itemId.replace(/^MLB/i, '')}` : `https://www.mercadolivre.com.br/p/${ids.productId}`;
-    preview = await fetchPreview(pageUrl);
+  const pageUrl = ids.itemId ? `https://produto.mercadolivre.com.br/MLB-${ids.itemId.replace(/^MLB/i, '')}` : `https://www.mercadolivre.com.br/p/${ids.productId}`;
+  if (!preview) preview = await fetchPreview(pageUrl);
+  // A prévia leve não traz o preço "De": tenta a página completa uma vez para achar o desconto.
+  if (preview && !preview.original && !preview.discount_pct) {
+    try {
+      const res = await fetch(pageUrl, { headers: { 'User-Agent': UA_BROWSER, Accept: 'text/html', 'Accept-Language': 'pt-BR,pt;q=0.9' } });
+      if (res.ok) {
+        const html = (await res.text()).slice(0, 1_500_000);
+        preview = { ...preview, original: readOriginalPrice(html), discount_pct: readDiscountPct(html) };
+        if (!preview.price) { const full = readMeta(html); if (full.price) preview.price = full.price; }
+      }
+    } catch { /* sem desconto, segue só com o preço */ }
   }
   if (apiError && apiError.extra && apiError.extra.code === 'ml_permission') {
     await saveDebug(env, 'debug_ml', { input: url, ids, error: 'ml_permission', preview: preview ? preview.title : null });
@@ -1737,7 +1796,7 @@ function tenantPrivate(t) {
 
 const DEFAULT_SETTINGS = {
   show_prices: 1, show_stock_warning: 1, view_mode: 'grid', show_banner: 1, share_message: '', offer_template: 1,
-  theme_mode: 'light', card_tone: 'white', offer_templates: '', show_whatsapp: 1, store_mode: 'mixed', show_tags: 1, store_style: 'classic', landing_intro: 1,
+  theme_mode: 'light', card_tone: 'white', offer_templates: '', show_whatsapp: 1, store_mode: 'mixed', show_tags: 1, store_style: 'classic', landing_intro: 1, show_group: 0, group_url: '', group_title: '',
 };
 // Tipo da loja: só afiliados, só catálogo da região (com carrinho) ou os dois.
 const STORE_MODES = ['affiliate', 'local', 'mixed'];
@@ -1746,7 +1805,7 @@ const storeMode = (v) => (STORE_MODES.includes(v) ? v : 'mixed');
 async function loadSettings(env, tenantId) {
   const row = await env.DB.prepare(
     `SELECT show_prices, show_stock_warning, view_mode, show_banner, share_message, offer_template,
-            theme_mode, card_tone, offer_templates, show_whatsapp, store_mode, show_tags, store_style, landing_intro FROM tenant_settings WHERE tenant_id = ?`,
+            theme_mode, card_tone, offer_templates, show_whatsapp, store_mode, show_tags, store_style, landing_intro, show_group, group_url, group_title FROM tenant_settings WHERE tenant_id = ?`,
   ).bind(tenantId).first();
   return row ? { ...DEFAULT_SETTINGS, ...row } : { ...DEFAULT_SETTINGS };
 }
@@ -1914,7 +1973,8 @@ async function refreshStalePrices(env, tenantId, max = 2) {
     // Proteção: variação absurda costuma ser produto errado (link mudou, busca confundiu). Mantém o atual.
     const atual = Number(p.price);
     if (atual > 0 && (novo < atual * 0.2 || novo > atual * 5)) continue;
-    const de = Number(found.original_price) > novo ? Number(found.original_price) : null;
+    // Sem "De" no site, mantém o que o lojista digitou (se ainda for maior que o preço novo).
+    const de = Number(found.original_price) > novo ? Number(found.original_price) : (Number(p.original_price) > novo ? Number(p.original_price) : null);
     if (novo === atual && (de || null) === (Number(p.original_price) || null)) continue;
     await env.DB.prepare('UPDATE products SET price = ?, original_price = ? WHERE id = ?').bind(novo, de, p.id).run();
   }
@@ -1944,6 +2004,7 @@ async function handleStore(request, env, rawId, ctx = null) {
   delete settings.share_message;
   delete settings.offer_template;
   delete settings.offer_templates;
+  if (!settings.show_group || !settings.group_url) { settings.show_group = 0; delete settings.group_url; delete settings.group_title; }
   // Estilo Landing é do plano Completo (e do teste). No Básico, a vitrine segue o tema escolhido:
   // claro vira o Clássico, escuro vira o Vidro.
   if (settings.store_style === 'landing' && tenant.effective_plan && tenant.effective_plan !== 'complete') {
@@ -2245,7 +2306,13 @@ async function handleSettings(request, env, tenant) {
     show_tags: bool01(pick('show_tags')),
     store_style: STORE_STYLES.includes(pick('store_style')) ? pick('store_style') : 'classic',
     landing_intro: bool01(pick('landing_intro')),
+    show_group: bool01(pick('show_group')),
+    group_url: whatsappGroupUrl(pick('group_url')),
+    group_title: text(pick('group_title') || '', 60, 'Título do grupo'),
   };
+  if (settings.show_group && !settings.group_url) {
+    throw new HttpError(400, 'Cole o link do grupo (chat.whatsapp.com/...) para mostrar o convite na vitrine.');
+  }
   // Recursos do plano: modelos 2 e 3 e edição dos modelos são do plano Completo (e do teste grátis).
   const plan = PLANS[effectivePlan(tenant.account)];
   if (!plan.templates.includes(settings.offer_template)) settings.offer_template = 1;
@@ -2263,8 +2330,9 @@ async function handleSettings(request, env, tenant) {
   }
   await env.DB.prepare(
     `INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, show_banner, share_message,
-                                  offer_template, theme_mode, card_tone, offer_templates, show_whatsapp, store_mode, show_tags, store_style, landing_intro)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  offer_template, theme_mode, card_tone, offer_templates, show_whatsapp, store_mode, show_tags, store_style, landing_intro,
+       show_group, group_url, group_title)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (tenant_id) DO UPDATE SET
        show_prices = excluded.show_prices,
        show_stock_warning = excluded.show_stock_warning,
@@ -2279,9 +2347,13 @@ async function handleSettings(request, env, tenant) {
        store_mode = excluded.store_mode,
        show_tags = excluded.show_tags,
        store_style = excluded.store_style,
-       landing_intro = excluded.landing_intro`,
+       landing_intro = excluded.landing_intro,
+       show_group = excluded.show_group,
+       group_url = excluded.group_url,
+       group_title = excluded.group_title`,
   ).bind(tenant.id, settings.show_prices, settings.show_stock_warning, settings.view_mode, settings.show_banner, settings.share_message,
-    settings.offer_template, settings.theme_mode, settings.card_tone, settings.offer_templates, settings.show_whatsapp, settings.store_mode, settings.show_tags, settings.store_style, settings.landing_intro).run();
+    settings.offer_template, settings.theme_mode, settings.card_tone, settings.offer_templates, settings.show_whatsapp, settings.store_mode, settings.show_tags, settings.store_style, settings.landing_intro,
+    settings.show_group, settings.group_url, settings.group_title).run();
   return json({ settings });
 }
 
