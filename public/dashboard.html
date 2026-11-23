@@ -252,6 +252,8 @@
     .pay-plans .pp-price small { font-size: 11px; font-weight: 700; }
     .pay-plans ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 3px; font-size: 12.5px; color: var(--ink-2, #3b4150); }
     .pay-plans li::before { content: "✓ "; color: #16a34a; font-weight: 800; }
+    .pay-plans .tag.green { background: #dcfce7; color: #15803d; white-space: nowrap; display: inline-block; margin-top: 2px; }
+    .pp-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
     .pay-plans li.soon::before { content: "✦ "; color: var(--accent); }
     .pay-plans .pp-lose ul { color: #9f1239; }
     .pay-plans .pp-lose li::before { content: "✕ "; color: #e11d48; font-weight: 900; }
@@ -708,9 +710,9 @@
     };
     const priceInput = (v) => (v === null || v === undefined || v === '' ? '' : Number(v).toFixed(2).replace('.', ','));
     const isExpired = () => (state.view !== 'stores' && state.tenant && state.tenant.paused) || (state.account ? state.account.status === 'expired' : !!(state.tenant && state.tenant.status === 'expired'));
-    const plan = () => (state.account && state.account.plan_info) || { id: 'basic', name: 'Básico', stores: 1, templates: [1], custom_templates: false, lookups: 15, trial: false };
+    const plan = () => (state.account && state.account.plan_info) || { id: 'basic', name: 'Essencial', stores: 1, templates: [1], custom_templates: false, lookups: 15, trial: false };
     const STORE_KEY = 'vitrine:store';
-    const priceOf = (id) => (id === 'complete' ? state.config.plan_price_complete || '29,90' : state.config.plan_price || '19,90');
+    const priceOf = (id) => (id === 'complete_year' ? state.config.plan_price_complete_year || '299,00' : id === 'complete' ? state.config.plan_price_complete || '29,90' : state.config.plan_price || '19,90');
     const ls = {
       get(k) { try { return localStorage.getItem(k); } catch { return null; } },
       set(k, v) { try { localStorage.setItem(k, v); } catch { /* sem storage */ } },
@@ -940,22 +942,24 @@
       ],
       complete: [
         ['Até 3 lojas (um link para cada nicho)'],
-        ['Tudo do Básico'],
+        ['Tudo do Essencial'],
         ['30 buscas automáticas por hora'],
         ['3 modelos de mensagem, com textos editáveis'],
         ['Troca de loja com um toque'],
         ['⚡ Adicionar até 10 produtos de uma vez'],
         ['✨ Estilo Landing: a vitrine com cara de site'],
+        ['💬 Card do grupo de WhatsApp na vitrine'],
       ],
     };
 
-    // O que a pessoa deixa de ter no Básico (comparado ao Completo / teste grátis).
+    // O que a pessoa deixa de ter no Essencial (comparado ao Completo / teste grátis).
     const BASIC_LOSES = [
       'Só 1 loja (no Completo são até 3)',
       '15 buscas automáticas por hora (em vez de 30)',
       'Só o modelo de mensagem 🔥 Destaque do dia, sem editar os textos',
       'Sem ⚡ adicionar vários produtos de uma vez',
       'Sem o estilo ✨ Landing',
+      'Sem o card do grupo de WhatsApp na vitrine',
     ];
     const isTrial = () => !!(state.account && state.account.status === 'trial');
 
@@ -966,11 +970,14 @@
       const chosen = planId || ((state.account && state.account.plan) || 'complete');
       const email = ls.get('vitrine:email') || '';
       dlg.innerHTML = `<h3 id="dlgTitle">💳 Planos do Vitrine App</h3>
-        <p>30 dias de acesso. Ativa na hora que o pagamento é aprovado.</p>
-        ${isTrial() ? '<div class="trial-note">🎁 No teste você está usando <b>tudo do Completo</b>. Veja abaixo o que muda se escolher o Básico.</div>' : ''}
+        <p>Ativa na hora que o pagamento é aprovado. Sem fidelidade.</p>
+        ${isTrial() ? '<div class="trial-note">🎁 No teste você está usando <b>tudo do Completo</b>. Veja abaixo o que muda se escolher o Essencial.</div>' : ''}
         <div class="pay-plans">
-          ${['basic', 'complete'].map((id) => `<label><input type="radio" name="payPlan" value="${id}" ${id === chosen ? 'checked' : ''}><span>
-            <div class="pp-head"><b>${id === 'complete' ? '⭐ Completo' : 'Básico'}${id === 'complete' ? '<span class="tag">Mais escolhido</span>' : ''}</b><span class="pp-price">R$ ${esc(priceOf(id))}<small>/mês</small></span></div>
+          ${['basic', 'complete', 'complete_year'].map((id) => id === 'complete_year' ? `<label class="pp-year"><input type="radio" name="payPlan" value="complete_year" ${chosen === 'complete_year' ? 'checked' : ''}><span>
+            <div class="pp-head"><b>⭐ Completo anual<span class="tag green">2 meses grátis</span></b><span class="pp-price">R$ ${esc(priceOf('complete_year'))}<small>/ano</small></span></div>
+            <p class="pp-note">Tudo do Completo por 12 meses, pagando uma vez só. Sai por ${esc(brl(parseMoney(priceOf('complete_year')) / 12))} por mês.</p>
+          </span></label>` : `<label><input type="radio" name="payPlan" value="${id}" ${id === chosen ? 'checked' : ''}><span>
+            <div class="pp-head"><b>${id === 'complete' ? '⭐ Completo' : 'Essencial'}${id === 'complete' ? '<span class="tag">Mais escolhido</span>' : ''}</b><span class="pp-price">R$ ${esc(priceOf(id))}<small>/mês</small></span></div>
             <ul>${PLAN_FEATURES[id].map(([txt, soon]) => `<li class="${soon ? 'soon' : ''}">${esc(txt)}${soon ? ' <small>(em breve)</small>' : ''}</li>`).join('')}</ul>
             ${id === 'basic' ? `<div class="pp-lose"><b>${isTrial() ? 'Você deixa de ter:' : 'Não inclui:'}</b><ul>${BASIC_LOSES.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
           </span></label>`).join('')}
@@ -989,13 +996,15 @@
         if (!b) return;
         if (b.dataset.p === 'close') return close();
         if (b.dataset.p === 'copy') return copy(b.dataset.code, 'Código Pix copiado! Cole no app do seu banco 💸');
-        const plan = (dlg.querySelector('[name="payPlan"]:checked') || {}).value || 'basic';
+        const picked = (dlg.querySelector('[name="payPlan"]:checked') || {}).value || 'basic';
+        const plan = picked === 'complete_year' ? 'complete' : picked;
+        const period = picked === 'complete_year' ? 'year' : 'month';
         const mail = ($('#payEmail') || {}).value ? $('#payEmail').value.trim() : '';
         if (b.dataset.p === 'pix' && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) { toast('Informe seu e-mail para gerar o Pix.', true); return $('#payEmail').focus(); }
         if (mail) ls.set('vitrine:email', mail);
         setBusy(b, true, b.dataset.p === 'pix' ? 'Gerando Pix...' : 'Abrindo...');
         try {
-          const data = await api('/api/me/pay', { method: 'POST', body: { plan, method: b.dataset.p, email: mail } });
+          const data = await api('/api/me/pay', { method: 'POST', body: { plan, period, method: b.dataset.p, email: mail } });
           if (b.dataset.p === 'card') { location.href = data.checkout_url; return; }
           showPix(data);
         } catch (err) { toast(err.message, true); setBusy(b, false); }
@@ -1006,7 +1015,7 @@
       const dlg = $('#dialog');
       const { pix, payment } = data;
       dlg.innerHTML = `<h3 id="dlgTitle">⚡ Pague com Pix</h3>
-        <p>Plano ${payment.plan === 'complete' ? 'Completo' : 'Básico'} · <b>${brl(payment.amount)}</b>. Abra o app do seu banco e escaneie o QR Code ou use o copia e cola.</p>
+        <p>Plano ${payment.plan === 'complete' ? 'Completo' : 'Essencial'} · <b>${brl(payment.amount)}</b>. Abra o app do seu banco e escaneie o QR Code ou use o copia e cola.</p>
         <div class="pix-box">
           ${pix.qr_code_base64 ? `<img src="data:image/png;base64,${esc(pix.qr_code_base64)}" alt="QR Code do Pix">` : ''}
           <div class="pix-code">${esc(pix.qr_code)}</div>
@@ -1172,7 +1181,7 @@
     }
 
     async function setOfferModel(id) {
-      if (!plan().templates.includes(id)) return upgradeDialog('No plano Básico você usa o modelo 🔥 Destaque do dia. Os modelos ✨ Achadinho e ⚡ Relâmpago (e a edição dos textos) fazem parte do plano Completo.');
+      if (!plan().templates.includes(id)) return upgradeDialog('No plano Essencial você usa o modelo 🔥 Destaque do dia. Os modelos ✨ Achadinho e ⚡ Relâmpago (e a edição dos textos) fazem parte do plano Completo.');
       state.settings.offer_template = id;
       document.querySelectorAll('[data-model]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.model) === id)));
       if (state.offerProduct) $('#offerText').value = offerText(id, state.offerProduct);
@@ -1854,7 +1863,7 @@
     function planName(a) {
       const p = a.plan_info || {};
       if (a.status === 'trial') return 'Teste grátis do Completo';
-      return `Plano ${p.name || 'Básico'}`;
+      return `Plano ${p.name || 'Essencial'}`;
     }
 
     function renderStores() {
@@ -2033,7 +2042,7 @@
       const price = esc(priceOf(contracted));
       const payBtns = `<div class="pay-row">
             <button type="button" class="btn btn-sm btn-primary" data-act="pay" data-plan="complete">⭐ Completo R$ ${esc(priceOf('complete'))}</button>
-            <button type="button" class="btn btn-sm btn-ghost" data-act="pay" data-plan="basic">Básico R$ ${esc(priceOf('basic'))}</button></div>`;
+            <button type="button" class="btn btn-sm btn-ghost" data-act="pay" data-plan="basic">Essencial R$ ${esc(priceOf('basic'))}</button></div>`;
       if (a.status === 'trial') {
         const total = Number(state.config.trial_days) || 7;
         const left = a.trial_days_left;
@@ -2052,7 +2061,7 @@
           ${lastDay
             ? `Hoje é o último dia com tudo do plano <b>Completo</b> liberado. Escolha seu plano para sua vitrine continuar no ar sem parar.`
             : `Está tudo liberado do plano <b>Completo</b> até ${fmtDate(a.trial_ends_at)}: até 3 lojas, 30 buscas/h, 3 modelos editáveis, ⚡ vários produtos de uma vez e estilo ✨ Landing. Aproveite para testar tudo!`}
-          <details class="lose-box"><summary>O que muda se eu escolher o Básico?</summary><ul>${BASIC_LOSES.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>
+          <details class="lose-box"><summary>O que muda se eu escolher o Essencial?</summary><ul>${BASIC_LOSES.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>
           ${left <= 2 ? trialResults() : ''}
           <div class="progress" aria-hidden="true"><i style="width:${pct}%"></i></div>
           <div class="pay-row">${lastDay ? plansBtn.replace('Ver planos', 'Conhecer os planos') : plansBtn}</div></div></div>`;
@@ -2711,8 +2720,9 @@
 
         <div class="card">
           <h2>Grupo de ofertas no WhatsApp</h2><p class="sub">Um card verde na vitrine convida os clientes para o seu grupo ou canal.</p>
+          ${landingAllowed() ? '' : '<button type="button" class="sp-lock" data-act="group-locked" style="margin:0 0 10px">🔒 Recurso do plano Completo</button>'}
           <div class="switch-row" style="padding-top:0"><div><strong>Mostrar convite do grupo</strong><small>Aparece logo abaixo da apresentação da vitrine.</small></div>
-            <label class="switch"><input type="checkbox" data-setting="show_group" ${s.show_group ? 'checked' : ''}><span class="track"></span></label></div>
+            <label class="switch"><input type="checkbox" data-setting="show_group" ${s.show_group && landingAllowed() ? 'checked' : ''} ${landingAllowed() ? '' : 'disabled'}><span class="track"></span></label></div>
           <label class="field" style="margin-top:10px"><span>Link do grupo ou canal</span>
             <input class="input" data-setting="group_url" inputmode="url" placeholder="https://chat.whatsapp.com/..." value="${esc(s.group_url || '')}" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
           <label class="field" style="margin-bottom:0"><span>Título do card <small style="font-weight:500;color:var(--muted)">opcional</small></span>
@@ -3237,6 +3247,10 @@
         const y = window.scrollY; render(); window.scrollTo(0, y); return;
       }
       if (act === 'feature') return toggleFeatured(Number(t.dataset.id));
+      if (act === 'group-locked') {
+        return confirmDialog({ title: '💬 Card do grupo', text: 'Um card verde na vitrine convida seus clientes para o seu grupo ou canal de ofertas no WhatsApp. É um recurso do plano Completo.', ok: 'Ver o plano Completo' })
+          .then((ok) => { if (ok) openPay('complete'); });
+      }
       if (act === 'landing-locked') {
         return confirmDialog({ title: '✨ Estilo Landing', text: 'A vitrine abre como um site, com apresentação em tela cheia, efeitos de luz e a loja logo abaixo. É exclusivo do plano Completo.', ok: 'Ver o plano Completo' })
           .then((ok) => { if (ok) openPay('complete'); });

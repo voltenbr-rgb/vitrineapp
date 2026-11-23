@@ -1581,10 +1581,12 @@ async function requireMaster(request, env) {
 /* ------------------------------------------------------------------ */
 
 const PLANS = {
-  basic: { id: 'basic', name: 'Básico', stores: 1, templates: [1], customTemplates: false },
+  basic: { id: 'basic', name: 'Essencial', stores: 1, templates: [1], customTemplates: false },
   complete: { id: 'complete', name: 'Completo', stores: 3, templates: [1, 2, 3], customTemplates: true },
 };
 const planPrice = (env, plan) => (plan === 'complete' ? env.PLAN_PRICE_COMPLETE || '29,90' : env.PLAN_PRICE || '19,90');
+// Completo anual: pagamento único de 365 dias ("2 meses grátis").
+const planPriceYear = (env) => env.PLAN_PRICE_COMPLETE_YEAR || '299,00';
 const lookupLimitFor = (env, plan) => (plan === 'complete'
   ? clampInt(env.LOOKUP_LIMIT_COMPLETE, 1, 1000, 30)
   : clampInt(env.LOOKUP_LIMIT_PER_HOUR, 1, 1000, 15));
@@ -1661,7 +1663,7 @@ function mergeStore(t, a) {
   };
 }
 
-// Lojas além do limite do plano (ex.: criou 3 no teste e assinou o Básico) ficam pausadas, sem apagar nada.
+// Lojas além do limite do plano (ex.: criou 3 no teste e assinou o Essencial) ficam pausadas, sem apagar nada.
 async function storeOverLimit(env, account, storeId) {
   const max = PLANS[effectivePlan(account)].stores;
   const { results } = await env.DB.prepare('SELECT id FROM tenants WHERE account_id = ? ORDER BY created_at ASC, id ASC LIMIT ?')
@@ -1875,6 +1877,7 @@ async function handleConfig(request, env) {
     trial_days: trialDays(env),
     plan_price: env.PLAN_PRICE || '19,90',
     plan_price_complete: env.PLAN_PRICE_COMPLETE || '29,90',
+    plan_price_complete_year: planPriceYear(env),
     plans: plansCatalog(env),
     payments: mpConfigured(env),
     support_whatsapp: String(cfg.support_whatsapp || env.SUPPORT_WHATSAPP || '').replace(/\D/g, ''),
@@ -2004,8 +2007,10 @@ async function handleStore(request, env, rawId, ctx = null) {
   delete settings.share_message;
   delete settings.offer_template;
   delete settings.offer_templates;
-  if (!settings.show_group || !settings.group_url) { settings.show_group = 0; delete settings.group_url; delete settings.group_title; }
-  // Estilo Landing é do plano Completo (e do teste). No Básico, a vitrine segue o tema escolhido:
+  // Card do grupo: só no Completo (e no teste).
+  const groupOk = !tenant.effective_plan || tenant.effective_plan === 'complete';
+  if (!groupOk || !settings.show_group || !settings.group_url) { settings.show_group = 0; delete settings.group_url; delete settings.group_title; }
+  // Estilo Landing é do plano Completo (e do teste). No Essencial, a vitrine segue o tema escolhido:
   // claro vira o Clássico, escuro vira o Vidro.
   if (settings.store_style === 'landing' && tenant.effective_plan && tenant.effective_plan !== 'complete') {
     settings.store_style = settings.theme_mode === 'dark' ? 'glass' : 'classic';
@@ -2235,7 +2240,7 @@ async function handleCreateStore(request, env, account) {
   const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM tenants WHERE account_id = ?').bind(account.id).first('n');
   if (Number(count) >= max) {
     throw new HttpError(403, max === 1
-      ? 'Seu plano Básico permite 1 loja. Mude para o plano Completo para ter até 3 lojas.'
+      ? 'Seu plano Essencial permite 1 loja. Mude para o plano Completo para ter até 3 lojas.'
       : `Seu plano permite até ${max} lojas.`, { code: 'store_limit' });
   }
   const body = await readJson(request);
@@ -2316,6 +2321,9 @@ async function handleSettings(request, env, tenant) {
   // Recursos do plano: modelos 2 e 3 e edição dos modelos são do plano Completo (e do teste grátis).
   const plan = PLANS[effectivePlan(tenant.account)];
   if (!plan.templates.includes(settings.offer_template)) settings.offer_template = 1;
+  if (settings.show_group && body.show_group !== undefined && Number(body.show_group) === 1 && !plan.customTemplates) {
+    throw new HttpError(403, 'O card do grupo de WhatsApp é um recurso do plano Completo.', { code: 'plan_feature' });
+  }
   if (settings.store_style === 'landing' && !plan.customTemplates && body.store_style === 'landing') {
     throw new HttpError(403, 'O estilo Landing é exclusivo do plano Completo.', { code: 'plan_feature' });
   }
@@ -2606,7 +2614,7 @@ async function createStore(env, account, body) {
       ),
       // Só afiliados: começa sem o botão de WhatsApp (dá para ligar depois).
       env.DB.prepare(
-        // Lojas novas já nascem no estilo Landing claro (o teste grátis libera o Completo); no Básico vira o Clássico claro.
+        // Lojas novas já nascem no estilo Landing claro (o teste grátis libera o Completo); no Essencial vira o Clássico claro.
         "INSERT INTO tenant_settings (tenant_id, show_prices, show_stock_warning, view_mode, store_mode, show_whatsapp, store_style, theme_mode) VALUES (?, 1, 1, ?, ?, ?, 'landing', 'light')",
       ).bind(data.id, 'grid', mode, mode === 'affiliate' ? 0 : 1),
     ]);
@@ -3219,7 +3227,7 @@ async function rewardReferrer(env, acc) {
   if (!claim.meta || !claim.meta.changes) return false;
   const ref = await env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(acc.referred_by).first();
   if (!ref) return false;
-  // O prêmio vale o mesmo que o indicado pagou: indicado no Básico rende 30 dias para quem é Básico
+  // O prêmio vale o mesmo que o indicado pagou: indicado no Essencial rende 30 dias para quem é Essencial
   // e ~20 dias para quem é Completo. Assim não compensa criar conta falsa para pagar menos.
   const paid = priceNumber(planPrice(env, PLANS[acc.plan] ? acc.plan : 'basic'));
   const refPrice = priceNumber(planPrice(env, PLANS[ref.plan] ? ref.plan : 'basic'));
@@ -3313,7 +3321,9 @@ async function handlePayCreate(request, env, account) {
   const body = await readJson(request);
   const plan = PLANS[body.plan] ? body.plan : 'basic';
   const method = body.method === 'card' ? 'card' : 'pix';
-  const amount = priceNumber(planPrice(env, plan));
+  const yearly = plan === 'complete' && body.period === 'year';
+  const days = yearly ? 365 : 30;
+  const amount = priceNumber(yearly ? planPriceYear(env) : planPrice(env, plan));
   if (!(amount > 0)) throw new HttpError(500, 'Preço do plano não configurado.');
   const email = String(body.email || '').trim().toLowerCase();
   if (method === 'pix' && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
@@ -3323,10 +3333,10 @@ async function handlePayCreate(request, env, account) {
   const ref = `vitrine:${account.id}:${plan}:${crypto.randomUUID()}`;
   const base = publicBase(request, env);
   const notify = `${base}/api/mp/webhook`;
-  const title = `Vitrine App · Plano ${PLANS[plan].name} (30 dias)`;
+  const title = `Vitrine App · Plano ${PLANS[plan].name}${yearly ? ' anual (365 dias)' : ' (30 dias)'}`;
   const ins = await env.DB.prepare(
-    'INSERT INTO payments (account_id, plan, days, amount, method, ref, status, created_at, updated_at) VALUES (?, ?, 30, ?, ?, ?, ?, ?, ?)',
-  ).bind(account.id, plan, amount, method, ref, 'pending', ts, ts).run();
+    'INSERT INTO payments (account_id, plan, days, amount, method, ref, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).bind(account.id, plan, days, amount, method, ref, 'pending', ts, ts).run();
   const payId = ins.meta && ins.meta.last_row_id;
 
   if (method === 'pix') {

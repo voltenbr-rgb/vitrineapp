@@ -20,6 +20,7 @@ database_id = "f53ffb6a-1978-40fb-917b-5d897b6dc169"
 TRIAL_DAYS = "7"
 PLAN_PRICE = "19,90"
 PLAN_PRICE_COMPLETE = "29,90"
+PLAN_PRICE_COMPLETE_YEAR = "299,00"   # Completo anual (365 dias, pagamento único)
 LOOKUP_LIMIT_PER_HOUR = "15"
 LOOKUP_LIMIT_COMPLETE = "30" # buscas automáticas (Shopee) por lojista a cada hora
 SUPPORT_WHATSAPP = "5567996462518"  # WhatsApp do suporte (esqueci a senha)

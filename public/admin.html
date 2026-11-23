@@ -318,7 +318,7 @@
       { id: 'ending', label: 'Vencendo (≤ 2 dias)' },
       { id: 'active', label: 'Ativas' },
       { id: 'expired', label: 'Expiradas' },
-      { id: 'basic', label: 'Básico' },
+      { id: 'basic', label: 'Essencial' },
       { id: 'complete', label: '⭐ Completo' },
     ];
     const CLOSE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>';
@@ -360,7 +360,7 @@
     const num = (n) => Number(n || 0).toLocaleString('pt-BR');
     const slugOf = (t) => (t.stores && t.stores[0] ? t.stores[0].id : String(t.id));
     const dashboardUrl = (t) => `${location.origin}/dashboard.html?loja=${encodeURIComponent(slugOf(t))}`;
-    const PLAN_NAME = { basic: 'Básico', complete: 'Completo' };
+    const PLAN_NAME = { basic: 'Essencial', complete: 'Completo' };
     const planPriceOf = (id) => (id === 'complete' ? state.planPriceComplete : state.planPrice);
     const ss = {
       get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
@@ -469,7 +469,7 @@
         <div class="stat"><i style="background:#94a3b8"></i><span>Cadastrados</span><b>${num(s.total)}</b><small>+${num(s.new_7d)} nos últimos 7 dias</small></div>
         <div class="stat online"><span class="live"></span><span>Online agora</span><b>${num(s.online)}</b><small>com o painel aberto</small></div>
         <div class="stat"><i style="background:#0ea5e9"></i><span>Usando (24h)</span><b>${num(s.active_today)}</b><small>${num(s.with_products)} lojas com produtos</small></div>
-        <div class="stat revenue"><span>Receita mensal estimada</span><b>${brl(s.mrr != null ? s.mrr : (s.active || 0) * priceNumber())}</b><small>${num(s.active_basic)} Básico × R$ ${esc(state.planPrice)} · ${num(s.active_complete)} Completo × R$ ${esc(state.planPriceComplete)}</small></div>
+        <div class="stat revenue"><span>Receita mensal estimada</span><b>${brl(s.mrr != null ? s.mrr : (s.active || 0) * priceNumber())}</b><small>${num(s.active_basic)} Essencial × R$ ${esc(state.planPrice)} · ${num(s.active_complete)} Completo × R$ ${esc(state.planPriceComplete)}</small></div>
         <div class="stat"><i style="background:#f59e0b"></i><span>Em teste</span><b>${num(s.trial)}</b><small>${num(ending)} vencendo em até 2 dias</small></div>
         <div class="stat"><i style="background:#16a34a"></i><span>Ativas (pagantes)</span><b>${num(s.active)}</b></div>
         <div class="stat"><i style="background:#e11d48"></i><span>Expiradas</span><b>${num(s.expired)}</b></div>
@@ -507,7 +507,7 @@
           <div class="tname"><strong>${esc(t.store_name)}${t.store_count > 1 ? ` <small style="color:var(--muted)">+${t.store_count - 1}</small>` : ''}</strong><a href="${esc(t.store_url)}" target="_blank" rel="noopener">/s/${esc(slugOf(t))} ↗</a>
             <div class="tbadges">
               <span class="pill ${esc(t.status)}"><span class="dot"></span>${esc(STATUS[t.status] || t.status)}</span>
-              <span class="pill" style="background:${t.plan === 'complete' ? '#fff1c7' : '#eef2ff'};color:${t.plan === 'complete' ? '#8a5a00' : '#3730a3'}">${t.status === 'trial' ? 'Teste do Completo' : esc(PLAN_NAME[t.plan] || 'Básico')}</span>
+              <span class="pill" style="background:${t.plan === 'complete' ? '#fff1c7' : '#eef2ff'};color:${t.plan === 'complete' ? '#8a5a00' : '#3730a3'}">${t.status === 'trial' ? 'Teste do Completo' : esc(PLAN_NAME[t.plan] || 'Essencial')}</span>
               ${t.source ? `<span class="src-chip" title="Origem do cadastro${t.campaign ? ' · ' + esc(t.campaign) : ''}">${esc(srcName(t.source))}</span>` : ''}
               ${t.referred_by_name ? `<span class="src-chip ref-chip" title="Veio pelo link de indicação">🎁 por ${esc(String(t.referred_by_name).split(' ')[0])}</span>` : ''}
               ${t.ref_signups ? `<span class="src-chip ref-chip" title="Cadastros pelo link dele · quantos já pagaram">🎁 indicou ${t.ref_signups}${t.ref_paid ? ` · ${t.ref_paid} pagou` : ''}</span>` : ''}
@@ -614,7 +614,7 @@
             <div class="colors">${PALETTE.map((c) => `<button type="button" data-color="${c}" style="background:${c}" aria-label="Cor ${c}" aria-pressed="${c === color}"></button>`).join('')}</div>
             <input type="hidden" name="theme_color" value="${color}"></div>
           <div class="field"><span>Plano depois do teste</span>
-            <select class="input" name="plan"><option value="basic">Básico · R$ ${esc(state.planPrice)}</option><option value="complete">Completo · R$ ${esc(state.planPriceComplete)}</option></select></div>
+            <select class="input" name="plan"><option value="basic">Essencial · R$ ${esc(state.planPrice)}</option><option value="complete">Completo · R$ ${esc(state.planPriceComplete)}</option></select></div>
           <button type="submit" class="btn btn-primary btn-block" id="createBtn">Criar loja com ${state.trialDays} dias grátis</button>
         </form>`);
 
@@ -655,14 +655,14 @@
     function activateModal(t) {
       const opts = [[30, '1 mês'], [90, '3 meses'], [180, '6 meses'], [365, '1 ano']];
       let chosen = t.plan === 'complete' ? 'complete' : (t.status === 'trial' && t.store_count > 1 ? 'complete' : 'basic');
-      const planBtns = () => ['basic', 'complete'].map((id) => `<button type="button" class="act-plan" data-plan="${id}" aria-pressed="${chosen === id}"><b>${id === 'complete' ? '⭐ Completo' : 'Básico'}</b><small>${id === 'complete' ? 'até 3 lojas' : '1 loja'}</small></button>`).join('');
+      const planBtns = () => ['basic', 'complete'].map((id) => `<button type="button" class="act-plan" data-plan="${id}" aria-pressed="${chosen === id}"><b>${id === 'complete' ? '⭐ Completo' : 'Essencial'}</b><small>${id === 'complete' ? 'até 3 lojas' : '1 loja'}</small></button>`).join('');
       const since = t.status === 'active' && t.paid_until ? `Hoje vale até ${fmtDate(t.paid_until)}; os dias são somados.` : 'Começa a contar hoje.';
       openModal(`${head('✓ Liberar acesso', `${t.store_name} · sem cobrança: para você, alunos ou quem pagou por fora. ${since}`)}
         <div class="act-plans" id="planPick">${planBtns()}</div>
         <div class="act-grid">${opts.map(([d, l]) => `<button type="button" class="act-days" data-days="${d}"><b>${l}</b><small>${d} dias</small></button>`).join('')}</div>
         <div class="act-custom"><input class="input" id="actDays" type="number" inputmode="numeric" min="1" max="3650" placeholder="Outro: nº de dias">
           <button type="button" class="btn btn-dark" id="actCustom">Liberar</button></div>
-        ${t.store_count > 1 ? `<p style="font-size:12.5px;color:var(--muted);margin:10px 0 0">Esta conta tem ${t.store_count} lojas. No Básico só a primeira fica no ar (as outras pausam, sem apagar).</p>` : ''}`);
+        ${t.store_count > 1 ? `<p style="font-size:12.5px;color:var(--muted);margin:10px 0 0">Esta conta tem ${t.store_count} lojas. No Essencial só a primeira fica no ar (as outras pausam, sem apagar).</p>` : ''}`);
       const pick = $('#planPick');
       pick.addEventListener('click', (e) => { const b = e.target.closest('[data-plan]'); if (b) { chosen = b.dataset.plan; pick.innerHTML = planBtns(); } });
       const go = (days, b) => patch(t.id, { action: 'activate', days, plan: chosen }, `${PLAN_NAME[chosen]} liberado por ${days} dias ✓`, b);
@@ -677,7 +677,7 @@
     function moreModal(t) {
       openModal(`${head(t.store_name, `/s/${slugOf(t)} · ${t.store_count} ${t.store_count === 1 ? 'loja' : 'lojas'}`)}
         <div class="menu">
-          <button type="button" data-m="plan">⭐ Mudar para ${t.plan === 'complete' ? 'Básico' : 'Completo'} (sem mexer na validade)</button>
+          <button type="button" data-m="plan">⭐ Mudar para ${t.plan === 'complete' ? 'Essencial' : 'Completo'} (sem mexer na validade)</button>
           <button type="button" data-m="edit">✏️ Editar dados da conta</button>
           <button type="button" data-m="password">🔑 Redefinir senha</button>
           <button type="button" data-m="access">📤 Reenviar link de acesso</button>
@@ -1232,8 +1232,8 @@
       else if (t.status === 'expired') lines.push(`Sua Vitrine *${t.store_name}* está fora do ar porque o período terminou.`);
       else lines.push(`Sua assinatura da Vitrine *${t.store_name}* vence em ${fmtDate(t.paid_until)}.`);
       lines.push(t.status === 'trial'
-        ? `Para continuar: Básico (1 loja) R$ ${state.planPrice}/mês ou Completo (até 3 lojas, 3 modelos) R$ ${state.planPriceComplete}/mês. Qual prefere? Te envio o Pix 😉`
-        : `Para manter sua vitrine no ar é só R$ ${planPriceOf(t.plan)}/mês (plano ${PLAN_NAME[t.plan] || 'Básico'}). Posso te enviar o Pix?`, '', `🛍️ ${t.store_url}`);
+        ? `Para continuar: Essencial (1 loja) R$ ${state.planPrice}/mês ou Completo (até 3 lojas, 3 modelos) R$ ${state.planPriceComplete}/mês. Qual prefere? Te envio o Pix 😉`
+        : `Para manter sua vitrine no ar é só R$ ${planPriceOf(t.plan)}/mês (plano ${PLAN_NAME[t.plan] || 'Essencial'}). Posso te enviar o Pix?`, '', `🛍️ ${t.store_url}`);
       return lines.join('\n');
     }
 

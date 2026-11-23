@@ -88,7 +88,7 @@ Rotas do Master (`X-Master-Password`):
 
 ## Planos e várias lojas por conta
 
-| | Básico (R$ 19,90) | Completo (R$ 29,90) |
+| | Essencial (R$ 19,90) | Completo (R$ 29,90) |
 |---|---|---|
 | Lojas | 1 | até 3 |
 | Modelos de oferta | 🔥 Destaque do dia | 3 modelos, textos editáveis |
