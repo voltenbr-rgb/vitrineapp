@@ -739,6 +739,8 @@
         frame.addEventListener('load', () => {
           fit(); setTimeout(() => phone.classList.add('is-live'), 900);
           if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+          // Rolagem automática só no celular; no computador fica parada no topo.
+          if (!window.matchMedia('(hover: none) and (pointer: coarse)').matches) return;
           let dir = 1, pause = 70; // começa parado no topo (~3 s)
           setInterval(() => {
             try {
