@@ -106,6 +106,11 @@
     /* Celular de demonstração */
     .mock-wrap { position: relative; display: grid; place-items: center; padding: 10px 0; }
     .phone { position: relative; width: min(318px, 84vw); aspect-ratio: 9 / 18.6; border-radius: 46px; padding: 12px; background: #15171c; box-shadow: var(--shadow-lg), inset 0 0 0 2px #2b2f38; transform: rotate(-3deg); }
+    /* Vitrine real dentro do celular (desenhada em 390px e reduzida para caber na tela). */
+    .phone .live { position: absolute; inset: 12px; border-radius: 35px; overflow: hidden; background: #f4f6fb; z-index: 2; opacity: 0; transition: opacity .6s ease; pointer-events: none; }
+    .phone.is-live .live { opacity: 1; }
+    .phone .live iframe { position: absolute; left: 0; top: 0; width: 390px; height: 806px; border: 0; transform-origin: 0 0; pointer-events: none; }
+    .phone.is-live .screen { visibility: hidden; }
     .phone::before { content: ""; position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 92px; height: 24px; border-radius: 20px; background: #15171c; z-index: 3; }
     .screen { position: relative; height: 100%; border-radius: 35px; overflow: hidden; background: #eef0f4; padding: 46px 12px 12px; display: flex; flex-direction: column; gap: 9px; }
     .m-top { display: flex; align-items: center; justify-content: space-between; font-weight: 800; font-size: 12.5px; }
@@ -381,6 +386,7 @@
           <div class="float f1"><span class="ic" style="background:#dcfce7;color:#128c4b">💬</span><div>Novo pedido no WhatsApp<small>"Ainda tem o fone?"</small></div></div>
           <div class="float f2"><span class="ic" style="background:#e3f5fd">🔗</span><div>Link copiado!<small>Pronto para a bio</small></div></div>
           <div class="phone">
+            <div class="live" id="liveScreen"><iframe title="Loja de exemplo" tabindex="-1"></iframe></div>
             <div class="screen">
               <div class="m-top"><span class="m-ico">▦</span><span>Achadinhos da Ana</span><span class="m-ava"></span></div>
               <div class="m-search">🔍 Buscar produtos</div>
@@ -721,6 +727,40 @@
       } catch { return /^[a-z0-9-]{3,48}$/.test(code) ? code : ''; }
     })();
     if (indica) { const ip = document.getElementById('invitePill'); if (ip) ip.hidden = false; }
+    // Celular da página inicial: carrega a loja de exemplo de verdade e rola devagar para mostrar os produtos.
+    function startLivePhone(slug) {
+      const box = document.getElementById('liveScreen');
+      if (!box) return;
+      const phone = box.parentElement;
+      const frame = box.querySelector('iframe');
+      const fit = () => { const w = box.clientWidth; if (w) { const k = w / 390; frame.style.transform = `scale(${k})`; frame.style.height = `${Math.round(box.clientHeight / k)}px`; } };
+      const go = () => {
+        frame.src = `/s/${encodeURIComponent(slug)}?embed=1`;
+        frame.addEventListener('load', () => {
+          fit(); setTimeout(() => phone.classList.add('is-live'), 900);
+          if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+          let dir = 1, pause = 70; // começa parado no topo (~3 s)
+          setInterval(() => {
+            try {
+              const w = frame.contentWindow;
+              if (!w || document.hidden) return;
+              if (pause > 0) { pause -= 1; return; }
+              const max = Math.min(w.document.documentElement.scrollHeight - w.innerHeight, 2600);
+              const y = w.scrollY + dir * 2;
+              w.scrollTo(0, y);
+              if (y >= max) { dir = -1; pause = 60; }
+              if (y <= 0) { dir = 1; pause = 90; }
+            } catch { /* prévia sem rolagem */ }
+          }, 40);
+        }, { once: true });
+      };
+      window.addEventListener('resize', fit);
+      if ('IntersectionObserver' in window) {
+        const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { io.disconnect(); go(); } }, { rootMargin: '200px' });
+        io.observe(phone);
+      } else go();
+    }
+
     const ORIGIN_KEY = 'vitrine:origin';
     const origin = (() => {
       const q = new URLSearchParams(location.search);
@@ -767,6 +807,7 @@
       supportPhone = cfg.support_whatsapp || '';
       if (cfg.demo_store) {
         document.querySelectorAll('[data-demo]').forEach((a) => { a.href = `/s/${encodeURIComponent(cfg.demo_store)}?demo=1`; a.hidden = false; });
+        startLivePhone(cfg.demo_store);
       }
       if (cfg.video && cfg.video.src && !/\/media\/vitrine-hero\.mp4$/.test(cfg.video.src)) {
         const box = $('#videoBox');

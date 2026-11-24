@@ -2020,7 +2020,9 @@ async function handleStore(request, env, rawId, ctx = null) {
     loadSettings(env, id),
     tenant.status === 'expired' ? Promise.resolve([]) : loadProducts(env, id, { onlyVisible: true }),
   ]);
-  if (tenant.status !== 'expired') {
+  // Vitrine mostrada dentro do celular da página inicial (?preview=1) não conta como visita.
+  const preview = new URL(request.url).searchParams.get('preview') === '1';
+  if (tenant.status !== 'expired' && !preview) {
     try {
       await env.DB.batch([
         env.DB.prepare('UPDATE tenants SET views = views + 1 WHERE id = ?').bind(id),
