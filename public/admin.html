@@ -510,6 +510,7 @@
               <span class="pill" style="background:${t.plan === 'complete' ? '#fff1c7' : '#eef2ff'};color:${t.plan === 'complete' ? '#8a5a00' : '#3730a3'}">${t.status === 'trial' ? 'Teste do Completo' : esc(PLAN_NAME[t.plan] || 'Essencial')}</span>
               ${t.source ? `<span class="src-chip" title="Origem do cadastro${t.campaign ? ' · ' + esc(t.campaign) : ''}">${esc(srcName(t.source))}</span>` : ''}
               ${t.founder ? '<span class="src-chip" style="background:#fff4cc;color:#8a5a00" title="Garantiu o preço de fundador do Completo">🏅 Fundador</span>' : ''}
+              ${t.extra_stores ? `<span class="src-chip" style="background:#e0f2fe;color:#075985" title="Lojas a mais liberadas pelo Master">🏬 +${t.extra_stores} ${t.extra_stores === 1 ? 'loja' : 'lojas'}</span>` : ''}
               ${t.referred_by_name ? `<span class="src-chip ref-chip" title="Veio pelo link de indicação">🎁 por ${esc(String(t.referred_by_name).split(' ')[0])}</span>` : ''}
               ${t.ref_signups ? `<span class="src-chip ref-chip" title="Cadastros pelo link dele · quantos já pagaram">🎁 indicou ${t.ref_signups}${t.ref_paid ? ` · ${t.ref_paid} pagou` : ''}</span>` : ''}
             </div></div>
@@ -679,6 +680,7 @@
       openModal(`${head(t.store_name, `/s/${slugOf(t)} · ${t.store_count} ${t.store_count === 1 ? 'loja' : 'lojas'}`)}
         <div class="menu">
           <button type="button" data-m="plan">⭐ Mudar para ${t.plan === 'complete' ? 'Essencial' : 'Completo'} (sem mexer na validade)</button>
+          <button type="button" data-m="stores">🏬 Lojas extras (${t.extra_stores ? `+${t.extra_stores}` : 'nenhuma'})</button>
           <button type="button" data-m="edit">✏️ Editar dados da conta</button>
           <button type="button" data-m="password">🔑 Redefinir senha</button>
           <button type="button" data-m="access">📤 Reenviar link de acesso</button>
@@ -690,6 +692,7 @@
         if (!b || b.disabled) return;
         const m = b.dataset.m;
         if (m === 'edit') return editModal(t);
+        if (m === 'stores') return storesModal(t);
         if (m === 'plan') return patch(t.id, { action: 'set_plan', plan: t.plan === 'complete' ? 'basic' : 'complete' }, 'Plano alterado ✓');
         if (m === 'password') return passwordModal(t);
         if (m === 'access') { closeModal(); return window.open(waLink(t.whatsapp, accessMessage(t, '')), '_blank', 'noopener'); }
@@ -708,6 +711,22 @@
           }
         }
       });
+    }
+
+    function storesModal(t) {
+      const base = Math.max(0, (t.plan_info ? t.plan_info.stores : 1) - (t.extra_stores || 0));
+      const planLabel = t.status === 'trial' ? 'Teste do Completo' : (PLAN_NAME[t.plan] || 'Essencial');
+      openModal(`${head('Lojas extras', `${t.owner_name || fmtPhone(t.whatsapp)} · ${t.store_count} ${t.store_count === 1 ? 'loja criada' : 'lojas criadas'}`)}
+        <form id="storesForm" novalidate>
+          <p class="sub" style="margin:0 0 12px">O plano <b>${esc(planLabel)}</b> dá <b>${base}</b> ${base === 1 ? 'loja' : 'lojas'}. As lojas extras somam a esse limite e só o Master pode liberar.</p>
+          <label class="field"><span>Lojas a mais (0 a 50)</span><input class="input" name="extra" type="number" inputmode="numeric" min="0" max="50" step="1" value="${Number(t.extra_stores || 0)}"></label>
+          <p class="sub" id="storesTotal" style="margin:-4px 0 14px"></p>
+          <button type="submit" class="btn btn-dark btn-block">Salvar</button>
+        </form>`);
+      const f = $('#storesForm');
+      const upd = () => { const n = Math.min(50, Math.max(0, parseInt(f.extra.value, 10) || 0)); $('#storesTotal').textContent = `Limite total: ${base + n} ${base + n === 1 ? 'loja' : 'lojas'}.`; return n; };
+      f.extra.addEventListener('input', upd); upd();
+      f.addEventListener('submit', (e) => { e.preventDefault(); patch(t.id, { action: 'set_extra_stores', extra_stores: upd() }, 'Lojas extras salvas ✓'); });
     }
 
     function editModal(t) {

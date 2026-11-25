@@ -526,6 +526,7 @@ async function runMigrations(env) {
       await addAcc('ref_rewarded', 'ref_rewarded INTEGER NOT NULL DEFAULT 0');
       await addAcc('ref_new', 'ref_new INTEGER NOT NULL DEFAULT 0');
       await addAcc('founder', 'founder INTEGER NOT NULL DEFAULT 0'); // garantiu o preço de fundador do Completo
+      await addAcc('extra_stores', 'extra_stores INTEGER NOT NULL DEFAULT 0'); // lojas a mais liberadas só pelo Master
       await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_ref_code ON accounts (ref_code) WHERE ref_code IS NOT NULL').run();
       await env.DB.prepare(
         `CREATE TABLE IF NOT EXISTS site_daily (
@@ -1616,12 +1617,16 @@ const lookupLimitFor = (env, plan) => (plan === 'complete'
   : clampInt(env.LOOKUP_LIMIT_PER_HOUR, 1, 1000, 15));
 // Durante o teste grátis a conta usa tudo do plano Completo.
 const effectivePlan = (acc) => (acc.status === 'trial' ? 'complete' : PLANS[acc.plan] ? acc.plan : 'basic');
+// Lojas extras: só o Master libera (somam ao limite do plano).
+const MAX_EXTRA_STORES = 50;
+const extraStores = (acc) => Math.min(MAX_EXTRA_STORES, Math.max(0, Math.floor(Number(acc && acc.extra_stores) || 0)));
+const storeLimit = (acc) => PLANS[effectivePlan(acc)].stores + extraStores(acc);
 
 function planInfo(env, acc) {
   const id = effectivePlan(acc);
   const p = PLANS[id];
   return {
-    id, name: p.name, stores: p.stores, templates: p.templates, custom_templates: p.customTemplates,
+    id, name: p.name, stores: p.stores + extraStores(acc), extra_stores: extraStores(acc), templates: p.templates, custom_templates: p.customTemplates,
     lookups: lookupLimitFor(env, id), price: planPrice(env, id), contracted: PLANS[acc.plan] ? acc.plan : 'basic',
     trial: acc.status === 'trial',
   };
@@ -1638,6 +1643,7 @@ function accountPrivate(env, a) {
   return {
     id: a.id,
     founder: Number(a.founder) === 1,
+    extra_stores: extraStores(a),
     owner_name: a.owner_name,
     whatsapp: a.whatsapp,
     plan: PLANS[a.plan] ? a.plan : 'basic',
@@ -1690,7 +1696,7 @@ function mergeStore(t, a) {
 
 // Lojas além do limite do plano (ex.: criou 3 no teste e assinou o Essencial) ficam pausadas, sem apagar nada.
 async function storeOverLimit(env, account, storeId) {
-  const max = PLANS[effectivePlan(account)].stores;
+  const max = storeLimit(account);
   const { results } = await env.DB.prepare('SELECT id FROM tenants WHERE account_id = ? ORDER BY created_at ASC, id ASC LIMIT ?')
     .bind(account.id, max).all();
   return !(results || []).some((r) => r.id === storeId);
@@ -1722,7 +1728,7 @@ async function loadAccountStores(env, accountId) {
 }
 
 async function loadAccountStoresFor(env, account) {
-  const max = PLANS[effectivePlan(account)].stores;
+  const max = storeLimit(account);
   const stores = await loadAccountStores(env, account.id);
   const { list, byStore } = await loadSeries(env, stores.map((r) => r.id), 7).catch(() => ({ list: lastDays(7), byStore: new Map() }));
   return stores.map((r, i) => {
@@ -2265,10 +2271,10 @@ async function handleStores(request, env, account) {
 
 async function handleCreateStore(request, env, account) {
   assertCanEdit(account);
-  const max = PLANS[effectivePlan(account)].stores;
+  const max = storeLimit(account);
   const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM tenants WHERE account_id = ?').bind(account.id).first('n');
   if (Number(count) >= max) {
-    throw new HttpError(403, max === 1
+    throw new HttpError(403, extraStores(account) ? `Sua conta permite até ${max} lojas.` : max === 1
       ? 'Seu plano Essencial permite 1 loja. Mude para o plano Completo para ter até 3 lojas.'
       : `Seu plano permite até ${max} lojas.`, { code: 'store_limit' });
   }
@@ -2838,6 +2844,12 @@ async function handleAdminPatch(request, env, rawId) {
     case 'expire':
       await env.DB.prepare("UPDATE accounts SET status = 'expired', updated_at = ? WHERE id = ?").bind(ts, id).run();
       break;
+    case 'set_extra_stores': {
+      // Só o Master: lojas a mais para esta conta (além do limite do plano).
+      const extra = clampInt(body.extra_stores, 0, MAX_EXTRA_STORES, 0);
+      await env.DB.prepare('UPDATE accounts SET extra_stores = ?, updated_at = ? WHERE id = ?').bind(extra, ts, id).run();
+      break;
+    }
     case 'reset_password': {
       const hash = await hashPassword(password(body.password, 'Nova senha'));
       await env.DB.batch([
