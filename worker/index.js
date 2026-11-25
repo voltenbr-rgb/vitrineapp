@@ -725,7 +725,46 @@ function readMeta(html) {
     price: priceNum,
     original: readOriginalPrice(html),
     discount_pct: readDiscountPct(html),
+    ...readRating(html),
   };
+}
+
+// Nota do produto (estrelas) e número de avaliações — JSON-LD, dados da página ou rótulo de acessibilidade.
+function readRating(html) {
+  const num = (v) => Number(String(v).replace(',', '.'));
+  const cnt = (v) => Number(String(v || '').replace(/\D/g, '')) || null;
+  const ok = (r, n) => (r >= 1 && r <= 5 ? { rating: Math.round(r * 10) / 10, rating_count: n || null } : null);
+  // JSON-LD: "aggregateRating": { "ratingValue": 4.7, "reviewCount": 2381 }
+  const ld = html.match(/"aggregateRating"\s*:\s*\{([^}]{0,400})\}/i);
+  if (ld) {
+    const r = (ld[1].match(/"ratingValue"\s*:\s*"?(\d(?:[.,]\d+)?)/i) || [])[1];
+    const n = (ld[1].match(/"(?:reviewCount|ratingCount)"\s*:\s*"?(\d+)/i) || [])[1];
+    const v = r && ok(num(r), cnt(n));
+    if (v) return v;
+  }
+  const ra = html.match(/"rating_average"\s*:\s*(\d(?:\.\d+)?)/);
+  if (ra) { const v = ok(num(ra[1]), null); if (v) return v; }
+  const al = html.match(/Avalia[çc][ãa]o\s+(\d(?:[.,]\d+)?)\s+de\s+5(?:[^"<]{0,40}?(\d[\d.]*)\s+(?:opini|avalia))?/i);
+  if (al) { const v = ok(num(al[1]), cnt(al[2])); if (v) return v; }
+  const ui = html.match(/ui-pdp-review__rating[^>]*>\s*(\d(?:[.,]\d+)?)\s*</i);
+  if (ui) {
+    const amt = (html.match(/ui-pdp-review__amount[^>]*>\s*\(?([\d.]+)/i) || [])[1];
+    const v = ok(num(ui[1]), cnt(amt));
+    if (v) return v;
+  }
+  return { rating: null, rating_count: null };
+}
+
+// Texto curto que vai na descrição do produto: loja, nota e avaliações (Shopee e Mercado Livre).
+function productExtras(found) {
+  if (!found) return '';
+  const parts = [];
+  if (found.shop_name) parts.push(`Loja: ${found.shop_name}`);
+  if (Number(found.rating) > 0) {
+    const n = Number(found.rating_count) || 0;
+    parts.push(`⭐ ${Number(found.rating).toFixed(1)}${n ? ` (${n.toLocaleString('pt-BR')} ${n === 1 ? 'avaliação' : 'avaliações'})` : ''}`);
+  }
+  return parts.join(' · ');
 }
 
 // Preço "De" (riscado) na página do produto — vários formatos usados pelo Mercado Livre.
@@ -1121,8 +1160,22 @@ function mlPreviewResult(meta) {
     price,
     image_url: /^https:\/\//.test(meta.image || '') ? meta.image : null,
     shop_name: null,
+    rating: Number(meta.rating) > 0 ? meta.rating : null,
+    rating_count: Number(meta.rating_count) > 0 ? meta.rating_count : null,
     source: 'preview',
   };
+}
+
+// Nota média do anúncio pela API (opcional: se falhar, segue sem nota).
+async function mlRating(token, itemId) {
+  try {
+    const res = await fetch(`${ML_API}/reviews/item/${encodeURIComponent(itemId)}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+    if (!res.ok) return {};
+    const d = await res.json();
+    const r = Number(d && d.rating_average);
+    const n = Number(d && d.paging && d.paging.total) || null;
+    return r >= 1 && r <= 5 ? { rating: Math.round(r * 10) / 10, rating_count: n } : {};
+  } catch { return {}; }
 }
 
 async function lookupMercadoLivre(env, token, url) {
@@ -1137,7 +1190,9 @@ async function lookupMercadoLivre(env, token, url) {
     if (ids.itemId) {
       const item = await mlGet(token, `/items/${ids.itemId}`);
       if (item && item.title) {
+        const rev = await mlRating(token, ids.itemId);
         return {
+          ...rev,
           platform: 'mercadolivre',
           title: String(item.title).slice(0, 120),
           price: Number(item.price) > 0 ? Number(item.price) : null,
@@ -1169,13 +1224,20 @@ async function lookupMercadoLivre(env, token, url) {
   let preview = usefulMeta(meta) ? meta : null;
   const pageUrl = ids.itemId ? `https://produto.mercadolivre.com.br/MLB-${ids.itemId.replace(/^MLB/i, '')}` : `https://www.mercadolivre.com.br/p/${ids.productId}`;
   if (!preview) preview = await fetchPreview(pageUrl);
-  // A prévia leve não traz o preço "De": tenta a página completa uma vez para achar o desconto.
-  if (preview && !preview.original && !preview.discount_pct) {
+  // A prévia leve não traz o preço "De" nem a nota: tenta a página completa uma vez.
+  if (preview && ((!preview.original && !preview.discount_pct) || !preview.rating)) {
     try {
       const res = await fetch(pageUrl, { headers: { 'User-Agent': UA_BROWSER, Accept: 'text/html', 'Accept-Language': 'pt-BR,pt;q=0.9' } });
       if (res.ok) {
         const html = (await res.text()).slice(0, 1_500_000);
-        preview = { ...preview, original: readOriginalPrice(html), discount_pct: readDiscountPct(html) };
+        const rt = readRating(html);
+        preview = {
+          ...preview,
+          original: preview.original || readOriginalPrice(html),
+          discount_pct: preview.discount_pct || readDiscountPct(html),
+          rating: preview.rating || rt.rating,
+          rating_count: preview.rating_count || rt.rating_count,
+        };
         if (!preview.price) { const full = readMeta(html); if (full.price) preview.price = full.price; }
       }
     } catch { /* sem desconto, segue só com o preço */ }
@@ -2487,7 +2549,7 @@ async function handleProductFromLink(request, env, tenant) {
   if (!found || !found.title) throw new HttpError(422, 'Não consegui ler os dados deste link. Cadastre este produto pelo modo avulso.');
   const p = productInput({
     title: String(found.title).slice(0, 120),
-    description: found.shop_name ? `Loja: ${found.shop_name}${found.rating ? ` · ⭐ ${Number(found.rating).toFixed(1)}` : ''}` : '',
+    description: productExtras(found),
     price: found.price,
     original_price: found.original_price,
     image_url: found.image_url || '',

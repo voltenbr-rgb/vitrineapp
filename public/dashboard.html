@@ -3049,8 +3049,10 @@
         if (product.price && (manual || !form.price.value.trim())) form.price.value = priceInput(product.price);
         if (product.original_price && (manual || !form.original_price.value.trim())) form.original_price.value = priceInput(product.original_price);
         if (product.image_url && (manual || !$('#imageValue').value)) setProductImage(product.image_url);
-        if (!form.description.value.trim() && product.shop_name) {
-          const extras = [product.shop_name ? `Loja: ${product.shop_name}` : '', product.rating ? `⭐ ${Number(product.rating).toFixed(1)}` : ''].filter(Boolean).join(' · ');
+        if (!form.description.value.trim() && (product.shop_name || Number(product.rating) > 0)) {
+          const n = Number(product.rating_count) || 0;
+          const stars = Number(product.rating) > 0 ? `⭐ ${Number(product.rating).toFixed(1)}${n ? ` (${n.toLocaleString('pt-BR')} ${n === 1 ? 'avaliação' : 'avaliações'})` : ''}` : '';
+          const extras = [product.shop_name ? `Loja: ${product.shop_name}` : '', stars].filter(Boolean).join(' · ');
           form.description.value = extras;
           $('#descCount').textContent = `${extras.length}/1500`;
         }

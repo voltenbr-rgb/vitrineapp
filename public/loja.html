@@ -308,6 +308,8 @@
     }
     .notice.city { background: color-mix(in srgb, var(--ok) 10%, #fff); color: #14532d; }
     .notice svg { margin-top: 1px; }
+    /* No celular o aviso do card fica curto ("Vendido e entregue pela Shopee"); no computador e no detalhe, completo. */
+    @media (max-width: 700px) { .card .notice .n-more { display: none; } .card .notice { padding: 5px 8px; align-items: center; } .card .notice svg { margin-top: 0; } }
     .card-actions { display: flex; gap: 8px; margin-top: auto; padding-top: 4px; }
     .btn-buy {
       flex: 1; min-width: 0; height: 42px;
@@ -1083,7 +1085,7 @@
       const parts = [];
       if (isAffiliate(p) && state.settings.show_stock_warning) {
         const site = p.platform === 'shopee' ? 'pela Shopee' : 'pelo Mercado Livre';
-        parts.push(`<p class="notice">${ICON.info}<span><b>Vendido e entregue ${site}.</b> O preço é atualizado todo dia; o valor final é o do site.</span></p>`);
+        parts.push(`<p class="notice">${ICON.info}<span><b>Vendido e entregue ${site}<span class="n-more">.</span></b><span class="n-more"> O preço é atualizado todo dia; o valor final é o do site.</span></span></p>`);
       }
       if (p.is_physical && String(p.delivery_cities || '').trim()) {
         parts.push(`<p class="notice city">${ICON.pin}<span><b>Entrega em:</b> ${esc(p.delivery_cities)}</span></p>`);
